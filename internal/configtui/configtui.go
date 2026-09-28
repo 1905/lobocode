@@ -258,7 +258,7 @@ func (s *state) form(path string) *huh.Form {
 
 	perProvider := huh.NewGroup(
 		huh.NewSelect[string]().Title("RunPod cloud").
-			Description("Tried first; the other is the fallback.").
+			Description("Community = community hosts only. Secure = datacenter first, community fallback.").
 			Options(huh.NewOption("Community (cheapest, $0.69/h)", "community"), huh.NewOption("Secure (datacenter first, $0.99/h)", "secure")).
 			Value(&s.Cloud),
 	).Title("3/4 · RunPod").WithHideFunc(func() bool { return s.runpodKey() == "" })

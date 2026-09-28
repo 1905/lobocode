@@ -44,7 +44,7 @@ func (p *Provider) Rent(ctx context.Context, o provider.CreateOpts, note func(st
 	if maxDPH <= 0 {
 		maxDPH = 1.20
 	}
-	offers, err := p.C.SearchOffers(ctx, maxDPH)
+	offers, err := p.C.SearchOffers(ctx, maxDPH, o.MinMBps)
 	if err != nil {
 		return provider.Instance{}, err
 	}
