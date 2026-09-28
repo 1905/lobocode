@@ -1,11 +1,21 @@
 name: Pod image
 
 # ghcr.io/1905/lobo: llama.cpp server with lobo-agent baked in. Tagged in lockstep with the CLI (v* tags);
-# workflow_dispatch builds any branch for testing. Pin it by digest: `lobo up --image ghcr.io/1905/lobo@sha256:…`.
+# master and feat/** pushes build sha-<commit> tags for testing. Pin by digest: `lobo up --image ghcr.io/1905/lobo@sha256:…`.
 on:
   push:
     tags:
       - "v*"
+    branches:
+      - master
+      - "feat/**"
+    paths:
+      - "cmd/lobo-agent/**"
+      - "internal/**"
+      - "docker/pod/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/pod-image.yml"
   workflow_dispatch:
 
 permissions:
