@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.gguf
+logs/
+bin/
+dist/
+opencode.lobo.json
+boots.jsonl
+.playwright-cli/
+macos/.build/

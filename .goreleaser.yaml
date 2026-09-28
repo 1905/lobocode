@@ -1,0 +1,57 @@
+# Release the `lobo` CLI (not the pod agent: that ships to the bucket via `make release`).
+# CI (.github/workflows/release.yml) runs this on a v* tag push. Not released yet: see README "Homebrew".
+project_name: lobo
+version: 2
+
+release:
+  github:
+    owner: "1905"
+    name: lobocode
+
+builds:
+  - main: ./cmd/lobo
+    binary: lobo
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+# Formula at the tap repo root (lobo.rb), same layout as rival.rb in 1905/homebrew-tap.
+# `brews:` is deprecated in favour of casks, but a Formula is the right artifact for a CLI in this tap.
+brews:
+  - name: lobo
+    homepage: https://github.com/1905/lobocode
+    description: "Rent an RTX 5090 on RunPod or Vast.ai and serve Qwen3.5-27B behind an OpenAI-compatible API"
+    repository:
+      owner: "1905"
+      name: homebrew-tap
+      branch: master
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: "bot@goreleaser.com"
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    test: |
+      system "#{bin}/lobo", "version"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^plans:"

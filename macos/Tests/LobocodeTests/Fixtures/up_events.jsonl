@@ -1,0 +1,8 @@
+{"phase":"create","detail":"vast 26461230, offer 51401937, 18877 Mbps down, California, US, $0.73/h, release 2026.09.25-10, q8 ctx 65536"}
+{"phase":"image","detail":""}
+{"phase":"tunnel","detail":""}
+{"phase":"gpu","detail":""}
+{"phase":"download","download":{"bytes":12400000000,"total":28595762272,"mbps":713.2}}
+{"phase":"load","detail":""}
+{"phase":"ready","ready":{"pod_id":"26461230","provider":"vast","detail":"offer 51401937, 18877 Mbps down, California, US","attempts":1,"rent_to_container_s":36.2,"host_download_mbps":18877,"timings":{"container_started_at":"2026-09-26T01:40:10.123456789Z"},"url":"https://lobo.example.com/v1","version":"2026.09.25-10","git_sha":"4b513b3","usd_per_h":0.73,"elapsed_ns":181000000000},"done":true}
+{"phase":"failed","err":"gave up: 4 pods in a row landed on bad hosts (all deleted)","done":true}

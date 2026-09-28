@@ -1,0 +1,29 @@
+lobo dev
+Rent an RTX 5090 on RunPod or Vast.ai and serve Qwen3.5-27B behind an OpenAI-compatible API.
+Pods delete themselves when idle or expired.
+
+Run
+  up           Rent a 5090 and boot lobo; shows progress until the API is ready
+  status       Live dashboard of the running pod
+  logs         Print the pod's recent agent, llama-server and cloudflared logs
+  test         Smoke test the live API: streamed chat + tool call
+  down         Delete every lobo pod on every provider
+
+Setup
+  config       Set API keys and defaults for `lobo up` (form in a terminal)
+  gen-api-key  Create LOBO_API_KEY in the config once (kept across ups) and write opencode.lobo.json with it
+  version      Print version, commit and build date
+
+Examples
+  lobo config                   set API keys and defaults (first run)
+  lobo up                       rent a 5090 and boot the model; live progress
+  lobo up --provider vast       rent on Vast.ai instead of the default provider
+  lobo up --q6 --min-mbps 200   smaller model, drop hosts slower than 200 MB/s
+  lobo status                   live dashboard: GPU, tokens/s, idle timer, cost
+  lobo down                     delete every lobo pod on every provider
+
+Config
+  /home/u/.config/lobo/config.env
+  plain KEY=value lines: edit by hand or with `lobo config`; flags override its defaults
+
+`lobo <command> --help` for flags.
