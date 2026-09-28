@@ -22,6 +22,7 @@ type fakeVast struct {
 	taken     map[int64]bool // PUT on these fails like a gone offer
 	lostReply map[int64]bool // PUT creates the instance, then answers 502 (a cut response)
 	fail5xx   map[int64]bool // PUT answers 502 and creates nothing
+	noCredit  bool           // every PUT answers 400 insufficient_credit
 	puts      []int64
 	putBody   map[string]any
 	instances map[int64]Inst
@@ -51,6 +52,11 @@ func (f *fakeVast) handler(t *testing.T) http.Handler {
 			f.puts = append(f.puts, id)
 			b, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(b, &f.putBody)
+			if f.noCredit {
+				w.WriteHeader(400)
+				_, _ = w.Write([]byte(`{"success": false, "error": "insufficient_credit", "msg": "Your account lacks credit"}`))
+				return
+			}
 			if f.taken[id] {
 				w.WriteHeader(400)
 				_, _ = w.Write([]byte(`{"success": false, "error": "invalid_args", "msg": "offer no longer available"}`))
@@ -171,6 +177,16 @@ func TestCreateBody(t *testing.T) {
 	raw, _ := json.Marshal(b)
 	if strings.Contains(string(raw), "R2_") || strings.Contains(string(raw), "VASTAI_API_KEY") {
 		t.Fatal("create body must not carry R2 or account keys")
+	}
+}
+
+// No credit is an account problem: stop at the first offer and say so, not "no capacity".
+func TestRentNoCredit(t *testing.T) {
+	f := &fakeVast{offers: []Offer{{ID: 7}, {ID: 8}, {ID: 9}}, noCredit: true}
+	p := setup(t, f)
+	_, err := p.Rent(context.Background(), opts(), nil)
+	if !errors.Is(err, ErrNoCredit) || len(f.puts) != 1 {
+		t.Fatalf("err %v, puts %v", err, f.puts)
 	}
 }
 
