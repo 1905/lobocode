@@ -15,7 +15,7 @@ import (
 // DiskGB is the container disk: 28.6 GB Q8 model + release + headroom.
 const DiskGB = 80
 
-// Provider rents the fastest-network verified 5090 offer. Offers already tried in this process are
+// Provider rents the cheapest verified 5090 offer. Offers already tried in this process are
 // skipped, so a bad host is never rented twice by one `up`.
 type Provider struct {
 	C      *Client

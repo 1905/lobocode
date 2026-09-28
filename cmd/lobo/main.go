@@ -225,7 +225,7 @@ func upCmd() *cobra.Command {
 	c.Flags().IntVar(&o.Conns, "conns", 0, "parallel download streams on the pod (0 = agent default)")
 	c.Flags().IntVar(&o.MinMBps, "min-mbps", 0, "drop the pod if the model downloads slower than this after 20 s (0 = LOBO_MIN_MBPS or 100)")
 	c.Flags().StringVar(&o.Provider, "provider", "", "GPU provider: runpod or vast (default: LOBO_PROVIDER, else the one with a key, runpod first)")
-	c.Flags().StringVar(&o.Cloud, "cloud", "secure", "secure (datacenter, $0.99/h, default) or community ($0.69/h) first; the other is the fallback")
+	c.Flags().StringVar(&o.Cloud, "cloud", "community", "community ($0.69/h, default, community hosts only) or secure (datacenter $0.99/h first, community fallback)")
 	c.Flags().BoolVar(&asJSON, "json", false, "one JSON object per event on stdout (for scripts and tests)")
 	c.Flags().StringVar(&sshKey, "ssh", "", "debug: path to a public key; opens 22/tcp and runs sshd on the pod")
 	return c

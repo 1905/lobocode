@@ -18,10 +18,10 @@ func TestApplyDefaults(t *testing.T) {
 		want control.UpOpts
 		err  string
 	}{
-		{"builtin", config.Laptop{RunPodAPIKey: "r"}, nil, control.UpOpts{Provider: "runpod", Cloud: "secure"}, ""},
-		{"vast only", config.Laptop{VastAPIKey: "v"}, nil, control.UpOpts{Provider: "vast", Cloud: "secure"}, ""},
-		{"config provider", config.Laptop{RunPodAPIKey: "r", VastAPIKey: "v", Provider: "vast"}, nil, control.UpOpts{Provider: "vast", Cloud: "secure"}, ""},
-		{"flag beats config", config.Laptop{RunPodAPIKey: "r", VastAPIKey: "v", Provider: "vast"}, []string{"--provider", "runpod"}, control.UpOpts{Provider: "runpod", Cloud: "secure"}, ""},
+		{"builtin", config.Laptop{RunPodAPIKey: "r"}, nil, control.UpOpts{Provider: "runpod", Cloud: "community"}, ""},
+		{"vast only", config.Laptop{VastAPIKey: "v"}, nil, control.UpOpts{Provider: "vast", Cloud: "community"}, ""},
+		{"config provider", config.Laptop{RunPodAPIKey: "r", VastAPIKey: "v", Provider: "vast"}, nil, control.UpOpts{Provider: "vast", Cloud: "community"}, ""},
+		{"flag beats config", config.Laptop{RunPodAPIKey: "r", VastAPIKey: "v", Provider: "vast"}, []string{"--provider", "runpod"}, control.UpOpts{Provider: "runpod", Cloud: "community"}, ""},
 		{"config defaults", config.Laptop{RunPodAPIKey: "r", Model: "q6", Ctx: "32768", IdleMin: "10", MaxHours: "2", MinMBps: "200", Cloud: "community"}, nil,
 			control.UpOpts{Provider: "runpod", Model: "q6", Ctx: 32768, IdleMin: 10, MaxLife: 2 * time.Hour, MinMBps: 200, Cloud: "community"}, ""},
 		{"flags beat config", config.Laptop{RunPodAPIKey: "r", Ctx: "32768", MinMBps: "200", Cloud: "community"}, []string{"--ctx", "8192", "--min-mbps", "50", "--cloud", "secure"},
@@ -30,7 +30,7 @@ func TestApplyDefaults(t *testing.T) {
 		{"bad provider", both, []string{"--provider", "aws"}, control.UpOpts{}, "want runpod or vast"},
 		{"bad config ctx", config.Laptop{RunPodAPIKey: "r", Ctx: "100"}, nil, control.UpOpts{}, "LOBO_CTX"},
 		{"flag overrides bad config ctx", config.Laptop{RunPodAPIKey: "r", Ctx: "100"}, []string{"--ctx", "8192"},
-			control.UpOpts{Provider: "runpod", Ctx: 8192, Cloud: "secure"}, ""},
+			control.UpOpts{Provider: "runpod", Ctx: 8192, Cloud: "community"}, ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			cmd := upCmd()

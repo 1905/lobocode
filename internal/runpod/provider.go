@@ -26,12 +26,13 @@ type Provider struct{ C API }
 
 func (Provider) Name() string { return "runpod" }
 
-// Rent tries the preferred cloud at every network tier, then the other cloud.
-// Datacenter (SECURE) first by default: community hosts often never started the container (2026-09-24/25).
+// Rent tries each cloud at every network tier. Default (community): COMMUNITY only, the cheapest
+// ($0.69/h, user rule 2026-09-29). secure: SECURE first, COMMUNITY as fallback. Community hosts sometimes
+// never start the container (2026-09-24/25); `up` replaces those as bad hosts.
 func (p Provider) Rent(ctx context.Context, o provider.CreateOpts, note func(string)) (provider.Instance, error) {
-	clouds := []string{"SECURE", "COMMUNITY"}
-	if o.Cloud == "community" {
-		clouds = []string{"COMMUNITY", "SECURE"}
+	clouds := []string{"COMMUNITY"}
+	if o.Cloud == "secure" {
+		clouds = []string{"SECURE", "COMMUNITY"}
 	}
 	var err error
 	for _, cloud := range clouds {

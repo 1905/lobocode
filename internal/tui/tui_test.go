@@ -45,7 +45,7 @@ func golden(t *testing.T, name, got string) {
 func upUntil(t *testing.T, script []*agent.Status, phase string) UpState {
 	var s UpState
 	t0 := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
-	for i, e := range ct.Events(script, map[string]bool{"COMMUNITY": true}) {
+	for i, e := range ct.Events(script, map[string]bool{"SECURE": true}) {
 		at := t0.Add(time.Duration(i) * 7 * time.Second)
 		s.ApplyAt(e, at)
 		s.At = at.Add(5 * time.Second)

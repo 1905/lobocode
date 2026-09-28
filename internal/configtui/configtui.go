@@ -78,7 +78,7 @@ func newState(cur map[string]string) *state {
 		s.Model = "q8"
 	}
 	if s.Cloud == "" {
-		s.Cloud = "secure"
+		s.Cloud = "community"
 	}
 	return s
 }
@@ -118,7 +118,7 @@ func (s *state) result(newKey string) map[string]string {
 		out["LOBO_VAST_MAX_DPH"] = strings.TrimSpace(s.VastDPH)
 	}
 	// "0" and the built-in values are the same as unset: keep the file short.
-	for k, def := range map[string]string{"LOBO_MIN_MBPS": "100", "LOBO_CTX": "0", "LOBO_IDLE_MIN": "0", "LOBO_MAX_HOURS": "0", "LOBO_MODEL": "q8", "LOBO_CLOUD": "secure", "LOBO_PROVIDER": "runpod", "LOBO_VAST_MAX_DPH": "1.20"} {
+	for k, def := range map[string]string{"LOBO_MIN_MBPS": "100", "LOBO_CTX": "0", "LOBO_IDLE_MIN": "0", "LOBO_MAX_HOURS": "0", "LOBO_MODEL": "q8", "LOBO_CLOUD": "community", "LOBO_PROVIDER": "runpod", "LOBO_VAST_MAX_DPH": "1.20"} {
 		if out[k] == def || out[k] == "0" {
 			out[k] = ""
 		}
@@ -237,7 +237,7 @@ func (s *state) form(path string) *huh.Form {
 	pick := huh.NewGroup(
 		huh.NewSelect[string]().Title("Default provider").
 			Description("Both keys are set. `lobo up --provider …` still overrides this.").
-			Options(huh.NewOption("RunPod", "runpod"), huh.NewOption("Vast.ai (fastest-network verified host)", "vast")).
+			Options(huh.NewOption("RunPod", "runpod"), huh.NewOption("Vast.ai (cheapest verified host)", "vast")).
 			Value(&s.Provider),
 	).Title("3/4 · Provider").WithHideFunc(func() bool { return !s.bothKeys() })
 
@@ -259,7 +259,7 @@ func (s *state) form(path string) *huh.Form {
 	perProvider := huh.NewGroup(
 		huh.NewSelect[string]().Title("RunPod cloud").
 			Description("Tried first; the other is the fallback.").
-			Options(huh.NewOption("Secure (datacenter)", "secure"), huh.NewOption("Community (cheaper)", "community")).
+			Options(huh.NewOption("Community (cheapest, $0.69/h)", "community"), huh.NewOption("Secure (datacenter first, $0.99/h)", "secure")).
 			Value(&s.Cloud),
 	).Title("3/4 · RunPod").WithHideFunc(func() bool { return s.runpodKey() == "" })
 

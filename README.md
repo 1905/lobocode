@@ -93,7 +93,7 @@ Without it, the pod starts from the plain llama.cpp image and downloads the agen
 | `LOBO_CTX` | `--ctx` | 65536 |
 | `LOBO_IDLE_MIN` | `--idle-min` | 30 |
 | `LOBO_MAX_HOURS` | `--max-life` | 12 |
-| `LOBO_CLOUD` (secure, community) | `--cloud` | secure |
+| `LOBO_CLOUD` (community, secure) | `--cloud` | community |
 | `LOBO_MIN_MBPS` | `--min-mbps` | 100 |
 | `LOBO_POD_IMAGE` | `--image` | none |
 | `LOBO_VAST_MAX_DPH` | | 1.20 |
