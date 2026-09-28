@@ -56,9 +56,11 @@ struct Header: View {
             HStack(spacing: 6) {
                 Text("sys:").font(Theme.mono(11)).foregroundColor(Theme.dim)
                 GlitchText(text: store.phase.word, color: Theme.color(for: store.phase))
-                Text(detail).font(Theme.mono(10)).foregroundColor(Theme.dim).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 4)
-                Text(store.snap?.version?.version ?? "").font(Theme.mono(9)).foregroundColor(Theme.faint).fixedSize()
+                Text(store.snap?.version?.version ?? "").font(Theme.mono(9)).foregroundColor(Theme.faint).lineLimit(1).truncationMode(.middle)
+            }
+            if !detail.isEmpty {
+                Text(detail).font(Theme.mono(10)).foregroundColor(Theme.dim).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.horizontal, 14)

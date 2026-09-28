@@ -174,6 +174,20 @@ func TestCreateBody(t *testing.T) {
 	}
 }
 
+// Baked image: the image goes through as is and the pod gets no release zip to fetch.
+func TestCreateBodyBaked(t *testing.T) {
+	o := opts()
+	o.Image, o.ReleaseURL, o.ReleaseSHA256 = "ghcr.io/1905/lobocode@sha256:abc", "", ""
+	b := CreateBody(o)
+	env := b["env"].(map[string]string)
+	if b["image"] != o.Image || len(env) == 0 {
+		t.Fatalf("%v", b)
+	}
+	if _, ok := env["LOBO_RELEASE_URL"]; ok {
+		t.Fatal("baked image must not get LOBO_RELEASE_URL")
+	}
+}
+
 func TestListGetDelete(t *testing.T) {
 	f := &fakeVast{offers: []Offer{{ID: 7, InetDown: 1000}}}
 	p := setup(t, f)

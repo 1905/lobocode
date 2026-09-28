@@ -1,114 +1,109 @@
 # lobocode
 
-On-demand Qwen3.5-27B Uncensored (HauhauCS Aggressive, GGUF) on a rented RTX 5090 (RunPod or Vast.ai), served as an OpenAI-compatible API at `https://lobo.example.com/v1`.
+Your own uncensored coding model, on demand. `lobo up` rents one RTX 5090, serves **Qwen3.5-27B Uncensored** (HauhauCS Aggressive, Q8 GGUF) as an OpenAI-compatible API, and deletes the GPU when you stop using it.
 
-The laptop is control only. No LLM traffic goes through it. After `lobo up` the pod runs on its own:
+<p align="center">
+  <img src="docs/img/panel_boot.png" width="340" alt="booting: rent, container, tunnel, gpu, model download at 713 MB/s">
+  <img src="docs/img/panel_ready.png" width="340" alt="ready: endpoint, api key, 45 tok/s, VRAM, idle-kill timer, stop">
+</p>
 
-- It downloads the release zip and the model from the R2 bucket `lobo`.
-- It starts `cloudflared` (named tunnel `lobo`) and `llama-server` (official `ghcr.io/ggml-org/llama.cpp:server-cuda-*` image).
-- It deletes itself after 30 min without requests, or at its fixed expiry (12 h by default).
+## TL;DR
+
+- **What:** one command rents a 5090 on RunPod or Vast.ai and gives you `https://<your-domain>/v1`. Point OpenCode or any OpenAI client at it.
+- **Speed:** about 45 tok/s generation, 500+ tok/s prompt, 64K context.
+- **Cost:** $0.69–0.99/h while it runs. It deletes itself after 30 min idle, and after 12 h in any case.
+- **Safe to forget:** the pod kills itself. Your account keys never leave your laptop.
+
+```sh
+brew install 1905/tap/lobo
+lobo config     # paste keys once
+lobo up         # ~5 min later: ready
+lobo down       # or just walk away
+```
 
 ## Install
 
-```sh
-make install     # builds lobo with its version and installs it to ~/.local/bin (PREFIX=… to change)
-lobo config      # form for the API keys and the defaults for `lobo up`
-lobo up
-```
-
-`lobo` alone prints the help.
-
-Homebrew (prepared, not released yet): `brew install 1905/tap/lobo`. See [Homebrew](#homebrew).
-
-## macOS app: lobocode
+**Homebrew** (macOS, Linux):
 
 ```sh
-make install-mac   # builds bin/lobocode.app (bundles the lobo CLI from this commit) → ~/Applications/lobocode.app
+brew install 1905/tap/lobo
 ```
 
-A menu bar app over the same CLI and the same config file. No Dock icon. The menu bar item is a small square plus a status: grey `off`, cyan and filling up while it boots (`rent`, `42%`, `load`), green when ready (`27m` until idle-kill, or `45 t/s` while it generates), red `FAIL`. Click it for the panel: start (provider and model pick), live boot log with download speed, endpoint and API key copy, tok/s, VRAM, idle-kill countdown, spend, stop. The Settings window (`⌘,`) edits `~/.config/lobo/config.env` through `lobo config set`. Notifications on ready, boot failure, and when a pod stops by itself.
+**From source** (Go 1.26+):
 
-The app never talks to RunPod, Vast or the config file directly: it runs the bundled `lobo` (`up --json`, `status --json`, `down --json`, `config show --json|set|get`). `Lobocode --render DIR` writes PNGs of every panel state. Unsigned (ad-hoc): for this Mac, not for distribution.
+```sh
+git clone https://github.com/1905/lobocode && cd lobocode
+make install        # → ~/.local/bin/lobo
+make install-mac    # optional: the menu bar app → ~/Applications/lobocode.app
+```
 
-## Config
+## What you need
 
-One file: `~/.config/lobo/config.env` (`$XDG_CONFIG_HOME/lobo/config.env` if set; `lobo config path` prints it). Plain `KEY=value` lines, the same keys as `.env.example`, mode 600. Edit it by hand or with `lobo config`; the form keeps every line it does not show. `lobo config show` prints it with the keys masked. `--config FILE` uses another file.
+- A **RunPod** or **Vast.ai** API key. One is enough.
+- A **Cloudflare named tunnel** token and a hostname routed to it. That hostname is your endpoint.
+- A public **bucket URL** that holds the model GGUF.
 
-Keys come only from that file. The OS environment is never read. `make install` copies the repo `.env` there once if no config exists yet.
-
-Defaults for `lobo up` live in the same file. A flag always wins over the file, and the file wins over the built-in default:
-
-| Key | Flag | Built-in |
-|---|---|---|
-| `LOBO_PROVIDER` (used when both keys are set) | `--provider` | runpod |
-| `LOBO_MIN_MBPS` | `--min-mbps` | 100 |
-| `LOBO_MODEL` (q8, q6) | `--q6` | q8 |
-| `LOBO_CTX` | `--ctx` | release default (65536) |
-| `LOBO_IDLE_MIN` | `--idle-min` | 30 |
-| `LOBO_MAX_HOURS` | `--max-life` | 12 |
-| `LOBO_CLOUD` (secure, community) | `--cloud` | secure |
-| `LOBO_VAST_MAX_DPH` | | 1.20 |
-
-One provider key is enough. With only `VASTAI_API_KEY`, `lobo up` uses Vast.
+`lobo config` asks for all of it and writes `~/.config/lobo/config.env`.
 
 ## Use
 
 | Command | What it does |
 |---|---|
-| `lobo up` | Rent a 5090 and show boot progress until the API is ready. `lobo up --q6 --ctx 16384 --idle-min 10 --max-life 4h --release 2026.09.23-1 --plain` |
-| `lobo status` | Live dashboard: pod, cost, release, stage, GPU load/VRAM, host load/RAM, tokens in/out, tok/s, auto-kill timer. `lobo status --once` prints one snapshot. |
-| `lobo test` | Streamed chat + tool call against the live API. Fails if `tool_calls[].function.arguments` is not a JSON string. |
-| `lobo logs` | Last agent, llama-server and cloudflared log lines (`/api/logs`, needs the key). |
-| `lobo down` | Delete every pod named `lobo` on every configured provider. Other pods on the accounts are never touched. |
+| `lobo up` | Rent a 5090, show boot progress, print the endpoint when ready. |
+| `lobo status` | Live dashboard: cost, GPU, tok/s, idle-kill timer. |
+| `lobo test` | Streamed chat + tool call against the live API. |
+| `lobo logs` | Last agent, llama-server and tunnel log lines. |
+| `lobo down` | Delete every `lobo` pod on every configured provider. Nothing else. |
 
-Dev targets in the repo (they use the repo `.env`):
+Useful flags for `lobo up`: `--provider vast`, `--q6`, `--ctx 16384`, `--idle-min 10`, `--max-life 4h`.
 
-| Command | What it does |
-|---|---|
-| `make release` | Build `lobo-agent`, zip it with `release.json`, refuse if any config secret is inside, upload to bucket `lobo`. |
-| `make e2e` | End-to-end suite against the live API (needs `lobo up`): pod API, auth, chat, stop/max_tokens, JSON mode, streamed and non-streamed tool calls, tool-result round trip, compiling Go codegen, long-prompt needle, over-context error, concurrent queueing, metrics counters. |
-| `make test` / `make lint` | Unit tests / golangci-lint. |
+## Menu bar app (macOS)
 
-The 28.6 GB model download is most of the boot time. `up` replaces pods on bad hosts by itself (container not started in 6 min, broken CUDA, VRAM already taken, download slower than `LOBO_MIN_MBPS`), 4 pods at most. Debug a boot with `lobo up --ssh ~/ssh/runpod2.pub` (opens SSH on the pod).
+<img src="docs/img/menubar_ready.png" height="28" alt="menu bar: green, 45 t/s">
 
-**Vast.ai:** `lobo up --provider vast` rents the fastest-network 1× RTX 5090 among verified Vast offers (reliability ≥ 0.98, CUDA ≥ 12.8, ≤ `LOBO_VAST_MAX_DPH`, default $1.20/h). Needs `VASTAI_API_KEY`. The instance destroys itself with Vast's instance-scoped `CONTAINER_API_KEY`; the account key never goes to the host. `lobo down` and `lobo status` cover both providers.
+Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. It runs the same `lobo` CLI and uses the same config file. Build it with `make install-mac`. It's unsigned, so it's for your own Mac.
 
-Pod API through the domain:
-
-- `GET /api/version`: the running `release.json`. Public.
-- `GET /api/status`: stage, download, GPU, host, llama metrics, watchdog. Public.
-- `GET /api/logs?n=200`: needs `Authorization: Bearer $LOBO_API_KEY`.
-- Everything else goes to llama-server and needs the same bearer key.
+<details><summary>Settings window</summary>
+<img src="docs/img/settings.png" width="420" alt="settings: provider keys, access, defaults for lobo up">
+</details>
 
 ## OpenCode
 
-`lobo gen-api-key` creates `LOBO_API_KEY` in the config once (`lobo config` can too). The key stays the same across `lobo up`; `lobo gen-api-key --rotate` replaces it. It also writes `opencode.lobo.json` (gitignored, mode 600) with the `lobo` provider and the key inline.
+`lobo gen-api-key` writes `opencode.lobo.json` with the `lobo` provider and agent. Merge its `provider.lobo` and `agent.lobo` blocks into `~/.config/opencode/opencode.json`, then pick the `lobo` agent (Tab). The agent turns off MCP tools and skills for this model: the first request drops from 43K to 15K tokens.
 
-To see the provider in every OpenCode session, merge its `provider.lobo` and `agent.lobo` blocks into the global config `~/.config/opencode/opencode.json`. Other models and agents are not changed.
+## Pod image
 
-Use the `lobo` agent (Tab in OpenCode, or `opencode run --agent lobo`). It turns off MCP tools, skills, webfetch, todo and task for this model only. Measured with OpenCode 1.18: the first request drops from 42,949 to 15,008 tokens (about 15 s → 5 s of prompt processing).
+`ghcr.io/1905/lobocode` = the official llama.cpp CUDA server + `lobo-agent` baked in. Each `v*` tag publishes a matching image. Use it with:
 
-## Cost and safety
+```sh
+lobo up --image ghcr.io/1905/lobocode@sha256:<digest>
+# or once, in the config:  LOBO_POD_IMAGE=ghcr.io/1905/lobocode@sha256:<digest>
+```
 
-- RTX 5090 on RunPod: $0.69/h community, $0.99/h secure (checked 2026-09-23). `lobo up` tries secure first (`--cloud community` or `LOBO_CLOUD=community` to flip). Vast: whatever the chosen offer costs, ≤ `LOBO_VAST_MAX_DPH`.
-- Idle kill: 30 min without a running or queued request and without token counters moving.
-- Hard expiry: `LOBO_EXPIRES_AT` is fixed at create time and survives agent restarts. RunPod restarts the container when PID 1 exits.
-- Self-delete uses the pod-scoped `RUNPOD_API_KEY` that RunPod injects (GraphQL `podTerminate`), or Vast's instance-scoped `CONTAINER_API_KEY`. The account keys never go to a pod.
-- Bucket `lobo` is public (r2.dev dev URL). It holds the agent binary, release metadata and the two GGUF files. No secrets: `make release` scans every zip.
-- Key rotation: `lobo gen-api-key --rotate`, then `lobo up` again. The key lives only in pod env.
+Without it, the pod starts from the plain llama.cpp image and downloads the agent at boot.
 
-## Homebrew
+## Config reference
 
-Prepared, not released. `.goreleaser.yaml` builds `lobo` for macOS and Linux (amd64, arm64) and writes the formula `lobo.rb` into `1905/homebrew-tap`; `.github/workflows/release.yml` runs it on a `v*` tag. `goreleaser release --snapshot --clean` builds everything locally without publishing.
+`~/.config/lobo/config.env`, plain `KEY=value`, mode 600. Only this file is read. The shell environment is never used. A flag beats the file, and the file beats the built-in default.
 
-Before the first `git tag v0.1.0 && git push --tags`:
+| Key | Flag | Default |
+|---|---|---|
+| `LOBO_PROVIDER` | `--provider` | runpod |
+| `LOBO_MODEL` (q8, q6) | `--q6` | q8 |
+| `LOBO_CTX` | `--ctx` | 65536 |
+| `LOBO_IDLE_MIN` | `--idle-min` | 30 |
+| `LOBO_MAX_HOURS` | `--max-life` | 12 |
+| `LOBO_CLOUD` (secure, community) | `--cloud` | secure |
+| `LOBO_MIN_MBPS` | `--min-mbps` | 100 |
+| `LOBO_POD_IMAGE` | `--image` | none |
+| `LOBO_VAST_MAX_DPH` | | 1.20 |
 
-- Make `1905/lobocode` public, or publish the archives from a public repo. Homebrew cannot download release assets of a private repo.
-- Add the `HOMEBREW_TAP_TOKEN` secret (a token that can push to `1905/homebrew-tap`) to this repo.
-- Make the domain configurable for other users (today every config points at `lobo.example.com` and one tunnel).
+## Safety
 
-Agent releases (`make release`, versions like `2026.09.25-10`) go to the bucket, not to git tags, so they never trigger this.
+- **Idle kill:** 30 min without requests. **Hard expiry:** fixed at create time, 12 h by default.
+- The pod deletes itself with a pod-scoped key that the provider injects. Your account keys stay on the laptop.
+- Bad hosts are replaced automatically: container never started, broken CUDA, VRAM taken, slow download. At most 4 tries.
 
-## Layout
+## Development
 
-`cmd/lobo` laptop CLI · `cmd/lobo-agent` pod agent · `internal/*` packages · `plans/` spec, plans, measured results.
+`make test` · `make lint` · `make e2e` (live API suite, needs `lobo up`) · `make release` (agent zip to the bucket). Layout: `cmd/lobo` CLI, `cmd/lobo-agent` pod agent, `internal/*`, `macos/` app, `plans/` specs and measured results.

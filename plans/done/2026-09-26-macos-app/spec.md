@@ -75,11 +75,11 @@ Panel (340 pt, dark, rounded 12):
   [ .. ] ready
   ```
   plus elapsed `T+01:12` and `[ ABORT ]` (runs `down`).
-- Ready: `endpoint  https://lobo…/v1   [copy]`, `api key  sk-2…fb35   [copy]`, two big mono numbers `45.1 tok/s gen` / `504 tok/s prompt`, VRAM as block bar `▓▓▓▓▓▓▓▓▓░ 29.3/32.6 GB`, `idle-kill in 27:14 · spent $1.23`, `[ STOP ]`.
+- Ready: `endpoint  https://lobo…/v1   [copy]`, `api key  sk-9…7e4d   [copy]`, two big mono numbers `45.1 tok/s gen` / `504 tok/s prompt`, VRAM as block bar `▓▓▓▓▓▓▓▓▓░ 29.3/32.6 GB`, `idle-kill in 27:14 · spent $1.23`, `[ STOP ]`.
 - Failed: red `[FAIL]` line with the error, last log lines in dim mono, `[ RETRY ]` `[ DISMISS ]`.
 - Footer (dim): `settings ⌘,  ·  config file  ·  quit ⌘q`.
 
-Settings window: same dark mono theme; sections `// providers`, `// access`, `// defaults`; secrets as masked `rpa_…86az` with keep/clear; file path + "reveal" + "plain KEY=value, edit by hand any time". Save = `lobo config set` with changed keys only.
+Settings window: same dark mono theme; sections `// providers`, `// access`, `// defaults`; secrets as masked `rpa_…a1b2` with keep/clear; file path + "reveal" + "plain KEY=value, edit by hand any time". Save = `lobo config set` with changed keys only.
 
 Notifications (UserNotifications): "lobo ready — https://…/v1", "boot failed: …", "lobo stopped (idle)" when a ready pod disappears without the user pressing Stop.
 

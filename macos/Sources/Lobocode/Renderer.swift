@@ -26,8 +26,8 @@ enum Renderer {
     }
 
     static let sampleConfig = ConfigShow(path: "/Users/you/.config/lobo/config.env", exists: true,
-        values: ["RUNPOD_API_KEY": "rpa_…86az", "VASTAI_API_KEY": "5547…ff6b", "LOBO_DOMAIN": "lobo.example.com", "LOBO_API_KEY": "sk-2…fb35",
-                 "CF_TUNNEL_TOKEN": "eyJh…fQ==", "LOBO_BUCKET_URL": "https://pub-8046….r2.dev", "LOBO_MIN_MBPS": "100"],
+        values: ["RUNPOD_API_KEY": "rpa_…a1b2", "VASTAI_API_KEY": "3f9c…c0de", "LOBO_DOMAIN": "lobo.example.com", "LOBO_API_KEY": "sk-9…7e4d",
+                 "CF_TUNNEL_TOKEN": "eyJh…fQ==", "LOBO_BUCKET_URL": "https://pub-….r2.dev", "LOBO_MIN_MBPS": "100"],
         set: ["RUNPOD_API_KEY": true, "VASTAI_API_KEY": true, "LOBO_DOMAIN": true, "LOBO_API_KEY": true, "CF_TUNNEL_TOKEN": true,
               "LOBO_BUCKET_URL": true, "LOBO_MIN_MBPS": true])
 
