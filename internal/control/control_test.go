@@ -13,6 +13,7 @@ import (
 	. "github.com/1905/lobocode/internal/control"
 	ct "github.com/1905/lobocode/internal/control/controltest"
 	"github.com/1905/lobocode/internal/provider"
+	"github.com/1905/lobocode/internal/release"
 	"github.com/1905/lobocode/internal/runpod"
 )
 
@@ -82,6 +83,27 @@ func TestUpBakedImage(t *testing.T) {
 				t.Fatal(evs[0].Detail)
 			}
 		})
+	}
+}
+
+// noReleases fails every lookup: a bucket with only the GGUF, no releases/latest.json.
+type noReleases struct{}
+
+func (noReleases) Resolve(context.Context, string) (release.Resolved, error) {
+	return release.Resolved{}, errors.New("releases/latest.json: HTTP 404")
+}
+
+func TestUpBakedImageNeedsNoReleaseManifest(t *testing.T) {
+	rp := &ct.RunPod{}
+	d := ct.Deps(rp, &ct.Agent{Script: ct.BootScript()}, nil)
+	d.Releases = noReleases{}
+	evs := collect(Up(context.Background(), d, UpOpts{Image: "ghcr.io/1905/lobocode:v9"}))
+	if last := evs[len(evs)-1]; last.Ready == nil {
+		t.Fatalf("%+v", last)
+	}
+	c := rp.Created[0]
+	if c.Image != "ghcr.io/1905/lobocode:v9" || c.Model != release.DefaultModel || c.Ctx != release.DefaultDefaults.Ctx || c.ReleaseURL != "" {
+		t.Fatalf("%+v", c)
 	}
 }
 
