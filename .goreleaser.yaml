@@ -1,5 +1,5 @@
 # Release the `lobo` CLI (not the pod agent: that ships to the bucket via `make release`).
-# CI (.github/workflows/release.yml) runs this on a v* tag push. Not released yet: see README "Homebrew".
+# CI (.github/workflows/release.yml) runs this on a v* tag push.
 project_name: lobo
 version: 2
 
@@ -37,7 +37,10 @@ brews:
       owner: "1905"
       name: homebrew-tap
       branch: master
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+      # Write deploy key scoped to the tap repo only (secret HOMEBREW_TAP_KEY), not a user token.
+      git:
+        url: "git@github.com:1905/homebrew-tap.git"
+        private_key: "{{ .Env.HOMEBREW_TAP_KEY }}"
     commit_author:
       name: goreleaserbot
       email: "bot@goreleaser.com"
