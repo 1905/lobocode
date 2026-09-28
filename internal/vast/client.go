@@ -118,6 +118,9 @@ func (c *Client) SearchOffers(ctx context.Context, maxDPH float64) ([]Offer, err
 // ErrRejected: Vast answered the create and rented nothing, so trying another offer is safe.
 var ErrRejected = errors.New("vast: offer rejected")
 
+// ErrNoCredit: the account can't rent anything, so walking the other offers only hides the cause.
+var ErrNoCredit = errors.New("vast: account has no credit (top up at https://cloud.vast.ai/billing/)")
+
 func (c *Client) Create(ctx context.Context, offerID int64, body map[string]any) (int64, error) {
 	var r struct {
 		Success     bool   `json:"success"`
@@ -128,6 +131,9 @@ func (c *Client) Create(ctx context.Context, offerID int64, body map[string]any)
 	code, err := c.do(ctx, http.MethodPut, "/asks/"+strconv.FormatInt(offerID, 10)+"/", body, &r)
 	if err != nil {
 		if code >= 400 && code < 500 { // Vast answered and said no: nothing was rented
+			if strings.Contains(err.Error(), "insufficient_credit") {
+				return 0, ErrNoCredit
+			}
 			return 0, fmt.Errorf("%w: %v", ErrRejected, err)
 		}
 		return 0, err // transport error, 5xx or bad body: the instance may exist

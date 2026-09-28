@@ -67,6 +67,9 @@ func (p *Provider) Rent(ctx context.Context, o provider.CreateOpts, note func(st
 			continue
 		}
 		id, err := p.C.Create(ctx, off.ID, body)
+		if errors.Is(err, ErrNoCredit) {
+			return provider.Instance{}, err
+		}
 		if err != nil && !errors.Is(err, ErrRejected) {
 			// The create may have gone through (timeout, 5xx, cut body). Renting another offer could
 			// leave two billed instances on one tunnel token, so adopt the new one or stop here.
