@@ -28,6 +28,7 @@ type Laptop struct {
 	FeeshHTTPURL    string `env:"LOBO_FEESH_HTTP_URL"`     // http://<model-server>:8088/<token> (nginx, secret path); fallback source
 	VastAPIKey      string `env:"VASTAI_API_KEY"`          // optional: enables --provider vast
 	VastMaxDPH      string `env:"LOBO_VAST_MAX_DPH"`       // optional: max $/h for a Vast 5090 offer (default 1.20)
+	PodImage        string `env:"LOBO_POD_IMAGE"`          // optional: image with lobo-agent baked in (ghcr.io/1905/lobo@sha256:…); skips the release zip
 	// Defaults for `lobo up` (flags override). Parsed by Defaults().
 	Provider string `env:"LOBO_PROVIDER"`  // runpod | vast, used when both keys are set
 	Model    string `env:"LOBO_MODEL"`     // q8 | q6

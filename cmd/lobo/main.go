@@ -221,6 +221,7 @@ func upCmd() *cobra.Command {
 	c.Flags().DurationVar(&o.MaxLife, "max-life", 0, "hard pod lifetime, e.g. 12h (0 = release default)")
 	c.Flags().BoolVar(&plain, "plain", false, "log lines instead of the TUI")
 	c.Flags().StringVar(&o.Source, "source", "", "model source: r2 (presigned, default) | feesh (the model server HTTP) | ssh (the model server SSH) | public (r2.dev)")
+	c.Flags().StringVar(&o.Image, "image", "", "pod image with lobo-agent baked in, e.g. ghcr.io/1905/lobo@sha256:… (default: LOBO_POD_IMAGE, else the release zip)")
 	c.Flags().IntVar(&o.Conns, "conns", 0, "parallel download streams on the pod (0 = agent default)")
 	c.Flags().IntVar(&o.MinMBps, "min-mbps", 0, "drop the pod if the model downloads slower than this after 20 s (0 = LOBO_MIN_MBPS or 100)")
 	c.Flags().StringVar(&o.Provider, "provider", "", "GPU provider: runpod or vast (default: LOBO_PROVIDER, else the one with a key, runpod first)")

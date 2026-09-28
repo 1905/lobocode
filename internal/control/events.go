@@ -82,6 +82,7 @@ type UpOpts struct {
 	Provider string        // "runpod" (default) | "vast"
 	MinMBps  int           // minimum model download speed; 0 = LOBO_MIN_MBPS from the config, else 100
 	SSHKey   string        // debug: public key to allow SSH into the pod
+	Image    string        // pod image with the agent baked in ("" = LOBO_POD_IMAGE, else the release zip on the llama image)
 }
 
 // providerNames returns configured provider names in a stable order.

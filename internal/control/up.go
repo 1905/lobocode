@@ -170,8 +170,16 @@ func up(ctx context.Context, d Deps, o UpOpts, ch chan<- Event) error {
 		co.ModelURL = strings.TrimRight(d.Cfg.ModelSource, "/")
 		co.ModelSSHKey, co.ModelHostKey = sshKey, d.Cfg.ModelSSHHostKey
 	}
+	relVersion := rel.Manifest.Version
+	if o.Image == "" {
+		o.Image = d.Cfg.PodImage
+	}
+	if o.Image != "" { // baked agent: no release zip, the image is the release
+		co.Image, co.ReleaseURL, co.ReleaseSHA256 = o.Image, "", ""
+		relVersion = o.Image
+	}
 	for attempt := 1; ; attempt++ {
-		retry, err := boot(ctx, d, p, o, co, attempt, rel.Manifest.Version, m.ID, start, ch)
+		retry, err := boot(ctx, d, p, o, co, attempt, relVersion, m.ID, start, ch)
 		if !retry {
 			return err
 		}

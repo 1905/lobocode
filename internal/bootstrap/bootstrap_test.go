@@ -41,6 +41,45 @@ func TestEnv(t *testing.T) {
 	}
 }
 
+func TestEnvBakedOmitsRelease(t *testing.T) {
+	env := Env(provider.CreateOpts{ModelURL: "m"}, "runpod")
+	if _, ok := env["LOBO_RELEASE_URL"]; ok {
+		t.Fatal(env)
+	}
+	if _, ok := env["LOBO_RELEASE_SHA256"]; ok {
+		t.Fatal(env)
+	}
+}
+
+// Baked image: no LOBO_RELEASE_URL and an executable agent → no apt, no curl, exec the agent.
+func TestScriptBaked(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("no bash")
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls.log")
+	for name, body := range map[string]string{
+		"apt-get":    "echo apt >> " + log,
+		"curl":       "echo curl >> " + log,
+		"lobo-agent": `echo "agent $LOBO_T_APT $LOBO_T_ZIP $LOBO_T_BOOT0" >> ` + log,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command(bash, "-c", strings.ReplaceAll(Script("runpod"), "/lobo/lobo-agent", filepath.Join(dir, "lobo-agent")))
+	cmd.Env = []string{"PATH=" + dir + ":/usr/bin:/bin"}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	b, _ := os.ReadFile(log)
+	f := strings.Fields(string(b))
+	if len(f) != 4 || f[0] != "agent" || f[1] != f[3] || f[2] != f[3] {
+		t.Fatalf("want only the agent, timings = boot0; got %q", b)
+	}
+}
+
 // runScript runs the real bootstrap under bash with faked tools. curl for the release fails when
 // releaseFails; the terminate call answers with termAnswer. Returns the curl call log and stderr.
 func runScript(t *testing.T, prov string, releaseFails bool, termAnswer string) (calls, stderr string) {
