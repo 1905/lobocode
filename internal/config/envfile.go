@@ -21,7 +21,7 @@ var Layout = []struct {
 
 const header = `# lobo config. Edit by hand or run ` + "`lobo config`" + `.
 # Keys here never go into a pod image or a release. Flags on ` + "`lobo up`" + ` override the defaults.
-# Advanced keys (edit by hand): LOBO_MODEL_SOURCE, LOBO_MODEL_SSH_KEY_FILE, LOBO_MODEL_SSH_HOSTKEY,
+# Advanced keys (edit by hand): LOBO_POD_IMAGE (baked pod image, ghcr.io/1905/lobocode@sha256:…), LOBO_MODEL_SOURCE, LOBO_MODEL_SSH_KEY_FILE, LOBO_MODEL_SSH_HOSTKEY,
 # LOBO_FEESH_HTTP_URL; R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_ENDPOINT (fast presigned model
 # download; ` + "`lobo release`" + ` needs them too).
 `

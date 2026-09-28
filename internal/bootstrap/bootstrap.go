@@ -22,7 +22,7 @@ var terminateCmd = map[string]string{
 }
 
 // Script is the bootstrap: install unzip, fetch + verify the release zip, exec the agent.
-// A baked image (ghcr.io/1905/lobo) already has /lobo/lobo-agent and gets no LOBO_RELEASE_URL: it skips
+// A baked image (ghcr.io/1905/lobocode) already has /lobo/lobo-agent and gets no LOBO_RELEASE_URL: it skips
 // straight to exec. Every step is time-bounded; any failure terminates the instance, retried until the provider accepts.
 func Script(providerName string) string {
 	return `set -e

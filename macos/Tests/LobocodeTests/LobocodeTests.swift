@@ -75,7 +75,7 @@ final class LobocodeTests: XCTestCase {
         var f = SettingsView.Fields()
         f.plain = ["LOBO_DOMAIN": "lobo.x.cc", "LOBO_MIN_MBPS": "150", "LOBO_CTX": ""]
         f.secrets = ["RUNPOD_API_KEY": "", "VASTAI_API_KEY": "-", "CF_TUNNEL_TOKEN": " new-token "]
-        let set = SettingsView.changes(f, current: ["LOBO_DOMAIN": "lobo.x.cc", "LOBO_MIN_MBPS": "100", "LOBO_CTX": "", "VASTAI_API_KEY": "5547…ff6b"])
+        let set = SettingsView.changes(f, current: ["LOBO_DOMAIN": "lobo.x.cc", "LOBO_MIN_MBPS": "100", "LOBO_CTX": "", "VASTAI_API_KEY": "3f9c…c0de"])
         XCTAssertEqual(set, ["LOBO_MIN_MBPS": "150", "VASTAI_API_KEY": "", "CF_TUNNEL_TOKEN": "new-token"])
         XCTAssertNil(SettingsView.validate(set))
         XCTAssertNotNil(SettingsView.validate(["LOBO_CTX": "100"]))

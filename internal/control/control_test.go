@@ -64,8 +64,8 @@ func TestUpOverrides(t *testing.T) {
 
 func TestUpBakedImage(t *testing.T) {
 	for _, tc := range []struct{ name, cfg, flag, want string }{
-		{"config", "ghcr.io/1905/lobo@sha256:cfg", "", "ghcr.io/1905/lobo@sha256:cfg"},
-		{"flag wins", "ghcr.io/1905/lobo@sha256:cfg", "ghcr.io/1905/lobo:v9", "ghcr.io/1905/lobo:v9"},
+		{"config", "ghcr.io/1905/lobocode@sha256:cfg", "", "ghcr.io/1905/lobocode@sha256:cfg"},
+		{"flag wins", "ghcr.io/1905/lobocode@sha256:cfg", "ghcr.io/1905/lobocode:v9", "ghcr.io/1905/lobocode:v9"},
 		{"none = release zip", "", "", "img:b1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

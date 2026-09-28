@@ -58,6 +58,7 @@ struct SettingsView: View {
                     plain("LOBO_MAX_HOURS", "max hours", "12")
                     picker("LOBO_CLOUD", "runpod cloud", ["secure", "community"], def: "secure")
                     plain("LOBO_VAST_MAX_DPH", "vast max $/h", "1.20")
+                    plain("LOBO_POD_IMAGE", "pod image", "ghcr.io/1905/lobocode@sha256:…")
                 }
                 HStack {
                     if let (msg, color) = status { Text(msg).font(Theme.mono(10)).foregroundColor(color) }
@@ -111,16 +112,30 @@ struct SettingsView: View {
     private func plain(_ key: String, _ name: String, _ placeholder: String) -> some View {
         HStack {
             label(name)
-            field(TextField(placeholder, text: Binding(get: { f.plain[key] ?? "" }, set: { f.plain[key] = $0 })))
+            if scroll {
+                field(TextField(placeholder, text: Binding(get: { f.plain[key] ?? "" }, set: { f.plain[key] = $0 })))
+            } else {
+                still(f.plain[key] ?? "", placeholder)
+            }
         }
+    }
+
+    /// Render mode only: ImageRenderer draws AppKit text fields as blocked placeholders, so draw the text instead.
+    private func still(_ value: String, _ placeholder: String) -> some View {
+        field(Text(value.isEmpty ? placeholder : value).foregroundColor(value.isEmpty ? Theme.faint : Theme.text)
+            .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading))
     }
 
     private func secret(_ key: String, _ name: String) -> some View {
         let now = store.config?.values[key] ?? ""
+        let hint = now.isEmpty ? "not set" : "\(now)  (empty = keep, - = remove)"
         return HStack {
             label(name)
-            field(SecureField(now.isEmpty ? "not set" : "\(now)  (empty = keep, - = remove)",
-                              text: Binding(get: { f.secrets[key] ?? "" }, set: { f.secrets[key] = $0 })))
+            if scroll {
+                field(SecureField(hint, text: Binding(get: { f.secrets[key] ?? "" }, set: { f.secrets[key] = $0 })))
+            } else {
+                still("", hint)
+            }
         }
     }
 
@@ -148,7 +163,7 @@ struct SettingsView: View {
     }
 
     private static let plainKeys = ["LOBO_DOMAIN", "LOBO_BUCKET_URL", "LOBO_PROVIDER", "LOBO_MODEL", "LOBO_MIN_MBPS", "LOBO_CTX",
-                                    "LOBO_IDLE_MIN", "LOBO_MAX_HOURS", "LOBO_CLOUD", "LOBO_VAST_MAX_DPH"]
+                                    "LOBO_IDLE_MIN", "LOBO_MAX_HOURS", "LOBO_CLOUD", "LOBO_VAST_MAX_DPH", "LOBO_POD_IMAGE"]
 
     private func load() {
         var n = Fields()

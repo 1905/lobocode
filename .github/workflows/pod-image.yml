@@ -1,7 +1,7 @@
 name: Pod image
 
-# ghcr.io/1905/lobo: llama.cpp server with lobo-agent baked in. Tagged in lockstep with the CLI (v* tags);
-# master and feat/** pushes build sha-<commit> tags for testing. Pin by digest: `lobo up --image ghcr.io/1905/lobo@sha256:…`.
+# ghcr.io/1905/lobocode: llama.cpp server with lobo-agent baked in. Tagged in lockstep with the CLI (v* tags);
+# master and feat/** pushes build sha-<commit> tags for testing. Pin by digest: `lobo up --image ghcr.io/1905/lobocode@sha256:…`.
 on:
   push:
     tags:
@@ -54,12 +54,12 @@ jobs:
             VERSION=${{ steps.meta.outputs.version }}
             GIT_SHA=${{ steps.meta.outputs.sha }}
           tags: |
-            ghcr.io/1905/lobo:${{ steps.meta.outputs.version }}
-            ghcr.io/1905/lobo:sha-${{ steps.meta.outputs.sha }}
+            ghcr.io/1905/lobocode:${{ steps.meta.outputs.version }}
+            ghcr.io/1905/lobocode:sha-${{ steps.meta.outputs.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/1905/lobocode
 
       - name: Summary
         run: |
-          echo "ghcr.io/1905/lobo@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "ghcr.io/1905/lobo@${{ steps.build.outputs.digest }}"
+          echo "ghcr.io/1905/lobocode@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "ghcr.io/1905/lobocode@${{ steps.build.outputs.digest }}"
