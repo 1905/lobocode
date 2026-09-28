@@ -15,6 +15,7 @@ import (
 	"github.com/1905/lobocode/internal/agent"
 	"github.com/1905/lobocode/internal/model"
 	"github.com/1905/lobocode/internal/provider"
+	"github.com/1905/lobocode/internal/release"
 )
 
 // running lists lobo instances on every configured provider.
@@ -70,8 +71,13 @@ func up(ctx context.Context, d Deps, o UpOpts, ch chan<- Event) error {
 	if len(l) > 0 {
 		return fmt.Errorf("lobo already running: %s %s (%s). Run `lobo down` first", l[0].Provider, l[0].ID, l[0].Status)
 	}
-	rel, err := d.Releases.Resolve(ctx, o.Release)
-	if err != nil {
+	if o.Image == "" {
+		o.Image = d.Cfg.PodImage
+	}
+	var rel release.Resolved
+	if o.Image != "" { // baked agent: the image is the release, no bucket manifest needed
+		rel.Manifest = release.Manifest{Version: o.Image, Model: release.ModelRef{ID: release.DefaultModel}, Defaults: release.DefaultDefaults}
+	} else if rel, err = d.Releases.Resolve(ctx, o.Release); err != nil {
 		return err
 	}
 	def := rel.Manifest.Defaults
@@ -170,16 +176,11 @@ func up(ctx context.Context, d Deps, o UpOpts, ch chan<- Event) error {
 		co.ModelURL = strings.TrimRight(d.Cfg.ModelSource, "/")
 		co.ModelSSHKey, co.ModelHostKey = sshKey, d.Cfg.ModelSSHHostKey
 	}
-	relVersion := rel.Manifest.Version
-	if o.Image == "" {
-		o.Image = d.Cfg.PodImage
-	}
-	if o.Image != "" { // baked agent: no release zip, the image is the release
+	if o.Image != "" {
 		co.Image, co.ReleaseURL, co.ReleaseSHA256 = o.Image, "", ""
-		relVersion = o.Image
 	}
 	for attempt := 1; ; attempt++ {
-		retry, err := boot(ctx, d, p, o, co, attempt, relVersion, m.ID, start, ch)
+		retry, err := boot(ctx, d, p, o, co, attempt, rel.Manifest.Version, m.ID, start, ch)
 		if !retry {
 			return err
 		}
