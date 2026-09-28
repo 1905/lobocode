@@ -1,0 +1,8 @@
+.git
+.env
+bin
+macos
+plans
+docs
+e2e
+*.jsonl

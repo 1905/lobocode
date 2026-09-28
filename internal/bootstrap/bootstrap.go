@@ -22,7 +22,8 @@ var terminateCmd = map[string]string{
 }
 
 // Script is the bootstrap: install unzip, fetch + verify the release zip, exec the agent.
-// Every step is time-bounded; any failure terminates the instance, retried until the provider accepts.
+// A baked image (ghcr.io/1905/lobo) already has /lobo/lobo-agent and gets no LOBO_RELEASE_URL: it skips
+// straight to exec. Every step is time-bounded; any failure terminates the instance, retried until the provider accepts.
 func Script(providerName string) string {
 	return `set -e
 terminate() {
@@ -41,12 +42,17 @@ die() {
 }
 trap die ERR
 export LOBO_T_BOOT0=$(date +%s.%N)
-timeout 300 bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unzip >/dev/null'
-export LOBO_T_APT=$(date +%s.%N)
-timeout 300 curl -fsSL "$LOBO_RELEASE_URL" -o /tmp/lobo-release.zip
-echo "$LOBO_RELEASE_SHA256  /tmp/lobo-release.zip" | sha256sum -c
-unzip -o -q /tmp/lobo-release.zip -d /lobo
-export LOBO_T_ZIP=$(date +%s.%N)
+if [ -z "${LOBO_RELEASE_URL:-}" ] && [ -x /lobo/lobo-agent ]; then
+  echo "lobo bootstrap: baked agent, no release download" >&2
+  export LOBO_T_APT=$LOBO_T_BOOT0 LOBO_T_ZIP=$LOBO_T_BOOT0
+else
+  timeout 300 bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unzip >/dev/null'
+  export LOBO_T_APT=$(date +%s.%N)
+  timeout 300 curl -fsSL "$LOBO_RELEASE_URL" -o /tmp/lobo-release.zip
+  echo "$LOBO_RELEASE_SHA256  /tmp/lobo-release.zip" | sha256sum -c
+  unzip -o -q /tmp/lobo-release.zip -d /lobo
+  export LOBO_T_ZIP=$(date +%s.%N)
+fi
 # A failed exec (missing or non-executable binary) exits the shell without the ERR trap. execfail
 # keeps the shell alive only with errexit off (checked on bash 5.2), then terminate by hand.
 shopt -s execfail
@@ -58,17 +64,18 @@ die`
 // Env is the container env: never R2 or account keys.
 func Env(o provider.CreateOpts, providerName string) map[string]string {
 	env := map[string]string{
-		"LOBO_PROVIDER":       providerName,
-		"LOBO_RELEASE_URL":    o.ReleaseURL,
-		"LOBO_RELEASE_SHA256": o.ReleaseSHA256,
-		"LOBO_MODEL_URL":      o.ModelURL,
-		"LOBO_API_KEY":        o.LoboAPIKey,
-		"CF_TUNNEL_TOKEN":     o.CFTunnelToken,
-		"LOBO_MODEL":          o.Model,
-		"LOBO_CTX":            strconv.Itoa(o.Ctx),
-		"LOBO_IDLE_MIN":       strconv.Itoa(o.IdleMin),
-		"LOBO_EXPIRES_AT":     o.ExpiresAt.UTC().Format(time.RFC3339),
-		"LOBO_BOOT_TIMEOUT":   "40m",
+		"LOBO_PROVIDER":     providerName,
+		"LOBO_MODEL_URL":    o.ModelURL,
+		"LOBO_API_KEY":      o.LoboAPIKey,
+		"CF_TUNNEL_TOKEN":   o.CFTunnelToken,
+		"LOBO_MODEL":        o.Model,
+		"LOBO_CTX":          strconv.Itoa(o.Ctx),
+		"LOBO_IDLE_MIN":     strconv.Itoa(o.IdleMin),
+		"LOBO_EXPIRES_AT":   o.ExpiresAt.UTC().Format(time.RFC3339),
+		"LOBO_BOOT_TIMEOUT": "40m",
+	}
+	if o.ReleaseURL != "" { // empty = baked image
+		env["LOBO_RELEASE_URL"], env["LOBO_RELEASE_SHA256"] = o.ReleaseURL, o.ReleaseSHA256
 	}
 	if o.BootID != "" {
 		env["LOBO_BOOT_ID"] = o.BootID

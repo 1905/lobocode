@@ -62,6 +62,29 @@ func TestUpOverrides(t *testing.T) {
 	}
 }
 
+func TestUpBakedImage(t *testing.T) {
+	for _, tc := range []struct{ name, cfg, flag, want string }{
+		{"config", "ghcr.io/1905/lobo@sha256:cfg", "", "ghcr.io/1905/lobo@sha256:cfg"},
+		{"flag wins", "ghcr.io/1905/lobo@sha256:cfg", "ghcr.io/1905/lobo:v9", "ghcr.io/1905/lobo:v9"},
+		{"none = release zip", "", "", "img:b1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rp := &ct.RunPod{}
+			d := ct.Deps(rp, &ct.Agent{Script: ct.BootScript()}, nil)
+			d.Cfg.PodImage = tc.cfg
+			evs := collect(Up(context.Background(), d, UpOpts{Image: tc.flag}))
+			c := rp.Created[0]
+			baked := tc.want != "img:b1"
+			if c.Image != tc.want || (c.ReleaseURL == "") != baked || (c.ReleaseSHA256 == "") != baked {
+				t.Fatalf("%+v", c)
+			}
+			if baked && !strings.Contains(evs[0].Detail, "release "+tc.want) {
+				t.Fatal(evs[0].Detail)
+			}
+		})
+	}
+}
+
 func TestUpAlreadyRunning(t *testing.T) {
 	rp := &ct.RunPod{Pods: []runpod.Pod{{ID: "old", Name: "lobo"}, {ID: "x", Name: "other-project"}}}
 	evs := collect(Up(context.Background(), ct.Deps(rp, &ct.Agent{}, nil), UpOpts{}))
