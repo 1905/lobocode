@@ -107,6 +107,14 @@ func TestUpBakedImageNeedsNoReleaseManifest(t *testing.T) {
 	}
 }
 
+func TestUpImageAndReleaseConflict(t *testing.T) {
+	rp := &ct.RunPod{}
+	evs := collect(Up(context.Background(), ct.Deps(rp, &ct.Agent{Script: ct.BootScript()}, nil), UpOpts{Image: "img", Release: "2026.09.23-1"}))
+	if last := evs[len(evs)-1]; last.Err == nil || len(rp.Created) != 0 {
+		t.Fatalf("%+v", last)
+	}
+}
+
 func TestUpAlreadyRunning(t *testing.T) {
 	rp := &ct.RunPod{Pods: []runpod.Pod{{ID: "old", Name: "lobo"}, {ID: "x", Name: "other-project"}}}
 	evs := collect(Up(context.Background(), ct.Deps(rp, &ct.Agent{}, nil), UpOpts{}))

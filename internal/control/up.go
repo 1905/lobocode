@@ -74,6 +74,9 @@ func up(ctx context.Context, d Deps, o UpOpts, ch chan<- Event) error {
 	if o.Image == "" {
 		o.Image = d.Cfg.PodImage
 	}
+	if o.Image != "" && o.Release != "" {
+		return fmt.Errorf("--release picks a bucket agent zip, --image has the agent baked in: use one")
+	}
 	var rel release.Resolved
 	if o.Image != "" { // baked agent: the image is the release, no bucket manifest needed
 		rel.Manifest = release.Manifest{Version: o.Image, Model: release.ModelRef{ID: release.DefaultModel}, Defaults: release.DefaultDefaults}
