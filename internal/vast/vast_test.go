@@ -42,8 +42,8 @@ func (f *fakeVast) handler(t *testing.T) http.Handler {
 		case r.Method == "POST" && r.URL.Path == "/bundles":
 			var q map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&q)
-			if q["order"] == nil || q["verified"] == nil {
-				t.Errorf("query missing order/verified: %v", q)
+			if q["order"] == nil || q["verified"] == nil || q["inet_down"] == nil {
+				t.Errorf("query missing order/verified/inet_down: %v", q)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"offers": f.offers})
 		case r.Method == "PUT" && strings.HasPrefix(r.URL.Path, "/asks/"):
@@ -250,7 +250,7 @@ func TestBadKey(t *testing.T) {
 	f := &fakeVast{}
 	p := setup(t, f)
 	p.C.key = "wrong"
-	if _, err := p.C.SearchOffers(context.Background(), 1.2); err == nil || !strings.Contains(err.Error(), "VASTAI_API_KEY") {
+	if _, err := p.C.SearchOffers(context.Background(), 1.2, 100); err == nil || !strings.Contains(err.Error(), "VASTAI_API_KEY") {
 		t.Fatal(err)
 	}
 }

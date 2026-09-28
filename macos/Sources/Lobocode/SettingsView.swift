@@ -5,7 +5,7 @@ import SwiftUI
 /// Edits the same config file as `lobo config`, through `lobo config set` (never writes the file itself).
 struct SettingsView: View {
     @ObservedObject var store: Store
-    var scroll = true // the PNG renderer can't draw a ScrollView
+    var rendering = false // PNG render: ImageRenderer can't draw a ScrollView or AppKit text fields
     @State private var f = Fields()
     @State private var status: (String, Color)?
     @State private var saving = false
@@ -20,9 +20,9 @@ struct SettingsView: View {
 
     var body: some View {
         Group {
-            if scroll { ScrollView { form } } else { form }
+            if rendering { form } else { ScrollView { form } }
         }
-        .frame(width: 520, height: scroll ? 640 : nil)
+        .frame(width: 520, height: rendering ? nil : 640)
         .background(Theme.bg)
         .environment(\.colorScheme, .dark)
         .onAppear { Task { await store.loadConfig(); load() } }
@@ -112,18 +112,19 @@ struct SettingsView: View {
     private func plain(_ key: String, _ name: String, _ placeholder: String) -> some View {
         HStack {
             label(name)
-            if scroll {
-                field(TextField(placeholder, text: Binding(get: { f.plain[key] ?? "" }, set: { f.plain[key] = $0 })))
-            } else {
-                still(f.plain[key] ?? "", placeholder)
-            }
+            input(TextField(placeholder, text: Binding(get: { f.plain[key] ?? "" }, set: { f.plain[key] = $0 })),
+                  value: f.plain[key] ?? "", placeholder: placeholder)
         }
     }
 
-    /// Render mode only: ImageRenderer draws AppKit text fields as blocked placeholders, so draw the text instead.
-    private func still(_ value: String, _ placeholder: String) -> some View {
-        field(Text(value.isEmpty ? placeholder : value).foregroundColor(value.isEmpty ? Theme.faint : Theme.text)
-            .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading))
+    /// The editable control, or in render mode the text it would show (ImageRenderer draws AppKit fields as blocks).
+    @ViewBuilder private func input<E: View>(_ editable: E, value: String, placeholder: String) -> some View {
+        if rendering {
+            field(Text(value.isEmpty ? placeholder : value).foregroundColor(value.isEmpty ? Theme.faint : Theme.text)
+                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading))
+        } else {
+            field(editable)
+        }
     }
 
     private func secret(_ key: String, _ name: String) -> some View {
@@ -131,11 +132,8 @@ struct SettingsView: View {
         let hint = now.isEmpty ? "not set" : "\(now)  (empty = keep, - = remove)"
         return HStack {
             label(name)
-            if scroll {
-                field(SecureField(hint, text: Binding(get: { f.secrets[key] ?? "" }, set: { f.secrets[key] = $0 })))
-            } else {
-                still("", hint)
-            }
+            input(SecureField(hint, text: Binding(get: { f.secrets[key] ?? "" }, set: { f.secrets[key] = $0 })),
+                  value: "", placeholder: hint)
         }
     }
 

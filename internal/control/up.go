@@ -79,7 +79,7 @@ func up(ctx context.Context, d Deps, o UpOpts, ch chan<- Event) error {
 	}
 	var rel release.Resolved
 	if o.Image != "" { // baked agent: the image is the release, no bucket manifest needed
-		rel.Manifest = release.Manifest{Version: o.Image, Model: release.ModelRef{ID: release.DefaultModel}, Defaults: release.DefaultDefaults}
+		rel.Manifest = release.Manifest{Version: o.Image, LlamaImage: o.Image, Model: release.ModelRef{ID: release.DefaultModel}, Defaults: release.DefaultDefaults}
 	} else if rel, err = d.Releases.Resolve(ctx, o.Release); err != nil {
 		return err
 	}
@@ -178,9 +178,6 @@ func up(ctx context.Context, d Deps, o UpOpts, ch chan<- Event) error {
 	if sshKey != "" { // model from the model server over SSH instead of the public bucket
 		co.ModelURL = strings.TrimRight(d.Cfg.ModelSource, "/")
 		co.ModelSSHKey, co.ModelHostKey = sshKey, d.Cfg.ModelSSHHostKey
-	}
-	if o.Image != "" {
-		co.Image, co.ReleaseURL, co.ReleaseSHA256 = o.Image, "", ""
 	}
 	for attempt := 1; ; attempt++ {
 		retry, err := boot(ctx, d, p, o, co, attempt, rel.Manifest.Version, m.ID, start, ch)

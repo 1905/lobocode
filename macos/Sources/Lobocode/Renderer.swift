@@ -12,7 +12,7 @@ enum Renderer {
         }
         let s = Store(cli: nil)
         s.config = sampleConfig
-        write(SettingsView(store: s, scroll: false), dir.appendingPathComponent("settings.png"))
+        write(SettingsView(store: s, rendering: true), dir.appendingPathComponent("settings.png"))
         write(AppIconView(), dir.appendingPathComponent("icon_1024.png"), scale: 1)
         print("rendered to \(dir.path)")
     }
@@ -54,7 +54,7 @@ enum Renderer {
                              version: Release(version: "2026.09.25-10", git_sha: "4b513b3"), status: nil, down: false, at: now)
 
         let ready = base(.ready)
-        ready.snap = Snapshot(pod: Pod(provider: "runpod", id: "rysv8058qqhsqc", status: "RUNNING", detail: "SECURE, ≥5000 Mbps",
+        ready.snap = Snapshot(pod: Pod(provider: "runpod", id: "rysv8058qqhsqc", status: "RUNNING", detail: "COMMUNITY, ≥5000 Mbps",
                                        cost_per_hr: 0.69, started_at: now.addingTimeInterval(-8342), host_download_mbps: 5000),
                               version: Release(version: "2026.09.25-10", git_sha: "4b513b3"),
                               status: AgentStatus(stage: "ready", stage_detail: nil, download: nil, uptime_s: 8342, idle_s: 180, kill_in_s: 1634,

@@ -30,9 +30,17 @@ jobs:
 
       - id: meta
         run: |
-          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-          if [ "$GITHUB_REF_TYPE" = tag ]; then echo "version=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-          else echo "version=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"; fi
+          sha=$(git rev-parse --short HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version=$GITHUB_REF_NAME; else version=sha-$sha; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # one tag list: ":<tag>" + ":sha-<sha>" on a release, only ":sha-<sha>" on a branch
+          { echo "tags<<EOF"; echo "ghcr.io/1905/lobocode:sha-$sha"
+            [ "$version" != "sha-$sha" ] && echo "ghcr.io/1905/lobocode:$version"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+          # the base image comes from the Go pin, so the zip path and the baked path run the same llama-server
+          llama=$(sed -n 's/.*DefaultLlamaImage = "\(.*\)"/\1/p' internal/release/manifest.go)
+          [ -n "$llama" ] || { echo "DefaultLlamaImage not found"; exit 1; }
+          echo "llama=$llama" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@v3
         with:
@@ -53,9 +61,10 @@ jobs:
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
             GIT_SHA=${{ steps.meta.outputs.sha }}
-          tags: |
-            ghcr.io/1905/lobocode:${{ steps.meta.outputs.version }}
-            ghcr.io/1905/lobocode:sha-${{ steps.meta.outputs.sha }}
+            LLAMA_IMAGE=${{ steps.meta.outputs.llama }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           labels: |
             org.opencontainers.image.source=https://github.com/1905/lobocode
 

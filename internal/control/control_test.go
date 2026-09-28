@@ -64,10 +64,13 @@ func TestUpOverrides(t *testing.T) {
 }
 
 func TestUpBakedImage(t *testing.T) {
-	for _, tc := range []struct{ name, cfg, flag, want string }{
-		{"config", "ghcr.io/1905/lobocode@sha256:cfg", "", "ghcr.io/1905/lobocode@sha256:cfg"},
-		{"flag wins", "ghcr.io/1905/lobocode@sha256:cfg", "ghcr.io/1905/lobocode:v9", "ghcr.io/1905/lobocode:v9"},
-		{"none = release zip", "", "", "img:b1"},
+	for _, tc := range []struct {
+		name, cfg, flag, want string
+		baked                 bool
+	}{
+		{"config", "ghcr.io/1905/lobocode@sha256:cfg", "", "ghcr.io/1905/lobocode@sha256:cfg", true},
+		{"flag wins", "ghcr.io/1905/lobocode@sha256:cfg", "ghcr.io/1905/lobocode:v9", "ghcr.io/1905/lobocode:v9", true},
+		{"none = release zip", "", "", "img:b1", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rp := &ct.RunPod{}
@@ -75,11 +78,10 @@ func TestUpBakedImage(t *testing.T) {
 			d.Cfg.PodImage = tc.cfg
 			evs := collect(Up(context.Background(), d, UpOpts{Image: tc.flag}))
 			c := rp.Created[0]
-			baked := tc.want != "img:b1"
-			if c.Image != tc.want || (c.ReleaseURL == "") != baked || (c.ReleaseSHA256 == "") != baked {
+			if c.Image != tc.want || (c.ReleaseURL == "") != tc.baked || (c.ReleaseSHA256 == "") != tc.baked {
 				t.Fatalf("%+v", c)
 			}
-			if baked && !strings.Contains(evs[0].Detail, "release "+tc.want) {
+			if tc.baked && !strings.Contains(evs[0].Detail, "release "+tc.want) {
 				t.Fatal(evs[0].Detail)
 			}
 		})

@@ -51,6 +51,16 @@ type Inst struct {
 	Start    float64 `json:"start_date"` // unix seconds
 }
 
+// APIError is a non-2xx answer. Code is Vast's "error" field (e.g. insufficient_credit), "" if absent.
+type APIError struct {
+	Method, Path, Code, Body string
+	Status                   int
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("vast %s %s: HTTP %d: %s", e.Method, e.Path, e.Status, e.Body)
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body, out any) (int, error) {
 	var rd io.Reader
 	if body != nil {
@@ -79,7 +89,14 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) (in
 		return resp.StatusCode, fmt.Errorf("vast %s %s: HTTP %d (check VASTAI_API_KEY)", method, path, resp.StatusCode)
 	}
 	if resp.StatusCode >= 300 {
-		return resp.StatusCode, fmt.Errorf("vast %s %s: HTTP %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(b)))
+		e := &APIError{Method: method, Path: path, Status: resp.StatusCode, Body: strings.TrimSpace(string(b))}
+		var body struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(b, &body) == nil {
+			e.Code = body.Error
+		}
+		return resp.StatusCode, e
 	}
 	if out != nil {
 		if err := json.Unmarshal(b, out); err != nil {
@@ -89,9 +106,8 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) (in
 	return resp.StatusCode, nil
 }
 
-// SearchQuery is the offer filter: 1× RTX 5090, verified, reliable, enough disk and CUDA, price cap,
-// cheapest first (user rule 2026-09-29).
-func SearchQuery(maxDPH float64) map[string]any {
+// SearchQuery is the offer filter: 1× RTX 5090, verified, reliable, enough disk, CUDA and network, price cap.
+func SearchQuery(maxDPH float64, minMBps int) map[string]any {
 	return map[string]any{
 		"gpu_name":      map[string]any{"in": []string{"RTX 5090"}},
 		"num_gpus":      map[string]any{"eq": 1},
@@ -101,16 +117,17 @@ func SearchQuery(maxDPH float64) map[string]any {
 		"disk_space":    map[string]any{"gte": 80},
 		"cuda_max_good": map[string]any{"gte": 12.8},
 		"dph_total":     map[string]any{"lte": maxDPH},
-		"order":         [][]string{{"dph_total", "asc"}}, // cheapest first (user rule 2026-09-29); slow hosts still fail LOBO_MIN_MBPS
+		"inet_down":     map[string]any{"gte": minMBps * 8}, // drop hosts that would fail LOBO_MIN_MBPS before paying for them
+		"order":         [][]string{{"dph_total", "asc"}},   // cheapest first (user rule 2026-09-29)
 		"limit":         10,
 	}
 }
 
-func (c *Client) SearchOffers(ctx context.Context, maxDPH float64) ([]Offer, error) {
+func (c *Client) SearchOffers(ctx context.Context, maxDPH float64, minMBps int) ([]Offer, error) {
 	var r struct {
 		Offers []Offer `json:"offers"`
 	}
-	_, err := c.do(ctx, http.MethodPost, "/bundles", SearchQuery(maxDPH), &r)
+	_, err := c.do(ctx, http.MethodPost, "/bundles", SearchQuery(maxDPH, minMBps), &r)
 	return r.Offers, err
 }
 
@@ -131,7 +148,7 @@ func (c *Client) Create(ctx context.Context, offerID int64, body map[string]any)
 	code, err := c.do(ctx, http.MethodPut, "/asks/"+strconv.FormatInt(offerID, 10)+"/", body, &r)
 	if err != nil {
 		if code >= 400 && code < 500 { // Vast answered and said no: nothing was rented
-			if strings.Contains(err.Error(), "insufficient_credit") {
+			if ae := (*APIError)(nil); errors.As(err, &ae) && ae.Code == "insufficient_credit" {
 				return 0, ErrNoCredit
 			}
 			return 0, fmt.Errorf("%w: %v", ErrRejected, err)

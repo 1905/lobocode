@@ -98,7 +98,11 @@ func Resolve(ctx context.Context, hc *http.Client, bucketURL, version string) (R
 }
 
 // ZipURL is where the pod downloads the zip.
+// ZipURL is "" for a baked image (no zip): the pod then runs the agent inside the image.
 func (r Resolved) ZipURL(bucketURL string) string {
+	if r.ZipKey == "" {
+		return ""
+	}
 	return strings.TrimRight(bucketURL, "/") + "/" + r.ZipKey
 }
 
