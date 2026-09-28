@@ -1,0 +1,18 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - ineffassign
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (*os.File).Close
+        - (*archive/zip.ReadCloser).Close
+        - fmt.Fprintf
+        - fmt.Fprintln

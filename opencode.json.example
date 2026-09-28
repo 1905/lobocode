@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "lobo": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Lobo — Qwen3.5-27B uncensored (RunPod 5090)",
+      "options": {
+        "baseURL": "https://lobo.example.com/v1",
+        "apiKey": "{env:LOBO_API_KEY}"
+      },
+      "models": {
+        "qwen3.5-27b-uncensored-q8": {
+          "name": "Qwen3.5 27B Uncensored Q8_0",
+          "limit": { "context": 8192, "output": 4096 }
+        },
+        "qwen3.5-27b-uncensored-q6": {
+          "name": "Qwen3.5 27B Uncensored Q6_K",
+          "limit": { "context": 8192, "output": 4096 }
+        }
+      }
+    }
+  }
+}
