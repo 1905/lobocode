@@ -90,7 +90,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) (in
 }
 
 // SearchQuery is the offer filter: 1× RTX 5090, verified, reliable, enough disk and CUDA, price cap,
-// fastest network first (Vast sorts; RunPod can't).
+// cheapest first (user rule 2026-09-29).
 func SearchQuery(maxDPH float64) map[string]any {
 	return map[string]any{
 		"gpu_name":      map[string]any{"in": []string{"RTX 5090"}},
@@ -101,7 +101,7 @@ func SearchQuery(maxDPH float64) map[string]any {
 		"disk_space":    map[string]any{"gte": 80},
 		"cuda_max_good": map[string]any{"gte": 12.8},
 		"dph_total":     map[string]any{"lte": maxDPH},
-		"order":         [][]string{{"inet_down", "desc"}},
+		"order":         [][]string{{"dph_total", "asc"}}, // cheapest first (user rule 2026-09-29); slow hosts still fail LOBO_MIN_MBPS
 		"limit":         10,
 	}
 }

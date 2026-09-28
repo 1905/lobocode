@@ -1,6 +1,6 @@
 lobo up  ·  Qwen3.5-27B on a rented RTX 5090
 
- ✓ rent pod        7s     runpod pod1, SECURE, host ≥10000 Mbps, $0.69/h, release 2026.09.23-1, q8 ctx 8192
+ ✓ rent pod        7s     runpod pod1, COMMUNITY, host ≥10000 Mbps, $0.69/h, release 2026.09.23-1, q8 ctx 8192
  ✓ boot container  7s     
  ✗ tunnel          
  · gpu check       

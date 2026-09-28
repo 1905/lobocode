@@ -56,7 +56,7 @@ struct SettingsView: View {
                     plain("LOBO_CTX", "context", "65536")
                     plain("LOBO_IDLE_MIN", "idle min", "30")
                     plain("LOBO_MAX_HOURS", "max hours", "12")
-                    picker("LOBO_CLOUD", "runpod cloud", ["secure", "community"], def: "secure")
+                    picker("LOBO_CLOUD", "runpod cloud", ["community", "secure"], def: "community")
                     plain("LOBO_VAST_MAX_DPH", "vast max $/h", "1.20")
                     plain("LOBO_POD_IMAGE", "pod image", "ghcr.io/1905/lobocode@sha256:…")
                 }

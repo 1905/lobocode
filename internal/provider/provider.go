@@ -41,7 +41,7 @@ type CreateOpts struct {
 	DLConns       int // parallel download streams on the pod
 	MinMBps       int // agent drops a source/host downloading slower than this
 	ExpiresAt     time.Time
-	Cloud         string // runpod: "secure" (default) | "community" preference; vast: ignored
+	Cloud         string // runpod: "community" (default, only) | "secure" (first, community fallback); vast: ignored
 	SSHPubKey     string // debug only (runpod): open 22/tcp and run sshd before the bootstrap
 	ModelSSHKey   string // base64 private key for an ssh:// ModelURL (restricted model-server user)
 	ModelHostKey  string
@@ -51,7 +51,7 @@ type CreateOpts struct {
 // Provider rents and removes lobo instances on one GPU cloud.
 type Provider interface {
 	Name() string
-	// Rent picks a host (RunPod: cloud + network tiers; Vast: fastest offer) and creates the instance.
+	// Rent picks a host (RunPod: cloud + network tiers; Vast: cheapest offer) and creates the instance.
 	// note gets progress lines for the UI. ErrNoCapacity when nothing matches.
 	Rent(ctx context.Context, o CreateOpts, note func(string)) (Instance, error)
 	List(ctx context.Context) ([]Instance, error)         // lobo instances only

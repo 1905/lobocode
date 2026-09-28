@@ -25,7 +25,7 @@ func collect(ch <-chan Event) []Event {
 }
 
 func TestUpHappy(t *testing.T) {
-	rp := &ct.RunPod{NoCap: map[string]bool{"COMMUNITY": true}}
+	rp := &ct.RunPod{NoCap: map[string]bool{"SECURE": true}}
 	t0 := time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)
 	evs := collect(Up(context.Background(), ct.Deps(rp, &ct.Agent{Script: ct.BootScript()}, func() time.Time { return t0 }), UpOpts{}))
 	var phases []string
@@ -42,7 +42,7 @@ func TestUpHappy(t *testing.T) {
 	if !last.Done || last.Ready == nil || last.Ready.URL != "https://lobo.example.com/v1" || last.Ready.GitSHA != "abc1234" {
 		t.Fatalf("%+v", last)
 	}
-	if len(rp.Created) != 1 || rp.Created[0].CloudType != "SECURE" { // datacenter first
+	if len(rp.Created) != 1 || rp.Created[0].CloudType != "COMMUNITY" { // cheapest only by default
 		t.Fatal(rp.Created)
 	}
 	c := rp.Created[0]
@@ -168,7 +168,7 @@ func TestUpGivesUpAfterFourBadHosts(t *testing.T) {
 	for _, c := range rp.Created {
 		clouds = append(clouds, c.CloudType)
 	}
-	if strings.Join(clouds, ",") != "SECURE,SECURE,SECURE,SECURE" || len(rp.Deleted) != 4 {
+	if strings.Join(clouds, ",") != "COMMUNITY,COMMUNITY,COMMUNITY,COMMUNITY" || len(rp.Deleted) != 4 {
 		t.Fatalf("clouds %v deleted %d", clouds, len(rp.Deleted))
 	}
 	if len(rp.Created) != 4 {
@@ -228,23 +228,29 @@ func TestUpStepsDownNetworkTiers(t *testing.T) {
 	for _, c := range rp.Created {
 		got = append(got, fmt.Sprintf("%s@%.0f", c.CloudType, c.MinDownloadMbps))
 	}
-	// SECURE is tried at every speed before COMMUNITY; 10000 and 5000 don't exist, 2500 does on SECURE.
-	if strings.Join(got, ",") != "SECURE@10000,SECURE@5000,SECURE@2500" || evs[len(evs)-1].Ready == nil || !strings.Contains(evs[len(evs)-1].Ready.Detail, "≥2500") {
+	// 10000 and 5000 don't exist, 2500 does.
+	if strings.Join(got, ",") != "COMMUNITY@10000,COMMUNITY@5000,COMMUNITY@2500" || evs[len(evs)-1].Ready == nil || !strings.Contains(evs[len(evs)-1].Ready.Detail, "≥2500") {
 		t.Fatalf("%v %+v", got, evs[len(evs)-1])
 	}
 }
 
-func TestUpCommunityFirstOption(t *testing.T) {
-	rp := &ct.RunPod{}
-	collect(Up(context.Background(), ct.Deps(rp, &ct.Agent{Script: ct.BootScript()}, nil), UpOpts{Cloud: "community"}))
-	if rp.Created[0].CloudType != "COMMUNITY" {
-		t.Fatal(rp.Created[0].CloudType)
+// Default = cheapest only: no community capacity must not fall back to SECURE.
+func TestUpCommunityOnlyByDefault(t *testing.T) {
+	rp := &ct.RunPod{NoCap: map[string]bool{"COMMUNITY": true}}
+	evs := collect(Up(context.Background(), ct.Deps(rp, &ct.Agent{Script: ct.BootScript()}, nil), UpOpts{}))
+	if last := evs[len(evs)-1]; last.Err == nil {
+		t.Fatalf("want no-capacity error, got %+v", last)
+	}
+	for _, c := range rp.Created {
+		if c.CloudType != "COMMUNITY" {
+			t.Fatalf("tried %s: default must never fall back to SECURE", c.CloudType)
+		}
 	}
 }
 
 func TestUpSecureAllTiersBeforeCommunity(t *testing.T) {
 	rp := &ct.RunPod{NoCap: map[string]bool{"SECURE": true}, MaxMbps: 5000}
-	collect(Up(context.Background(), ct.Deps(rp, &ct.Agent{Script: ct.BootScript()}, nil), UpOpts{}))
+	collect(Up(context.Background(), ct.Deps(rp, &ct.Agent{Script: ct.BootScript()}, nil), UpOpts{Cloud: "secure"}))
 	var got []string
 	for _, c := range rp.Created {
 		got = append(got, fmt.Sprintf("%s@%.0f", c.CloudType, c.MinDownloadMbps))

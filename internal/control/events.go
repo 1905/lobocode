@@ -78,7 +78,7 @@ type UpOpts struct {
 	Timeout  time.Duration // give up after this long without progress
 	Source   string        // model source override: ssh | r2 | public ("" = from the config)
 	Conns    int           // parallel download streams (0 = agent default)
-	Cloud    string        // runpod: "" or "secure" = datacenter first; "community" = cheaper community hosts first
+	Cloud    string        // runpod: "" or "community" = community hosts only (cheapest); "secure" = datacenter first
 	Provider string        // "runpod" (default) | "vast"
 	MinMBps  int           // minimum model download speed; 0 = LOBO_MIN_MBPS from the config, else 100
 	SSHKey   string        // debug: public key to allow SSH into the pod

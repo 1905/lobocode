@@ -30,15 +30,15 @@ func TestResultKeepClearAndDefaults(t *testing.T) {
 		t.Fatalf("%v", r)
 	}
 	// new RunPod key typed
-	s.Runpod, s.Cloud = " rp-new ", "community"
-	if r = s.result(""); r["RUNPOD_API_KEY"] != "rp-new" || r["LOBO_CLOUD"] != "community" {
+	s.Runpod, s.Cloud = " rp-new ", "secure"
+	if r = s.result(""); r["RUNPOD_API_KEY"] != "rp-new" || r["LOBO_CLOUD"] != "secure" {
 		t.Fatalf("%v", r)
 	}
 }
 
 func TestNewStateFreshFile(t *testing.T) {
 	s := newState(map[string]string{})
-	if s.APIKey != "new" || s.Provider != "runpod" || s.Model != "q8" || s.Cloud != "secure" {
+	if s.APIKey != "new" || s.Provider != "runpod" || s.Model != "q8" || s.Cloud != "community" {
 		t.Fatalf("%+v", s)
 	}
 	if k := NewAPIKey(); !strings.HasPrefix(k, "sk-") || len(k) != 51 {
