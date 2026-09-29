@@ -359,8 +359,8 @@ final class Store: ObservableObject {
     }
 
     /// The CLI's local port rules: default 8931; the agent API listens on port+1, so 65535 is out.
-    static let defaultLocalPort = 8931
-    static let localPortRange = 1024...65534
+    nonisolated static let defaultLocalPort = 8931
+    nonisolated static let localPortRange = 1024...65534
 
     /// LOBO_LOCAL_PORT, or the default when empty, 0 or bad (the CLI's Port()).
     var localPort: Int {
