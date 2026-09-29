@@ -17,6 +17,7 @@ lobo-proto = { path = "../lobo-proto" }
 lobo-agent = { path = "../lobo-agent" }
 tokio.workspace = true
 tokio-util.workspace = true
+futures-util.workspace = true
 reqwest.workspace = true
 async-trait.workspace = true
 axum.workspace = true

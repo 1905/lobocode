@@ -1519,6 +1519,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "flate2",
+ "futures-util",
  "hex",
  "libc",
  "lobo-agent",

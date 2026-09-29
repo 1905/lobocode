@@ -108,6 +108,14 @@ async fn get_null_instances_is_not_found() {
 }
 
 #[tokio::test]
+async fn malformed_response_returns_error_instead_of_panicking() {
+    let (_s, c) = reply(200, json!("bad gateway payload")).await;
+    assert!(c.list().await.is_err());
+    assert!(c.get(7).await.is_err());
+    assert!(c.search_offers(1.2, 100).await.is_err());
+}
+
+#[tokio::test]
 async fn destroy_404_is_gone() {
     let (_s, c) = reply(404, json!({})).await;
     c.destroy(7).await.unwrap();
