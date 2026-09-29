@@ -117,7 +117,7 @@ func TestRuntimeEnsure(t *testing.T) {
 }
 
 func TestRuntimeNote(t *testing.T) {
-	if got := runtimeNote(RuntimeSize); got != "llama.cpp b11118 11 MB" {
+	if got := runtimeNote(runtimeSize); got != "llama.cpp b11118 11 MB" {
 		t.Fatal(got)
 	}
 }

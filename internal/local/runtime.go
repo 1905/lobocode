@@ -14,20 +14,14 @@ import (
 	"github.com/1905/lobocode/internal/agent"
 )
 
-// Pinned llama.cpp macOS arm64 build (Metal). Bump all four together.
+// Pinned llama.cpp macOS arm64 build (Metal). A bump changes RuntimeVersion, runtimeSize and runtimeSHA.
 const RuntimeVersion = "b11118"
 
-var RuntimeURL = "https://github.com/ggml-org/llama.cpp/releases/download/b11118/llama-b11118-bin-macos-arm64.tar.gz" // var: tests swap it
-
-const (
-	RuntimeSize   = 11205140
-	RuntimeSHA256 = "ca0ea3156257b21eeb11d0628f2baecd3928013a3d060e2e192042276e5b1f35"
-)
-
-// Tests swap these; the exported consts stay the pin.
+// Vars: tests swap them.
 var (
-	runtimeSize int64 = RuntimeSize
-	runtimeSHA        = RuntimeSHA256
+	RuntimeURL        = "https://github.com/ggml-org/llama.cpp/releases/download/" + RuntimeVersion + "/llama-" + RuntimeVersion + "-bin-macos-arm64.tar.gz"
+	runtimeSize int64 = 11205140
+	runtimeSHA        = "ca0ea3156257b21eeb11d0628f2baecd3928013a3d060e2e192042276e5b1f35"
 )
 
 const serverName = "llama-server"
