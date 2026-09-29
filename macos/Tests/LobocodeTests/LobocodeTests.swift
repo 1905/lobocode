@@ -177,6 +177,9 @@ final class LobocodeTests: XCTestCase {
     }
 
     func testSettingsLocal() {
+        XCTAssertEqual(Store.defaultLocalPort, 8931) // the CLI's defaults
+        XCTAssertEqual(Store.localPortRange, 1024...65534)
+        XCTAssertEqual(SettingsView.validate(["LOBO_LOCAL_PORT": "80"]), "LOBO_LOCAL_PORT: whole number 1024-65534, or empty")
         XCTAssertNil(SettingsView.validate(["LOBO_LOCAL_PORT": ""]))
         XCTAssertNil(SettingsView.validate(["LOBO_LOCAL_PORT": "1024"]))
         XCTAssertNil(SettingsView.validate(["LOBO_LOCAL_PORT": "8931"]))

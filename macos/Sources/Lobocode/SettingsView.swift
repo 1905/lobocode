@@ -64,7 +64,7 @@ struct SettingsView: View {
                 if ConfigShow.localSupported {
                     section("local") {
                         weightsRow
-                        plain("LOBO_LOCAL_PORT", "port", "8931")
+                        plain("LOBO_LOCAL_PORT", "port", String(Store.defaultLocalPort))
                     }
                 }
                 HStack {
@@ -248,8 +248,10 @@ struct SettingsView: View {
         }
         if let v = set["LOBO_VAST_MAX_DPH"], !v.isEmpty, (Double(v) ?? 0) <= 0 { return "LOBO_VAST_MAX_DPH: a price like 1.20" }
         if let v = set["LOBO_DOMAIN"], v.contains("/") || v.contains(" ") { return "LOBO_DOMAIN: bare hostname, no https://" }
-        // The agent API listens on port+1, so 65535 is out (the CLI's rule).
-        if let v = set["LOBO_LOCAL_PORT"], !v.isEmpty, !(1024...65534).contains(Int(v) ?? -1) { return "LOBO_LOCAL_PORT: whole number 1024-65534, or empty" }
+        let ports = Store.localPortRange
+        if let v = set["LOBO_LOCAL_PORT"], !v.isEmpty, !ports.contains(Int(v) ?? -1) {
+            return "LOBO_LOCAL_PORT: whole number \(ports.lowerBound)-\(ports.upperBound), or empty"
+        }
         return nil
     }
 
