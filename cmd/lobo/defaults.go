@@ -50,6 +50,9 @@ func applyDefaults(fs *pflag.FlagSet, o *control.UpOpts, cfg config.Laptop, cfgP
 	if !set("cloud") && d.Cloud != "" {
 		o.Cloud = d.Cloud
 	}
+	if o.Provider == "local" { // no key: checkTarget checks this Mac instead
+		return nil
+	}
 	keyed := false
 	for _, p := range cfg.Providers() {
 		keyed = keyed || p == o.Provider
@@ -57,7 +60,7 @@ func applyDefaults(fs *pflag.FlagSet, o *control.UpOpts, cfg config.Laptop, cfgP
 	if !keyed {
 		key := map[string]string{"runpod": "RUNPOD_API_KEY", "vast": "VASTAI_API_KEY"}[o.Provider]
 		if key == "" {
-			return fmt.Errorf("--provider: want runpod or vast, got %q", o.Provider)
+			return fmt.Errorf("--provider: want runpod, vast or local, got %q", o.Provider)
 		}
 		return fmt.Errorf("no %s in %s. Run `lobo config` to add it", key, cfgPath)
 	}

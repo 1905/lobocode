@@ -44,9 +44,10 @@ func genKeyCmd() *cobra.Command {
 			}
 			domain := env["LOBO_DOMAIN"]
 			if domain == "" {
-				return fmt.Errorf("LOBO_DOMAIN is empty in %s: set it first", cfgPath)
+				log.Info().Msg("LOBO_DOMAIN is empty: writing only the lobo-local provider (this Mac)")
 			}
-			if err := writeOpencode(opencodeOut, domain, key); err != nil {
+			port := config.Laptop{LocalPort: env["LOBO_LOCAL_PORT"]}.Port()
+			if err := writeOpencode(opencodeOut, domain, key, port); err != nil {
 				return err
 			}
 			abs, _ := filepath.Abs(opencodeOut)
@@ -58,8 +59,9 @@ func genKeyCmd() *cobra.Command {
 	return c
 }
 
-// writeOpencode writes an OpenCode config with the lobo provider and the key inline (no env var needed).
-func writeOpencode(path, domain, key string) error {
+// writeOpencode writes an OpenCode config with the key inline (no env var needed): provider lobo (the pod at
+// domain, skipped when domain is empty) and lobo-local (this Mac on 127.0.0.1:port), same models.
+func writeOpencode(path, domain, key string, port int) error {
 	// One entry: the pod serves one model at a time (q8 default). Short names: the picker truncates.
 	m, _ := model.Get("q8")
 	models := map[string]any{
@@ -71,11 +73,29 @@ func writeOpencode(path, domain, key string) error {
 	// A dedicated agent keeps the prompt small for lobo only (measured 2026-09-25, OpenCode 1.18):
 	// default 42,949 tokens → MCP off 25,226 → also skill/webfetch/todo/task off 15,008.
 	// MCP server tools (blender_*, pencil_*) come from the user's global config; the globs are harmless if absent.
+	providers := map[string]any{
+		"lobo-local": map[string]any{
+			"npm":     "@ai-sdk/openai-compatible",
+			"name":    "Lobo (this Mac)",
+			"options": map[string]string{"baseURL": fmt.Sprintf("http://127.0.0.1:%d/v1", port), "apiKey": key},
+			"models":  models,
+		},
+	}
+	agentModel := "lobo-local/" + m.Alias
+	if domain != "" {
+		providers["lobo"] = map[string]any{
+			"npm":     "@ai-sdk/openai-compatible",
+			"name":    "Lobo",
+			"options": map[string]string{"baseURL": "https://" + domain + "/v1", "apiKey": key},
+			"models":  models,
+		}
+		agentModel = "lobo/" + m.Alias
+	}
 	agent := map[string]any{
 		"lobo": map[string]any{
 			"description": "Lean agent for the lobo pod (Qwen3.5-27B): no MCP, no skills, core coding tools only",
 			"mode":        "primary",
-			"model":       "lobo/" + m.Alias,
+			"model":       agentModel,
 			"tools": map[string]bool{
 				"blender_*": false, "pencil_*": false, "skill": false,
 				"webfetch": false, "todowrite": false, "todoread": false, "task": false,
@@ -83,16 +103,9 @@ func writeOpencode(path, domain, key string) error {
 		},
 	}
 	cfg := map[string]any{
-		"$schema": "https://opencode.ai/config.json",
-		"agent":   agent,
-		"provider": map[string]any{
-			"lobo": map[string]any{
-				"npm":     "@ai-sdk/openai-compatible",
-				"name":    "Lobo",
-				"options": map[string]string{"baseURL": "https://" + domain + "/v1", "apiKey": key},
-				"models":  models,
-			},
-		},
+		"$schema":  "https://opencode.ai/config.json",
+		"agent":    agent,
+		"provider": providers,
 	}
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {

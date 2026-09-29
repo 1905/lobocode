@@ -20,6 +20,7 @@ import (
 	"github.com/1905/lobocode/internal/checks"
 	"github.com/1905/lobocode/internal/config"
 	"github.com/1905/lobocode/internal/control"
+	"github.com/1905/lobocode/internal/local"
 	"github.com/1905/lobocode/internal/model"
 	"github.com/1905/lobocode/internal/provider"
 	"github.com/1905/lobocode/internal/release"
@@ -71,13 +72,34 @@ func loadCfg() (config.Laptop, error) {
 }
 
 func deps(cfg config.Laptop) control.Deps {
+	port := cfg.Port()
 	return control.Deps{
-		Providers: providers(cfg),
-		Releases:  control.BucketReleases{BucketURL: cfg.BucketURL},
-		Agent:     control.NewHTTPAgent(cfg.Domain, cfg.LoboAPIKey),
-		Cfg:       cfg,
+		Providers:  providers(cfg),
+		Releases:   control.BucketReleases{BucketURL: cfg.BucketURL},
+		Agent:      control.NewHTTPAgent(cfg.Domain, cfg.LoboAPIKey),
+		LocalAgent: control.NewHTTPAgentURL(fmt.Sprintf("http://127.0.0.1:%d", port+1), cfg.LoboAPIKey),
+		LocalURL:   fmt.Sprintf("http://127.0.0.1:%d/v1", port),
+		Cfg:        cfg,
 	}
 }
+
+// checkTarget runs before `up` touches anything: local needs Apple Silicon, runpod/vast need the cloud keys.
+func checkTarget(cfg config.Laptop, provider string) error {
+	if provider == "local" {
+		return localSupported()
+	}
+	return cfg.RequireCloud()
+}
+
+// requireCloudIfKeyed: down and status reach the cloud only when a cloud provider has a key.
+func requireCloudIfKeyed(cfg config.Laptop) error {
+	if len(cfg.Providers()) == 0 {
+		return nil
+	}
+	return cfg.RequireCloud()
+}
+
+var localSupported = local.Supported // swapped in tests
 
 func releaseCmd() *cobra.Command {
 	return &cobra.Command{
@@ -90,6 +112,9 @@ func releaseCmd() *cobra.Command {
 				return err
 			}
 			if err := cfg.RequireR2(); err != nil {
+				return err
+			}
+			if err := cfg.RequireCloud(); err != nil { // the zip URL is logged against LOBO_BUCKET_URL
 				return err
 			}
 			ctx := cmd.Context()
@@ -187,6 +212,9 @@ func upCmd() *cobra.Command {
 			if err := applyDefaults(cmd.Flags(), &o, cfg, cfgPath); err != nil {
 				return err
 			}
+			if err := checkTarget(cfg, o.Provider); err != nil {
+				return err
+			}
 			if sshKey != "" {
 				b, err := os.ReadFile(sshKey)
 				if err != nil {
@@ -195,7 +223,7 @@ func upCmd() *cobra.Command {
 				o.SSHKey = strings.TrimSpace(string(b))
 			}
 			d := deps(cfg)
-			if cfg.RequireR2() == nil {
+			if o.Provider != "local" && cfg.RequireR2() == nil {
 				if st, err := release.NewStore(cfg.R2); err == nil {
 					d.Presign = st
 				}
@@ -224,7 +252,7 @@ func upCmd() *cobra.Command {
 	c.Flags().StringVar(&o.Image, "image", "", "pod image with lobo-agent baked in, e.g. ghcr.io/1905/lobocode@sha256:… (default: LOBO_POD_IMAGE, else the release zip)")
 	c.Flags().IntVar(&o.Conns, "conns", 0, "parallel download streams on the pod (0 = agent default)")
 	c.Flags().IntVar(&o.MinMBps, "min-mbps", 0, "drop the pod if the model downloads slower than this after 20 s (0 = LOBO_MIN_MBPS or 100)")
-	c.Flags().StringVar(&o.Provider, "provider", "", "GPU provider: runpod or vast (default: LOBO_PROVIDER, else the one with a key, runpod first)")
+	c.Flags().StringVar(&o.Provider, "provider", "", "runpod, vast or local (this Mac) (default: LOBO_PROVIDER, else the one with a key, runpod first)")
 	c.Flags().StringVar(&o.Cloud, "cloud", "community", "community ($0.69/h, default, community hosts only) or secure (datacenter $0.99/h first, community fallback)")
 	c.Flags().BoolVar(&asJSON, "json", false, "one JSON object per event on stdout (for scripts and tests)")
 	c.Flags().StringVar(&sshKey, "ssh", "", "debug: path to a public key; opens 22/tcp and runs sshd on the pod")
@@ -287,6 +315,9 @@ func downCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := requireCloudIfKeyed(cfg); err != nil {
+				return err
+			}
 			spent, err := control.Down(cmd.Context(), deps(cfg))
 			if err != nil {
 				return err
@@ -310,6 +341,9 @@ func statusCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := loadCfg()
 			if err != nil {
+				return err
+			}
+			if err := requireCloudIfKeyed(cfg); err != nil {
 				return err
 			}
 			d := deps(cfg)
@@ -346,7 +380,11 @@ func logsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			s, err := control.NewHTTPAgent(cfg.Domain, cfg.LoboAPIKey).Logs(cmd.Context(), n)
+			ag, _, err := control.Target(cmd.Context(), deps(cfg))
+			if err != nil {
+				return err
+			}
+			s, err := ag.Logs(cmd.Context(), n)
 			if err != nil {
 				return err
 			}
@@ -368,11 +406,15 @@ func testCmd() *cobra.Command {
 				return err
 			}
 			ctx := cmd.Context()
-			ver, err := control.NewHTTPAgent(cfg.Domain, cfg.LoboAPIKey).Version(ctx)
+			ag, base, err := control.Target(ctx, deps(cfg))
 			if err != nil {
-				return fmt.Errorf("pod not reachable: %w", err)
+				return err
 			}
-			st, _ := control.NewHTTPAgent(cfg.Domain, cfg.LoboAPIKey).Status(ctx)
+			ver, err := ag.Version(ctx)
+			if err != nil {
+				return fmt.Errorf("lobo not reachable at %s: %w", base, err)
+			}
+			st, _ := ag.Status(ctx)
 			id := release.DefaultModel
 			if st != nil && st.Model != "" {
 				id = st.Model
@@ -381,7 +423,6 @@ func testCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			base := "https://" + cfg.Domain + "/v1"
 			t0 := time.Now()
 			text, err := checks.Chat(ctx, base, cfg.LoboAPIKey, m.Alias)
 			if err != nil {
@@ -411,9 +452,17 @@ func isTTY() bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// providers builds every provider that has a key in the config.
+// providers builds every provider that has a key in the config, plus local on Apple Silicon.
 func providers(cfg config.Laptop) map[string]provider.Provider {
 	m := map[string]provider.Provider{}
+	if localSupported() == nil {
+		exe, _ := os.Executable()
+		conf, err := filepath.Abs(cfgPath) // the detached child may not share our idea of a relative path
+		if err != nil {
+			conf = cfgPath
+		}
+		m["local"] = local.Provider{Exe: exe, ConfigPath: conf, Weights: cfg.Weights(), Port: cfg.Port()}
+	}
 	if cfg.RunPodAPIKey != "" {
 		m["runpod"] = runpod.Provider{C: runpod.New(cfg.RunPodAPIKey)}
 	}
