@@ -49,7 +49,7 @@ func helperChild(mode string) {
 	}
 	port, _ := strconv.Atoi(flag["--port"])
 	apiPort, _ := strconv.Atoi(flag["--api-port"])
-	if err := WriteState(State{PID: os.Getpid(), Port: port, APIPort: apiPort, Model: flag["--model"],
+	if err := ClaimState(State{PID: os.Getpid(), Port: port, APIPort: apiPort, Model: flag["--model"],
 		StartedAt: time.Now().UTC(), BootID: flag["--boot-id"]}); err != nil {
 		os.Exit(2)
 	}
@@ -250,7 +250,7 @@ func TestProviderDeleteStranger(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = stranger.Process.Kill(); _ = stranger.Wait() })
 			pid := stranger.Process.Pid
-			if err := WriteState(State{PID: pid, Model: "q6", BootID: "b1"}); err != nil {
+			if err := ClaimState(State{PID: pid, Model: "q6", BootID: "b1"}); err != nil {
 				t.Fatal(err)
 			}
 			if err := p.Delete(context.Background(), strconv.Itoa(pid)); err != nil {

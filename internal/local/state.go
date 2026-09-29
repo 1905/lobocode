@@ -36,27 +36,38 @@ func StatePath() string {
 }
 
 // ReadState returns the state if the file exists and its pid is alive.
-// A dead pid means a crashed run: the stale file is removed and ok is false.
+// A dead pid means a crashed run: that stale file is removed (only if it is still the same run) and ok is false.
 func ReadState() (State, bool, error) {
-	b, err := os.ReadFile(StatePath())
+	s, err := readStateFile()
 	if errors.Is(err, os.ErrNotExist) {
 		return State{}, false, nil
 	}
 	if err != nil {
 		return State{}, false, err
 	}
-	var s State
-	if err := json.Unmarshal(b, &s); err != nil {
-		return State{}, false, fmt.Errorf("read %s: %w", StatePath(), err)
-	}
 	if !alive(s.PID) {
-		return State{}, false, RemoveState()
+		return State{}, false, RemoveStateIf(s.PID, s.BootID)
 	}
 	return s, true, nil
 }
 
-// WriteState writes the state atomically (temp file + rename), mode 0600.
-func WriteState(s State) error {
+func readStateFile() (State, error) {
+	b, err := os.ReadFile(StatePath())
+	if err != nil {
+		return State{}, err
+	}
+	var s State
+	if err := json.Unmarshal(b, &s); err != nil {
+		return State{}, fmt.Errorf("read %s: %w", StatePath(), err)
+	}
+	return s, nil
+}
+
+// ClaimState makes s the one running local instance, mode 0600. The state file is created exclusively: a
+// complete temp file is hard-linked into place, which fails like O_CREATE|O_EXCL when the file exists, and a
+// reader never sees half a file. An existing state whose pid is a live, verified supervisor fails the claim.
+// A stale one (dead pid, or a pid that is no longer our supervisor) is replaced.
+func ClaimState(s State) error {
 	p := StatePath()
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
@@ -69,7 +80,7 @@ func WriteState(s State) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.Remove(tmp.Name()) }() // no-op after a successful rename
+	defer func() { _ = os.Remove(tmp.Name()) }() // the claim is the link; the temp name always goes
 	if _, err := tmp.Write(append(b, '\n')); err != nil {
 		_ = tmp.Close()
 		return err
@@ -77,15 +88,62 @@ func WriteState(s State) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), p)
+	return withStateLock(func() error {
+		err := os.Link(tmp.Name(), p)
+		if !errors.Is(err, os.ErrExist) {
+			return err
+		}
+		old, err := readStateFile()
+		if err != nil {
+			return err
+		}
+		if alive(old.PID) && isSupervisor(old.PID, old.BootID) {
+			return fmt.Errorf("local already running (pid %d)", old.PID)
+		}
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return os.Link(tmp.Name(), p)
+	})
 }
 
-// RemoveState deletes the state file; a missing file is fine.
-func RemoveState() error {
-	if err := os.Remove(StatePath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+// RemoveStateIf deletes the state file only if it belongs to the run with this pid and boot id. A missing
+// file or another run's file is left alone and returns nil.
+func RemoveStateIf(pid int, bootID string) error {
+	return withStateLock(func() error {
+		s, err := readStateFile()
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if s.PID != pid || s.BootID != bootID {
+			return nil
+		}
+		if err := os.Remove(StatePath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	})
+}
+
+// withStateLock runs fn under an exclusive flock on local.json.lock, so a check and the change it decides
+// (claim, replace, remove) cannot interleave with another lobo process.
+func withStateLock(fn func() error) error {
+	p := StatePath() + ".lock"
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
-	return nil
+	f, err := os.OpenFile(p, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close() // closing drops the lock
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("lock %s: %w", p, err)
+	}
+	return fn()
 }
 
 // alive: signal 0 checks the pid exists. EPERM = exists but not ours, still alive.

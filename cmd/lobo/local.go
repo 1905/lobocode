@@ -108,12 +108,12 @@ func runLocal(ctx context.Context, o runOpts) error {
 	}
 	st := local.State{PID: os.Getpid(), Port: o.Port, APIPort: o.APIPort, Model: m.ID, Weights: weights,
 		StartedAt: time.Now().UTC(), BootID: o.BootID}
-	if err := local.WriteState(st); err != nil {
+	if err := local.ClaimState(st); err != nil { // fails while another supervisor is live
 		_ = ln.Close()
 		return err
 	}
 	defer func() {
-		if err := local.RemoveState(); err != nil {
+		if err := local.RemoveStateIf(st.PID, st.BootID); err != nil { // never another run's state
 			log.Error().Err(err).Msg("remove state")
 		}
 	}()
