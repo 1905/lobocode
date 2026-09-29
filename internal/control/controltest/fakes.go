@@ -90,11 +90,20 @@ type Agent struct {
 	mu     sync.Mutex
 	Script []*agent.Status
 	i      int
+	calls  int
+}
+
+// Calls counts Status, Version and Logs calls.
+func (f *Agent) Calls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
 }
 
 func (f *Agent) Status(context.Context) (*agent.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.calls++
 	if len(f.Script) == 0 {
 		return nil, errors.New("530")
 	}
@@ -108,9 +117,73 @@ func (f *Agent) Status(context.Context) (*agent.Status, error) {
 	return s, nil
 }
 func (f *Agent) Version(context.Context) (*release.Manifest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
 	return &release.Manifest{Version: "2026.09.23-1", GitSHA: "abc1234"}, nil
 }
-func (f *Agent) Logs(context.Context, int) (string, error) { return "last log line", nil }
+func (f *Agent) Logs(context.Context, int) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	return "last log line", nil
+}
+
+// Local is a fake local provider (Name "local"): Rent records the options and runs one instance.
+type Local struct {
+	mu      sync.Mutex
+	Running []provider.Instance
+	Created []provider.CreateOpts
+	Deleted []string
+}
+
+func (f *Local) Name() string { return "local" }
+func (f *Local) Rent(_ context.Context, o provider.CreateOpts, _ func(string)) (provider.Instance, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Created = append(f.Created, o)
+	in := provider.Instance{Provider: "local", ID: "4242", Status: "running", Detail: "this Mac, " + o.Model}
+	f.Running = append(f.Running, in)
+	return in, nil
+}
+func (f *Local) List(context.Context) ([]provider.Instance, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]provider.Instance(nil), f.Running...), nil
+}
+func (f *Local) Get(_ context.Context, id string) (provider.Instance, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, in := range f.Running {
+		if in.ID == id {
+			return in, nil
+		}
+	}
+	return provider.Instance{}, provider.ErrNotFound
+}
+func (f *Local) Delete(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Deleted = append(f.Deleted, id)
+	var keep []provider.Instance
+	for _, in := range f.Running {
+		if in.ID != id {
+			keep = append(keep, in)
+		}
+	}
+	f.Running = keep
+	return nil
+}
+
+// LocalBootScript is a local boot: supervisor answering at once, Metal check, download, load, ready.
+func LocalBootScript() []*agent.Status {
+	return []*agent.Status{
+		{Stage: agent.StageGPU},
+		{Stage: agent.StageDownload, Download: agent.DownloadProgress{Bytes: 1 << 30, Total: 22082528352, MBps: 12}},
+		{Stage: agent.StageLoad},
+		{Stage: agent.StageReady},
+	}
+}
 
 func Release() release.Resolved {
 	return release.Resolved{

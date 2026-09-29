@@ -3,6 +3,7 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/1905/lobocode/internal/agent"
@@ -53,13 +54,47 @@ type Presigner interface {
 }
 
 type Deps struct {
-	Presign   Presigner                    // nil unless the r2 source is used
-	Providers map[string]provider.Provider // configured providers by name ("runpod", "vast")
-	Releases  ReleaseResolver
-	Agent     AgentAPI
-	Cfg       config.Laptop
-	Clock     func() time.Time
-	Poll      time.Duration // 3 s in real use
+	Presign    Presigner                    // nil unless the r2 source is used
+	Providers  map[string]provider.Provider // configured providers by name ("runpod", "vast", "local")
+	Releases   ReleaseResolver
+	Agent      AgentAPI // cloud pods, through the public domain
+	LocalAgent AgentAPI // local supervisor on http://127.0.0.1:<port+1>
+	LocalURL   string   // http://127.0.0.1:<port>/v1
+	Cfg        config.Laptop
+	Clock      func() time.Time
+	Poll       time.Duration // 3 s in real use
+}
+
+// agentFor is the agent API client for an instance on provider.
+func (d Deps) agentFor(provider string) AgentAPI {
+	if provider == "local" {
+		return d.LocalAgent
+	}
+	return d.Agent
+}
+
+// apiURL is the OpenAI-compatible /v1 base for an instance on provider.
+func (d Deps) apiURL(provider string) string {
+	if provider == "local" {
+		return d.LocalURL
+	}
+	return "https://" + d.Cfg.Domain + "/v1"
+}
+
+// Target is the running instance's agent and /v1 URL; the cloud domain when nothing runs.
+// A listing error only matters when no instance was found (a local run needs no cloud API).
+func Target(ctx context.Context, d Deps) (AgentAPI, string, error) {
+	l, err := listAll(ctx, d)
+	if len(l) > 0 {
+		return d.agentFor(l[0].Provider), d.apiURL(l[0].Provider), nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	if d.Cfg.Domain == "" {
+		return nil, "", fmt.Errorf("nothing running, and LOBO_DOMAIN is empty: start one with `lobo up`")
+	}
+	return d.Agent, d.apiURL(""), nil
 }
 
 func (d Deps) now() time.Time {
@@ -88,7 +123,7 @@ type UpOpts struct {
 // providerNames returns configured provider names in a stable order.
 func (d Deps) providerNames() []string {
 	var out []string
-	for _, n := range []string{"runpod", "vast"} {
+	for _, n := range []string{"runpod", "vast", "local"} {
 		if d.Providers[n] != nil {
 			out = append(out, n)
 		}
