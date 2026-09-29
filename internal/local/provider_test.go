@@ -64,7 +64,10 @@ func testProvider(t *testing.T, mode string) (Provider, *bool) {
 	t.Setenv("LOBO_LOCAL_HELPER", mode)
 	ran := false
 	swap(t, &supported, func() error { return nil })
-	swap(t, &ensureRuntime, func(context.Context, string, func(string)) (string, error) { ran = true; return "/fake/llama-server", nil })
+	swap(t, &ensureRuntime, func(context.Context, string, func(string)) (string, error) {
+		ran = true
+		return "/fake/llama-server", nil
+	})
 	swap(t, &listModels, func(w string) (Listing, error) { // real free space must not decide the test
 		return Listing{Weights: w, FreeBytes: 1 << 50, Models: []ModelState{}}, nil
 	})
