@@ -44,7 +44,7 @@ func main() {
 	root.PersistentFlags().StringVar(&cfgPath, "config", config.DefaultPath(), "config file (dotenv; the OS env is never read)")
 	root.PersistentFlags().StringVar(&cfgPath, "env", config.DefaultPath(), "alias of --config")
 	_ = root.PersistentFlags().MarkHidden("env")
-	root.AddCommand(versionCmd(), configCmd(), genKeyCmd(), releaseCmd(), upCmd(), downCmd(), statusCmd(), logsCmd(), testCmd())
+	root.AddCommand(versionCmd(), configCmd(), genKeyCmd(), releaseCmd(), upCmd(), downCmd(), statusCmd(), logsCmd(), testCmd(), modelsCmd(), localCmd(runLocal))
 	root.CompletionOptions.HiddenDefaultCmd = true
 	installHelp(root)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
