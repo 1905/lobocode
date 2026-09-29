@@ -1354,4 +1354,4 @@ Contract alignment (contracts v1.1):
 Tasks 0–13 implemented as one foundation/config batch. 36 core tests and clippy pass.
 The Go generator produces 77 deterministic fixtures. CI checks fixture drift.
 The task checklists above describe the original sequence; separate red-first commits were not recorded.
-Tasks 14 onward remain pending.
+Tasks 14–26 implemented in the provider batch. 80 core tests pass, including cancellation during create and delayed Vast reconciliation. Tasks 27 onward remain pending.
