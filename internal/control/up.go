@@ -71,17 +71,21 @@ func up(ctx context.Context, d Deps, o UpOpts, ch chan<- Event) error {
 	if len(l) > 0 {
 		return fmt.Errorf("lobo already running: %s %s (%s). Run `lobo down` first", l[0].Provider, l[0].ID, l[0].Status)
 	}
-	if o.Image == "" {
-		o.Image = d.Cfg.PodImage
-	}
-	if o.Image != "" && o.Release != "" {
-		return fmt.Errorf("--release picks a bucket agent zip, --image has the agent baked in: use one")
-	}
 	var rel release.Resolved
-	if o.Image != "" { // baked agent: the image is the release, no bucket manifest needed
-		rel.Manifest = release.Manifest{Version: o.Image, LlamaImage: o.Image, Model: release.ModelRef{ID: release.DefaultModel}, Defaults: release.DefaultDefaults}
-	} else if rel, err = d.Releases.Resolve(ctx, o.Release); err != nil {
-		return err
+	if o.Provider == "local" { // no bucket, no pod image: built-in defaults
+		rel.Manifest = release.Manifest{Version: "local", Model: release.ModelRef{ID: release.DefaultModel}, Defaults: release.DefaultDefaults}
+	} else {
+		if o.Image == "" {
+			o.Image = d.Cfg.PodImage
+		}
+		if o.Image != "" && o.Release != "" {
+			return fmt.Errorf("--release picks a bucket agent zip, --image has the agent baked in: use one")
+		}
+		if o.Image != "" { // baked agent: the image is the release, no bucket manifest needed
+			rel.Manifest = release.Manifest{Version: o.Image, LlamaImage: o.Image, Model: release.ModelRef{ID: release.DefaultModel}, Defaults: release.DefaultDefaults}
+		} else if rel, err = d.Releases.Resolve(ctx, o.Release); err != nil {
+			return err
+		}
 	}
 	def := rel.Manifest.Defaults
 	if o.Model == "" {
@@ -106,6 +110,28 @@ func up(ctx context.Context, d Deps, o UpOpts, ch chan<- Event) error {
 	if err != nil {
 		return err
 	}
+	// Local: the supervisor downloads from Hugging Face itself; no model URL, source or presign.
+	co := provider.CreateOpts{LoboAPIKey: d.Cfg.LoboAPIKey, Model: m.ID, Ctx: o.Ctx, IdleMin: o.IdleMin, ExpiresAt: start.Add(o.MaxLife)}
+	if o.Provider != "local" {
+		if co, err = cloudOpts(ctx, d, &o, m, rel, start); err != nil {
+			return err
+		}
+	}
+	for attempt := 1; ; attempt++ {
+		retry, err := boot(ctx, d, p, o, co, attempt, rel.Manifest.Version, m.ID, start, ch)
+		if !retry {
+			return err
+		}
+		if attempt >= maxGPURetries {
+			return fmt.Errorf("gave up: %d pods in a row landed on bad hosts (all deleted)", attempt)
+		}
+		ch <- Event{Phase: "create", Detail: fmt.Sprintf("bad host, renting another pod (%d/%d)", attempt+1, maxGPURetries)}
+	}
+}
+
+// cloudOpts picks the model source (r2, feesh, ssh, public) and builds the pod's create options.
+func cloudOpts(ctx context.Context, d Deps, o *UpOpts, m model.Model, rel release.Resolved, start time.Time) (provider.CreateOpts, error) {
+	var err error
 	source := o.Source
 	if source == "" {
 		switch {
@@ -130,26 +156,26 @@ func up(ctx context.Context, d Deps, o UpOpts, ch chan<- Event) error {
 	case "public":
 	case "feesh":
 		if d.Cfg.FeeshHTTPURL == "" {
-			return fmt.Errorf("model source feesh needs LOBO_FEESH_HTTP_URL in the lobo config")
+			return provider.CreateOpts{}, fmt.Errorf("model source feesh needs LOBO_FEESH_HTTP_URL in the lobo config")
 		}
 	case "r2":
 		if d.Presign == nil {
-			return fmt.Errorf("model source r2 needs R2 keys in the lobo config")
+			return provider.CreateOpts{}, fmt.Errorf("model source r2 needs R2 keys in the lobo config")
 		}
 		if presigned, err = d.Presign.PresignGet(ctx, "models/"+m.File, 12*time.Hour); err != nil {
-			return fmt.Errorf("presign model: %w", err)
+			return provider.CreateOpts{}, fmt.Errorf("presign model: %w", err)
 		}
 	case "ssh":
 		if !strings.HasPrefix(d.Cfg.ModelSource, "ssh://") {
-			return fmt.Errorf("model source ssh needs LOBO_MODEL_SOURCE=ssh://… in the lobo config")
+			return provider.CreateOpts{}, fmt.Errorf("model source ssh needs LOBO_MODEL_SOURCE=ssh://… in the lobo config")
 		}
 		b, err := os.ReadFile(d.Cfg.ModelSSHKeyFile)
 		if err != nil {
-			return fmt.Errorf("model ssh key: %w", err)
+			return provider.CreateOpts{}, fmt.Errorf("model ssh key: %w", err)
 		}
 		sshKey = base64.StdEncoding.EncodeToString(b)
 	default:
-		return fmt.Errorf("unknown model source %q (r2, feesh, ssh, public)", source)
+		return provider.CreateOpts{}, fmt.Errorf("unknown model source %q (r2, feesh, ssh, public)", source)
 	}
 	co := provider.CreateOpts{
 		Image: rel.Manifest.LlamaImage, ReleaseURL: rel.ZipURL(d.Cfg.BucketURL), ReleaseSHA256: rel.ZipSHA256,
@@ -179,16 +205,7 @@ func up(ctx context.Context, d Deps, o UpOpts, ch chan<- Event) error {
 		co.ModelURL = strings.TrimRight(d.Cfg.ModelSource, "/")
 		co.ModelSSHKey, co.ModelHostKey = sshKey, d.Cfg.ModelSSHHostKey
 	}
-	for attempt := 1; ; attempt++ {
-		retry, err := boot(ctx, d, p, o, co, attempt, rel.Manifest.Version, m.ID, start, ch)
-		if !retry {
-			return err
-		}
-		if attempt >= maxGPURetries {
-			return fmt.Errorf("gave up: %d pods in a row landed on bad hosts (all deleted)", attempt)
-		}
-		ch <- Event{Phase: "create", Detail: fmt.Sprintf("bad host, renting another pod (%d/%d)", attempt+1, maxGPURetries)}
-	}
+	return co, nil
 }
 
 // maxGPURetries: pods on a bad host (broken CUDA, VRAM taken, slow network) get replaced this many times in total.
@@ -216,6 +233,8 @@ func retriable(detail string) bool {
 // boot rents one instance and follows it. retry=true means the host was bad and the instance was deleted.
 func boot(ctx context.Context, d Deps, p provider.Provider, o UpOpts, co provider.CreateOpts, attempt int, relVersion, modelID string, start time.Time, ch chan<- Event) (retry bool, _ error) {
 	co.BootID = newBootID()
+	ag := d.agentFor(p.Name())
+	isLocal := p.Name() == "local" // one Mac: a bad "host" is not replaced, the run is stopped and reported
 	pod, err := p.Rent(ctx, co, func(s string) { ch <- Event{Phase: "create", Detail: s} })
 	if err != nil {
 		return false, fmt.Errorf("rent on %s: %w", p.Name(), err)
@@ -230,7 +249,7 @@ func boot(ctx context.Context, d Deps, p provider.Provider, o UpOpts, co provide
 	created := d.now()
 	lastPodCheck := created
 	for {
-		st, _ := d.Agent.Status(ctx)
+		st, _ := ag.Status(ctx)
 		// All pods share one tunnel hostname: a status with another boot id is some other pod (the one
 		// just deleted, or one that `down` is still tearing down). Never act on it.
 		if st != nil && st.BootID != "" && st.BootID != co.BootID {
@@ -248,7 +267,7 @@ func boot(ctx context.Context, d Deps, p provider.Provider, o UpOpts, co provide
 		if st == nil && seen && d.now().Sub(lastPodCheck) >= podCheckEvery {
 			lastPodCheck = d.now()
 			if _, err := p.Get(ctx, pod.ID); errors.Is(err, provider.ErrNotFound) {
-				logs, _ := d.Agent.Logs(ctx, 20)
+				logs, _ := ag.Logs(ctx, 20)
 				ch <- Event{Phase: "failed", Detail: "pod is gone", Err: fmt.Errorf("pod %s is gone (deleted) while the agent was unreachable in phase %s\n%s", pod.ID, lastPhase, strings.TrimSpace(logs)), Done: true}
 				return false, nil
 			}
@@ -280,9 +299,9 @@ func boot(ctx context.Context, d Deps, p provider.Provider, o UpOpts, co provide
 			}
 			switch phase {
 			case string(agent.StageReady):
-				ver, _ := d.Agent.Version(ctx)
+				ver, _ := ag.Version(ctx)
 				tim := st.Timings
-				ri := &ReadyInfo{URL: "https://" + d.Cfg.Domain + "/v1", CostPerHr: pod.CostPerHr, Elapsed: d.now().Sub(start), Version: relVersion,
+				ri := &ReadyInfo{URL: d.apiURL(p.Name()), CostPerHr: pod.CostPerHr, Elapsed: d.now().Sub(start), Version: relVersion,
 					PodID: pod.ID, Provider: p.Name(), Detail: pod.Detail, Attempts: attempt, Timings: &tim, HostDownloadMbps: pod.HostDownloadMbps}
 				if !pod.StartedAt.IsZero() && !tim.ContainerStartedAt.IsZero() {
 					ri.RentS = tim.ContainerStartedAt.Sub(pod.StartedAt).Seconds()
@@ -294,17 +313,22 @@ func boot(ctx context.Context, d Deps, p provider.Provider, o UpOpts, co provide
 				ch <- ev
 				return false, nil
 			case string(agent.StageFailed), string(agent.StageTerminating):
-				if retriable(st.StageDetail) {
+				if retriable(st.StageDetail) && !isLocal {
 					ch <- Event{Phase: "image", Detail: st.StageDetail}
 					if err := p.Delete(context.Background(), pod.ID); err != nil {
 						return false, fmt.Errorf("delete pod %s with broken GPU: %w", pod.ID, err)
 					}
 					return true, nil
 				}
-				logs, _ := d.Agent.Logs(ctx, 20)
+				logs, _ := ag.Logs(ctx, 20)
 				why := st.StageDetail
 				if st.Stage == agent.StageTerminating && st.KillReason != "failed" {
 					why = "watchdog: " + st.KillReason // e.g. expired before it became ready
+				}
+				if isLocal { // free the memory now instead of after the supervisor's fail grace
+					derr := p.Delete(context.Background(), pod.ID)
+					ch <- Event{Phase: "failed", Detail: why, Err: fmt.Errorf("local run stopped: %s (err=%v)\n%s", why, derr, logs), Done: true}
+					return false, nil
 				}
 				ch <- Event{Phase: "failed", Detail: why, Err: fmt.Errorf("pod stopped: %s (it deletes itself)\n%s", why, logs), Done: true}
 				return false, nil
@@ -313,7 +337,7 @@ func boot(ctx context.Context, d Deps, p provider.Provider, o UpOpts, co provide
 			lastPhase, lastBytes = phase, bytes
 		}
 		// Container never came up (seen live: SECURE pod with no IP/ports for 13+ min): treat as a bad host.
-		if !seen && d.now().Sub(created) > containerTimeout {
+		if !seen && d.now().Sub(created) > containerTimeout && !isLocal {
 			ch <- Event{Phase: "image", Detail: fmt.Sprintf("host: container not started after %s", containerTimeout)}
 			if err := p.Delete(context.Background(), pod.ID); err != nil {
 				return false, fmt.Errorf("delete pod %s: %w", pod.ID, err)
@@ -321,7 +345,7 @@ func boot(ctx context.Context, d Deps, p provider.Provider, o UpOpts, co provide
 			return true, nil
 		}
 		if d.now().Sub(lastProgress) > o.Timeout {
-			logs, _ := d.Agent.Logs(ctx, 20)
+			logs, _ := ag.Logs(ctx, 20)
 			derr := p.Delete(context.Background(), pod.ID)
 			ch <- Event{Phase: "terminated", Err: fmt.Errorf("no progress for %s in phase %s; pod %s deleted (err=%v)\n%s", o.Timeout, phase, pod.ID, derr, strings.TrimSpace(logs)), Done: true}
 			return false, nil

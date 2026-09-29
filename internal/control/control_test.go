@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -515,5 +517,154 @@ func TestUpFailedPollsDoNotResetStall(t *testing.T) {
 	evs := collect(Up(context.Background(), ct.Deps(rp, &ct.Agent{Script: script}, clock), UpOpts{Timeout: 30 * time.Second}))
 	if last := evs[len(evs)-1]; last.Phase != "terminated" || len(rp.Deleted) != 1 {
 		t.Fatalf("want stall termination, got %+v deleted %v", last, rp.Deleted)
+	}
+}
+
+// localDeps: RunPod configured too (its agent must stay untouched), no release manifest anywhere, a local provider.
+func localDeps(script []*agent.Status) (Deps, *ct.RunPod, *ct.Agent, *ct.Local, *ct.Agent) {
+	rp, cloud, lp, la := &ct.RunPod{}, &ct.Agent{Script: ct.BootScript()}, &ct.Local{}, &ct.Agent{Script: script}
+	d := ct.Deps(rp, cloud, nil)
+	d.Releases = noReleases{}
+	d.Providers["local"] = lp
+	d.LocalAgent, d.LocalURL = la, "http://127.0.0.1:8931/v1"
+	return d, rp, cloud, lp, la
+}
+
+func TestUpLocal(t *testing.T) {
+	d, rp, cloud, lp, la := localDeps(ct.LocalBootScript())
+	d.Cfg.PodImage = "ghcr.io/1905/lobocode:v9" // cloud-only setting: ignored locally
+	evs := collect(Up(context.Background(), d, UpOpts{Provider: "local", Model: "q6"}))
+	var phases []string
+	for _, e := range evs {
+		phases = append(phases, e.Phase)
+	}
+	if got := strings.Join(phases, ","); got != "create,gpu,download,load,ready" {
+		t.Fatal(got)
+	}
+	last := evs[len(evs)-1]
+	if last.Ready == nil || last.Ready.URL != "http://127.0.0.1:8931/v1" || last.Ready.Provider != "local" || last.Ready.CostPerHr != 0 {
+		t.Fatalf("%+v", last)
+	}
+	if len(lp.Created) != 1 || len(rp.Created) != 0 {
+		t.Fatalf("local %d runpod %d", len(lp.Created), len(rp.Created))
+	}
+	c := lp.Created[0]
+	if c.Model != "q6" || c.Ctx != release.DefaultDefaults.Ctx || c.IdleMin != release.DefaultDefaults.IdleMin || c.LoboAPIKey != "sk" ||
+		c.BootID == "" || c.ModelURL != "" || c.Image != "" || c.ReleaseURL != "" || c.CFTunnelToken != "" {
+		t.Fatalf("%+v", c)
+	}
+	if cloud.Calls() != 0 || la.Calls() == 0 {
+		t.Fatalf("cloud agent calls %d, local %d", cloud.Calls(), la.Calls())
+	}
+}
+
+// Locally a "gpu: " failure is not a bad host to replace: no re-rent, the run is stopped and reported.
+func TestUpLocalFailureStopsRun(t *testing.T) {
+	for _, detail := range []string{"gpu: q8 needs 29.1 GB, this Mac allows ~24 GB to the GPU", "download: sha256 mismatch"} {
+		t.Run(detail, func(t *testing.T) {
+			d, _, _, lp, _ := localDeps([]*agent.Status{{Stage: agent.StageFailed, StageDetail: detail}})
+			evs := collect(Up(context.Background(), d, UpOpts{Provider: "local"}))
+			last := evs[len(evs)-1]
+			if last.Phase != "failed" || last.Err == nil || !strings.Contains(last.Err.Error(), detail) || !strings.Contains(last.Err.Error(), "last log line") {
+				t.Fatalf("%+v", last)
+			}
+			if len(lp.Created) != 1 || len(lp.Deleted) != 1 {
+				t.Fatalf("rented %d deleted %v", len(lp.Created), lp.Deleted)
+			}
+		})
+	}
+}
+
+func TestSnapshotLocal(t *testing.T) {
+	d, _, cloud, lp, la := localDeps([]*agent.Status{{Stage: agent.StageReady, Model: "q6"}})
+	lp.Running = []provider.Instance{{Provider: "local", ID: "4242", Status: "running"}}
+	s, err := Snapshot(context.Background(), d)
+	if err != nil || s.Down || s.Pod.Provider != "local" || s.Status == nil || s.Status.Model != "q6" || s.Version == nil {
+		t.Fatalf("%+v %v", s, err)
+	}
+	if cloud.Calls() != 0 || la.Calls() != 2 {
+		t.Fatalf("cloud agent calls %d, local %d", cloud.Calls(), la.Calls())
+	}
+}
+
+func TestTarget(t *testing.T) {
+	tests := []struct {
+		name     string
+		local    bool
+		pod      bool
+		vastErr  bool // a failing cloud listing must not hide a local run
+		domain   string
+		wantURL  string
+		wantErr  string
+		wantLAgt bool
+	}{
+		{name: "local runs", local: true, domain: "lobo.example.com", wantURL: "http://127.0.0.1:8931/v1", wantLAgt: true},
+		{name: "local runs, no domain", local: true, wantURL: "http://127.0.0.1:8931/v1", wantLAgt: true},
+		{name: "local runs, vast list fails", local: true, vastErr: true, wantURL: "http://127.0.0.1:8931/v1", wantLAgt: true},
+		{name: "nothing runs, vast list fails", vastErr: true, domain: "lobo.example.com", wantErr: "vast: boom"},
+		{name: "pod runs", pod: true, domain: "lobo.example.com", wantURL: "https://lobo.example.com/v1"},
+		{name: "nothing runs", domain: "lobo.example.com", wantURL: "https://lobo.example.com/v1"},
+		{name: "nothing runs, no domain", wantErr: "LOBO_DOMAIN"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d, rp, cloud, lp, la := localDeps(nil)
+			d.Cfg.Domain = tt.domain
+			if tt.local {
+				lp.Running = []provider.Instance{{Provider: "local", ID: "4242"}}
+			}
+			if tt.pod {
+				rp.Pods = []runpod.Pod{{ID: "p1", Name: "lobo"}}
+			}
+			if tt.vastErr {
+				d.Providers["vast"] = &fakeProv{name: "vast", listErr: errors.New("boom")}
+			}
+			ag, url, err := Target(context.Background(), d)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil || url != tt.wantURL {
+				t.Fatalf("url %q err %v", url, err)
+			}
+			want := AgentAPI(cloud)
+			if tt.wantLAgt {
+				want = la
+			}
+			if ag != want {
+				t.Fatalf("wrong agent (want local %v)", tt.wantLAgt)
+			}
+		})
+	}
+}
+
+// NewHTTPAgentURL talks to a plain base URL (the local supervisor); logs carry the key.
+func TestHTTPAgentURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/version":
+			fmt.Fprint(w, `{"version":"dev","git_sha":"abc"}`)
+		case "/api/logs":
+			if r.Header.Get("Authorization") != "Bearer sk" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			fmt.Fprint(w, "line")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	a := NewHTTPAgentURL(srv.URL+"/", "sk")
+	if v, err := a.Version(context.Background()); err != nil || v.Version != "dev" || v.GitSHA != "abc" {
+		t.Fatalf("%+v %v", v, err)
+	}
+	if s, err := a.Logs(context.Background(), 5); err != nil || s != "line" {
+		t.Fatalf("%q %v", s, err)
+	}
+	if NewHTTPAgent("lobo.example.com", "sk").Base != "https://lobo.example.com" {
+		t.Fatal(NewHTTPAgent("lobo.example.com", "sk").Base)
 	}
 }

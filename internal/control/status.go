@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/1905/lobocode/internal/agent"
@@ -31,20 +32,24 @@ func Snapshot(ctx context.Context, d Deps) (Snap, error) {
 		return Snap{Down: true, At: d.now()}, nil
 	}
 	s := Snap{Pod: &l[0], At: d.now()}
-	s.Status, _ = d.Agent.Status(ctx)
-	s.Version, _ = d.Agent.Version(ctx)
+	ag := d.agentFor(l[0].Provider)
+	s.Status, _ = ag.Status(ctx)
+	s.Version, _ = ag.Version(ctx)
 	return s, nil
 }
 
-// HTTPAgent calls the pod /api through the public domain.
+// HTTPAgent calls the agent /api: a pod through the public domain, or the local supervisor.
 type HTTPAgent struct {
-	Base string // https://lobo.example.com
+	Base string // https://lobo.example.com or http://127.0.0.1:8932
 	Key  string
 	HTTP *http.Client
 }
 
-func NewHTTPAgent(domain, key string) *HTTPAgent {
-	return &HTTPAgent{Base: "https://" + domain, Key: key, HTTP: &http.Client{Timeout: 5 * time.Second}}
+func NewHTTPAgent(domain, key string) *HTTPAgent { return NewHTTPAgentURL("https://"+domain, key) }
+
+// NewHTTPAgentURL is an agent at base, e.g. the local supervisor http://127.0.0.1:8932.
+func NewHTTPAgentURL(base, key string) *HTTPAgent {
+	return &HTTPAgent{Base: strings.TrimRight(base, "/"), Key: key, HTTP: &http.Client{Timeout: 5 * time.Second}}
 }
 
 func (a *HTTPAgent) get(ctx context.Context, path string, auth bool) ([]byte, error) {
