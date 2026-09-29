@@ -1,7 +1,7 @@
 # Local Mode Implementation Plan v1.0
 
 **Date:** 2026-09-29
-**Status:** in-progress
+**Status:** done
 **Spec:** ./spec.md
 
 **Goal:** `lobo up --provider local` serves the model from this Mac (llama.cpp b11118 Metal), with the weights folder set by the user, wired through the CLI and the mac app.

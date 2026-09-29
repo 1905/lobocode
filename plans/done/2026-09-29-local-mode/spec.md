@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-29
 **Scope:** /Users/kass/dev/lobocode
-**Status:** approved
+**Status:** done (as-built notes below)
 
 ## TL;DR
 
@@ -171,3 +171,25 @@ The rules from `~/.claude/docs/ux-design-guide.md` apply: one primary action, no
 - **P1** CLI local mode + config + `lobo models` + opencode local provider. Commit gated on tests.
 - **P2** mac app UX + renders. Commit after you review the renders.
 - **P3** live run on this Mac (Q6, then Q8 if both downloads verify). Results go into this spec. Merge to master.
+
+## As-built notes (2026-09-29)
+
+What shipped differs from the text above in these places:
+
+- **Not run live (P3 skipped).** The user rule for this job was "do not test locally yet. only code and wire". No `lobo up --provider local` and no llama-server ran. Everything is unit-tested with fakes. The first real run will also fetch the runtime (11 MB).
+- **Agent endpoints live on the instance.** `provider.Instance` carries `APIURL` and `AgentURL`. That replaces the per-provider switch described in File-level changes (`Deps.LocalAgent/LocalURL` were removed in the cleanup pass). Local reads the running supervisor's saved ports (`local.ActiveEndpoints`), so changing `LOBO_LOCAL_PORT` while a run is up does not break status/test/logs.
+- **`provider.Replaceable()`.** Local runs are never replaced as a "bad host". A failed local boot is stopped at once, so its memory is freed.
+- **State ownership.** The supervisor claims `local.json` exclusively (hard-link of a complete temp file + `flock` on `local.json.lock`). It is removed only by pid + boot id (`RemoveStateIf`). `Delete` signals only a process whose command line has `local run` and the exact `--boot-id`. It re-checks before SIGKILL, and SIGKILL targets the whole process group, so llama-server dies too.
+- **Sha marker format.** `<file>.sha256-ok` holds `<sha256> <size> <mtime_ns>`. Any mismatch, including the old format, triggers one re-hash. On this Mac the markers for Q6/Q8 in `/Volumes/Extreme/_lobocode` were written in the new format after both files were sha256-verified.
+- **Resumable downloads.** `agent.Download` now resumes a partial file across runs: it hashes the existing prefix and continues from its size. `HTTPSource` reads the total from `Content-Range`. The pod path is unchanged, because its file never pre-exists.
+- **Config checks per command.**
+  - `up` on runpod/vast: `RequireCloud`.
+  - `down` and `status`: provider keys only. With none, status shows no agent detail.
+  - `release`: R2 + bucket only.
+  - A local-only config needs just `LOBO_API_KEY`.
+  - `lobo config` offers "local (this Mac)" plus weights/port fields.
+- **Shared helpers from the cleanup pass:**
+  - `agent.WaitHealthy`, `agent.HashFile`, `agent.FetchFile`, `agent.CleanEnv` (union deny list), `agent.LastLine`
+  - `config.ParseLocalPort`
+  - `model.MinFreeMiB`, `model.All`
+- **Deferred:** consolidating the provider requirements across config/cmd/configtui into one source of truth (simplify findings A3–A5).
