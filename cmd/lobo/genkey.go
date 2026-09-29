@@ -73,22 +73,18 @@ func writeOpencode(path, domain, key string, port int) error {
 	// A dedicated agent keeps the prompt small for lobo only (measured 2026-09-25, OpenCode 1.18):
 	// default 42,949 tokens → MCP off 25,226 → also skill/webfetch/todo/task off 15,008.
 	// MCP server tools (blender_*, pencil_*) come from the user's global config; the globs are harmless if absent.
-	providers := map[string]any{
-		"lobo-local": map[string]any{
+	prov := func(name, base string) map[string]any {
+		return map[string]any{
 			"npm":     "@ai-sdk/openai-compatible",
-			"name":    "Lobo (this Mac)",
-			"options": map[string]string{"baseURL": fmt.Sprintf("http://127.0.0.1:%d/v1", port), "apiKey": key},
-			"models":  models,
-		},
-	}
-	agentModel := "lobo-local/" + m.Alias
-	if domain != "" {
-		providers["lobo"] = map[string]any{
-			"npm":     "@ai-sdk/openai-compatible",
-			"name":    "Lobo",
-			"options": map[string]string{"baseURL": "https://" + domain + "/v1", "apiKey": key},
+			"name":    name,
+			"options": map[string]string{"baseURL": base, "apiKey": key},
 			"models":  models,
 		}
+	}
+	providers := map[string]any{"lobo-local": prov("Lobo (this Mac)", fmt.Sprintf("http://127.0.0.1:%d/v1", port))}
+	agentModel := "lobo-local/" + m.Alias
+	if domain != "" {
+		providers["lobo"] = prov("Lobo", "https://"+domain+"/v1")
 		agentModel = "lobo/" + m.Alias
 	}
 	agent := map[string]any{
