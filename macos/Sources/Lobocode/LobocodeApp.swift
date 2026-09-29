@@ -14,7 +14,7 @@ struct LobocodeApp: App {
     var body: some Scene {
         MenuBarExtra {
             PanelView(store: store, openSettings: openSettings)
-                .onAppear { store.panelOpen = true; Task { await store.refresh() } }
+                .onAppear { store.panelOpen = true; Task { await store.refresh(models: true) } }
                 .onDisappear { store.panelOpen = false }
         } label: {
             MenuLabel(store: store)

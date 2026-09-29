@@ -164,6 +164,50 @@ final class LobocodeTests: XCTestCase {
         XCTAssertEqual(Store(cli: nil).target, .cloud) // previews never read the user's defaults
     }
 
+    /// A fake `lobo` that logs each subcommand and answers from the fixtures.
+    func fakeCLI() throws -> (CLI, URL) {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("lobocode-fake-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let config = #"{"path":"p","exists":true,"values":{},"set":{"RUNPOD_API_KEY":true,"LOBO_DOMAIN":true,"LOBO_API_KEY":true,"CF_TUNNEL_TOKEN":true,"LOBO_BUCKET_URL":true}}"#
+        try Data(config.utf8).write(to: dir.appendingPathComponent("config.json"))
+        try fixture("models.json").write(to: dir.appendingPathComponent("models.json"))
+        try fixture("status_off.json").write(to: dir.appendingPathComponent("status.json"))
+        let log = dir.appendingPathComponent("calls.log")
+        let script = """
+        #!/bin/sh
+        echo "$1" >> '\(log.path)'
+        cd '\(dir.path)'
+        case "$1" in config) cat config.json;; models) cat models.json;; status) cat status.json;; esac
+        """
+        let bin = dir.appendingPathComponent("lobo")
+        try Data(script.utf8).write(to: bin)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin.path)
+        return (CLI(binary: bin, configOverride: nil), log)
+    }
+
+    @MainActor
+    func testModelsNotListedOnPlainRefresh() async throws {
+        try XCTSkipUnless(ConfigShow.localSupported)
+        let (cli, log) = try fakeCLI()
+        let suite = "lobocode.tests.\(UUID().uuidString)"
+        let d = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { d.removePersistentDomain(forName: suite) }
+        func calls() -> [String] { ((try? String(contentsOf: log, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init) }
+
+        let s = Store(cli: cli, defaults: d)
+        for _ in 0..<100 where calls().count < 3 { try await Task.sleep(nanoseconds: 50_000_000) }
+        XCTAssertEqual(calls(), ["config", "models", "status"]) // start: models listed once
+        XCTAssertEqual(s.phase, .off)
+        XCTAssertNotNil(s.models)
+
+        await s.refresh() // a plain poll tick
+        XCTAssertEqual(calls().suffix(from: 3), ["status"])
+        await s.refresh(models: true) // panel open, after down, after a failed boot
+        XCTAssertEqual(calls().suffix(from: 4), ["status", "models"])
+        await s.loadConfig() // settings open / save
+        XCTAssertEqual(calls().suffix(from: 6), ["config", "models"])
+    }
+
     func testSettingsChanges() {
         var f = SettingsView.Fields()
         f.plain = ["LOBO_DOMAIN": "lobo.x.cc", "LOBO_MIN_MBPS": "150", "LOBO_CTX": ""]
