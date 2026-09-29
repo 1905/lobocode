@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -224,20 +223,7 @@ func (d *macDeps) startLlama(ctx context.Context) (<-chan error, error) {
 }
 
 func (d *macDeps) waitHealthy(ctx context.Context) error {
-	for {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, d.llamaURL+"/health", nil)
-		if resp, err := http.DefaultClient.Do(req); err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(d.poll):
-		}
-	}
+	return agent.WaitHealthy(ctx, d.llamaURL, d.poll)
 }
 
 // gpu: unified memory, so "VRAM" used = llama-server RSS and total = hw.memsize. No util counter.

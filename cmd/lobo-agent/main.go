@@ -155,20 +155,7 @@ func run() error {
 			return agent.StartProcess(ctx, llamaBin, args, env, prefix(logs, "llama"))
 		},
 		WaitHealthy: func(ctx context.Context) error {
-			for {
-				req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+agent.LlamaAddr+"/health", nil)
-				if resp, err := http.DefaultClient.Do(req); err == nil {
-					resp.Body.Close()
-					if resp.StatusCode == http.StatusOK {
-						return nil
-					}
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(2 * time.Second):
-				}
-			}
+			return agent.WaitHealthy(ctx, "http://"+agent.LlamaAddr, 2*time.Second)
 		},
 		Llama:  coll.Llama,
 		GPU:    coll.GPU,
