@@ -8,7 +8,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dat
 # Dev targets (release, e2e) use the repo .env; the installed `lobo` uses ~/.config/lobo/config.env.
 DEV_CONFIG := --config $(CURDIR)/.env
 
-.PHONY: build build-lobo build-agent install lint test release e2e mac install-mac
+.PHONY: build build-lobo build-agent install lint test release e2e mac install-mac dmg
 
 build: build-lobo build-agent
 
@@ -56,6 +56,17 @@ mac: build-lobo
 	if [ -d $(MAC_APP) ]; then mkdir -p /tmp/trash && mv $(MAC_APP) /tmp/trash/lobocode.app.$$(date +%s); fi
 	mv $(MAC_APP).tmp $(MAC_APP)
 	@echo "built $(MAC_APP)"
+
+# Drag-to-install disk image: lobocode.app next to an Applications shortcut. Unsigned (ad-hoc).
+DMG := $(BIN)/lobocode.dmg
+dmg: mac
+	if [ -d $(BIN)/dmg ]; then mkdir -p /tmp/trash && mv $(BIN)/dmg /tmp/trash/lobocode-dmg.$$(date +%s); fi
+	if [ -f $(DMG) ]; then mkdir -p /tmp/trash && mv $(DMG) /tmp/trash/lobocode.dmg.$$(date +%s); fi
+	mkdir -p $(BIN)/dmg
+	cp -R $(MAC_APP) $(BIN)/dmg/lobocode.app
+	ln -s /Applications $(BIN)/dmg/Applications
+	hdiutil create -volname lobocode -srcfolder $(BIN)/dmg -ov -format UDZO $(DMG) >/dev/null
+	@echo "built $(DMG)"
 
 # /Applications when writable (admin users), else ~/Applications.
 APP_DIR := $(shell test -w /Applications && echo /Applications || echo $(HOME)/Applications)

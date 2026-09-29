@@ -107,6 +107,14 @@ func TestStatusGolden(t *testing.T) {
 	golden(t, "status_metrics_unavailable", RenderStatus(na))
 
 	golden(t, "status_down", RenderStatus(control.Snap{Down: true, At: dl.At}))
+
+	// Local: free, Mac memory instead of GPU load/vram, no Host section, no hard expiry.
+	lo := snap()
+	lo.Pod.Provider, lo.Pod.ID, lo.Pod.CostPerHr = "local", "74585", 0
+	lo.Version.LlamaImage = ""
+	lo.Status.GPU = &metrics.GPU{Name: "Apple M1 Max", VRAMUsedMB: 41230, VRAMTotalMB: 65536}
+	lo.Status.Host = nil
+	golden(t, "status_local", RenderStatus(lo))
 }
 
 func TestUpStateErr(t *testing.T) {

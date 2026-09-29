@@ -234,21 +234,20 @@ func TestGPUMetrics(t *testing.T) {
 		}
 		return "Apple M1 Max", nil
 	}, func() (uint64, error) { return 64 << 30, nil })
-	var gotPID int
-	d.ps = func(_ context.Context, pid int) (string, error) { gotPID = pid; return "  24225792\n", nil }
-
+	d.vmstat = func(context.Context) (string, error) {
+		return "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free: 19024.\nPages active: 1000000.\n" +
+			"Pages wired down: 300000.\nPages occupied by compressor: 214000.\n", nil
+	}
 	g, err := d.gpu(context.Background())
-	if err != nil || g.Name != "Apple M1 Max" || g.VRAMUsedMB != 0 || g.VRAMTotalMB != 65536 || gotPID != 0 {
-		t.Fatalf("before start: %+v %v pid=%d", g, err, gotPID)
+	// (1000000+300000+214000) pages × 16 KiB = 23656 MiB
+	if err != nil || g.Name != "Apple M1 Max" || g.VRAMUsedMB != 23656 || g.VRAMTotalMB != 65536 || g.UtilPct != 0 {
+		t.Fatalf("%+v %v", g, err)
 	}
-	d.pid.Store(42)
-	g, err = d.gpu(context.Background())
-	if err != nil || g.VRAMUsedMB != 23658 || g.VRAMTotalMB != 65536 || g.UtilPct != 0 || gotPID != 42 {
-		t.Fatalf("%+v %v pid=%d", g, err, gotPID)
-	}
-	d.ps = func(context.Context, int) (string, error) { return "garbage", nil }
-	if _, err := d.gpu(context.Background()); err == nil {
-		t.Fatal("want parse error")
+	for _, bad := range []string{"garbage", "Mach (page size of 16384 bytes)\nPages active: 1.\n"} {
+		d.vmstat = func(context.Context) (string, error) { return bad, nil }
+		if _, err := d.gpu(context.Background()); err == nil {
+			t.Fatalf("want parse error for %q", bad)
+		}
 	}
 }
 
