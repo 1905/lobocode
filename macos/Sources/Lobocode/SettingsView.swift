@@ -48,8 +48,9 @@ struct SettingsView: View {
                     plain("LOBO_BUCKET_URL", "bucket url", "https://pub-….r2.dev")
                 }
                 section("defaults for lobo up  (empty = built-in)") {
-                    if (store.config?.providers.count ?? 0) > 1 {
-                        picker("LOBO_PROVIDER", "provider", ["runpod", "vast"], def: "runpod")
+                    let targets = (ConfigShow.localSupported ? ["local"] : []) + (store.config?.providers ?? [])
+                    if targets.count > 1 {
+                        picker("LOBO_PROVIDER", "provider", targets, def: targets.contains("runpod") ? "runpod" : targets[0])
                     }
                     picker("LOBO_MODEL", "model", ["q8", "q6"], def: "q8")
                     plain("LOBO_MIN_MBPS", "min MB/s", "100")

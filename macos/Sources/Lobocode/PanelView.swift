@@ -74,11 +74,11 @@ struct Header: View {
         guard let p = store.snap?.pod else {
             if store.phase == .booting { return store.isLocal ? "starting local" : "renting \(store.provider)" }
             guard store.phase == .off else { return "" }
-            return store.isLocal ? "local · $0" : "no pod · $0.00/h"
+            return store.isLocal ? "" : "no pod · $0.00/h"
         }
         var parts = [p.provider]
         if let d = p.detail, !d.isEmpty { parts.append(d) }
-        parts.append(p.provider == "local" ? "$0" : String(format: "$%.2f/h", p.cost_per_hr))
+        if p.provider != "local" { parts.append(String(format: "$%.2f/h", p.cost_per_hr)) } // local: $0 sits in the footer
         return parts.joined(separator: " · ")
     }
 }

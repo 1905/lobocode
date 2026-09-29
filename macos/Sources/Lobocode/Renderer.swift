@@ -12,6 +12,7 @@ enum Renderer {
         }
         let s = Store(cli: nil)
         s.config = sampleConfig
+        s.models = sampleModels
         write(SettingsView(store: s, rendering: true), dir.appendingPathComponent("settings.png"))
         write(AppIconView(), dir.appendingPathComponent("icon_1024.png"), scale: 1)
         print("rendered to \(dir.path)")
@@ -30,6 +31,11 @@ enum Renderer {
                  "CF_TUNNEL_TOKEN": "eyJh…fQ==", "LOBO_BUCKET_URL": "https://pub-….r2.dev", "LOBO_MIN_MBPS": "100"],
         set: ["RUNPOD_API_KEY": true, "VASTAI_API_KEY": true, "LOBO_DOMAIN": true, "LOBO_API_KEY": true, "CF_TUNNEL_TOKEN": true,
               "LOBO_BUCKET_URL": true, "LOBO_MIN_MBPS": true])
+
+    static let sampleModels = ModelsInfo(weights: "/Volumes/Extreme/_lobocode", free_bytes: 958_902_697_984, models: [
+        LocalModel(id: "q6", file: "Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf", size: 22_082_528_352, on_disk: 22_082_528_352, verified: true),
+        LocalModel(id: "q8", file: "Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf", size: 28_595_762_272, on_disk: 12_300_000_000, verified: false),
+    ], runtime: ModelsInfo.Runtime(version: "b11118", present: true))
 
     static func samples() -> [(String, Store)] {
         let now = Date()
@@ -72,7 +78,49 @@ enum Renderer {
         let setup = base(.noConfig)
         setup.config = ConfigShow(path: "/Users/you/.config/lobo/config.env", exists: false, values: [:], set: [:])
 
-        return [("off", off), ("boot", boot), ("ready", ready), ("fail", fail), ("setup", setup)]
+        // local (this Mac)
+        let loff = base(.off)
+        loff.target = .local
+        loff.models = sampleModels
+        loff.model = "q6"
+        loff.snap = Snapshot(pod: nil, version: nil, status: nil, down: true, at: now)
+
+        let lboot = base(.booting)
+        lboot.target = .local
+        lboot.models = sampleModels
+        lboot.bootStart = now.addingTimeInterval(-40)
+        lboot.stepAt = [.rent: 2, .gpu: 3, .download: 4]
+        lboot.download = Download(bytes: 12_400_000_000, total: 28_595_762_272, mbps: 88, verifying: nil, source: nil)
+        lboot.lastDetail = "llama.cpp b11118 11 MB"
+
+        let lverify = base(.booting)
+        lverify.target = .local
+        lverify.models = sampleModels
+        lverify.bootStart = now.addingTimeInterval(-25)
+        lverify.stepAt = [.rent: 2, .gpu: 3, .download: 4]
+        lverify.upPhase = "verify"
+        lverify.lastDetail = "this Mac, q6"
+
+        let lready = base(.ready)
+        lready.target = .local
+        lready.readyURL = "http://127.0.0.1:8931/v1"
+        lready.snap = Snapshot(pod: Pod(provider: "local", id: "41234", status: "running", detail: "this Mac, q6",
+                                        cost_per_hr: 0, started_at: now.addingTimeInterval(-2400), host_download_mbps: 0),
+                               version: Release(version: "b11118", git_sha: "local"),
+                               status: AgentStatus(stage: "ready", stage_detail: nil, download: nil, uptime_s: 2400, idle_s: 166, kill_in_s: 1634,
+                                                   kill_reason: "idle", expires_at: nil,
+                                                   gpu: GPU(name: "Apple M1 Max", vram_used_mb: 23654, vram_total_mb: 65536, util_pct: 0),
+                                                   llama: Llama(requests_processing: 0, requests_deferred: 0, prompt_tokens_total: 41200,
+                                                                gen_tokens_total: 6120, prompt_tps: 96.4, gen_tps: 11.8),
+                                                   model: "q6", ctx: 65536),
+                               down: false, at: now)
+
+        let lfail = base(.failed("gpu: q8 needs 29.1 GB, this Mac allows ~48.0 GB to the GPU"))
+        lfail.target = .local
+        lfail.logTail = ["local: port 8931 in use (LOBO_LOCAL_PORT)"]
+
+        return [("off", off), ("boot", boot), ("ready", ready), ("fail", fail), ("setup", setup),
+                ("off_local", loff), ("boot_local", lboot), ("verify_local", lverify), ("ready_local", lready), ("fail_local", lfail)]
     }
 }
 
