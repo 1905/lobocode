@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/1905/lobocode/internal/agent"
 )
 
 func TestFreeMiB(t *testing.T) {
@@ -52,7 +54,7 @@ func TestSelfAPIPerProvider(t *testing.T) {
 	if selfAPI("vast", "pod1", "k", "", "") != nil || selfAPI("runpod", "", "", "1", "k") != nil {
 		t.Fatal("must not cross providers")
 	}
-	for _, kv := range cleanEnv([]string{"CONTAINER_API_KEY=x", "RUNPOD_API_KEY=y", "PATH=/bin"}) {
+	for _, kv := range agent.CleanEnv([]string{"CONTAINER_API_KEY=x", "RUNPOD_API_KEY=y", "PATH=/bin"}) {
 		if kv != "PATH=/bin" {
 			t.Fatal("secret leaked into child env:", kv)
 		}

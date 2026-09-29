@@ -83,7 +83,7 @@ func run() error {
 	}
 	log.Info().RawJSON("release", ver).Str("model", m.File).Int("ctx", cfg.Ctx).Time("expires_at", cfg.ExpiresAt).Msg("start")
 
-	childEnv := cleanEnv(os.Environ())
+	childEnv := agent.CleanEnv(os.Environ())
 	coll := metrics.Collector{
 		LlamaURL: "http://" + agent.LlamaAddr, APIKey: cfg.LoboAPIKey,
 		SMI: func(ctx context.Context) (string, error) {
@@ -181,20 +181,6 @@ func run() error {
 		}
 	}()
 	return r.Run(context.Background())
-}
-
-// cleanEnv drops secrets and LLAMA_ARG_* (the image sets LLAMA_ARG_HOST=0.0.0.0) from child env.
-func cleanEnv(env []string) []string {
-	var out []string
-	for _, kv := range env {
-		k, _, _ := strings.Cut(kv, "=")
-		switch {
-		case strings.HasPrefix(k, "LLAMA_ARG_"), k == "CF_TUNNEL_TOKEN", k == "RUNPOD_API_KEY", k == "CONTAINER_API_KEY", k == "LOBO_API_KEY", k == "LD_LIBRARY_PATH":
-			continue
-		}
-		out = append(out, kv)
-	}
-	return out
 }
 
 func fetch(ctx context.Context, url, dst string) error {
