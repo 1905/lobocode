@@ -136,11 +136,19 @@ func TestProviders(t *testing.T) {
 }
 
 func TestDepsLocal(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir()) // no running local instance: the configured ports
 	d := deps(config.Laptop{LoboAPIKey: "sk", LocalPort: "9000"})
 	if d.LocalURL != "http://127.0.0.1:9000/v1" || d.LocalAgent == nil {
 		t.Fatalf("%+v", d)
 	}
 	if d = deps(config.Laptop{LoboAPIKey: "sk"}); d.LocalURL != "http://127.0.0.1:8931/v1" {
+		t.Fatal(d.LocalURL)
+	}
+	// A running instance keeps its saved ports, whatever the config says now.
+	if err := local.ClaimState(local.State{PID: os.Getpid(), Port: 8931, APIPort: 8932, BootID: "b1"}); err != nil {
+		t.Fatal(err)
+	}
+	if d = deps(config.Laptop{LoboAPIKey: "sk", LocalPort: "9000"}); d.LocalURL != "http://127.0.0.1:8931/v1" {
 		t.Fatal(d.LocalURL)
 	}
 }

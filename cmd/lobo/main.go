@@ -72,12 +72,12 @@ func loadCfg() (config.Laptop, error) {
 }
 
 func deps(cfg config.Laptop) control.Deps {
-	port := cfg.Port()
+	port, apiPort := local.ActiveEndpoints(cfg.Port()) // a running instance keeps the ports it started with
 	return control.Deps{
 		Providers:  providers(cfg),
 		Releases:   control.BucketReleases{BucketURL: cfg.BucketURL},
 		Agent:      control.NewHTTPAgent(cfg.Domain, cfg.LoboAPIKey),
-		LocalAgent: control.NewHTTPAgentURL(fmt.Sprintf("http://127.0.0.1:%d", port+1), cfg.LoboAPIKey),
+		LocalAgent: control.NewHTTPAgentURL(fmt.Sprintf("http://127.0.0.1:%d", apiPort), cfg.LoboAPIKey),
 		LocalURL:   fmt.Sprintf("http://127.0.0.1:%d/v1", port),
 		Cfg:        cfg,
 	}
