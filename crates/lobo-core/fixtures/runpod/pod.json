@@ -1,0 +1,39 @@
+{
+ "consumerUserId": "<redacted>",
+ "containerDiskInGb": 80,
+ "costPerHr": 0.69,
+ "createdAt": "2026-09-23 08:48:28.209 +0000 UTC",
+ "desiredStatus": "RUNNING",
+ "dockerEntrypoint": [
+  "bash",
+  "-c"
+ ],
+ "dockerStartCmd": "<redacted>",
+ "env": {
+  "CF_TUNNEL_TOKEN": "<redacted>",
+  "LOBO_API_KEY": "<redacted>",
+  "PUBLIC_KEY": "<redacted>"
+ },
+ "gpuCount": 1,
+ "id": "3ab00vd3rf1575",
+ "imageName": "ghcr.io/ggml-org/llama.cpp:server-cuda-b11118",
+ "lastStartedAt": "2026-09-23 08:48:28.204 +0000 UTC",
+ "lastStatusChange": "Rented by User: Wed Sep 23 2026 08:48:28 GMT+0000 (Coordinated Universal Time)",
+ "machine": {
+  "redacted": true
+ },
+ "machineId": "<redacted>",
+ "memoryInGb": 146,
+ "name": "lobo-p1",
+ "ports": [
+  "22/tcp"
+ ],
+ "portMappings": {
+  "22": 18180
+ },
+ "publicIp": "<redacted>",
+ "templateId": "",
+ "vcpuCount": 37,
+ "volumeInGb": 0,
+ "volumeMountPath": "/workspace"
+}

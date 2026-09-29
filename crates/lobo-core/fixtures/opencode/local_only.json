@@ -1,0 +1,38 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "lobo": {
+      "description": "Lean agent for the lobo pod (Qwen3.5-27B): no MCP, no skills, core coding tools only",
+      "mode": "primary",
+      "model": "lobo-local/qwen3.5-27b-uncensored-q8",
+      "tools": {
+        "blender_*": false,
+        "pencil_*": false,
+        "skill": false,
+        "task": false,
+        "todoread": false,
+        "todowrite": false,
+        "webfetch": false
+      }
+    }
+  },
+  "provider": {
+    "lobo-local": {
+      "models": {
+        "qwen3.5-27b-uncensored-q8": {
+          "limit": {
+            "context": 65536,
+            "output": 8192
+          },
+          "name": "Qwen3.5-27B Q8"
+        }
+      },
+      "name": "Lobo (this Mac)",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "apiKey": "sk-fixed",
+        "baseURL": "http://127.0.0.1:9000/v1"
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "CF_TUNNEL_TOKEN": "tok",
+  "LOBO_API_KEY": "sk",
+  "LOBO_BOOT_ID": "boot-fixed",
+  "LOBO_BOOT_TIMEOUT": "40m",
+  "LOBO_CTX": "8192",
+  "LOBO_DL_CONNS": "8",
+  "LOBO_EXPIRES_AT": "2026-09-23T22:00:00Z",
+  "LOBO_IDLE_MIN": "30",
+  "LOBO_MIN_MBPS": "100",
+  "LOBO_MODEL": "q8",
+  "LOBO_MODEL_SSH_HOSTKEY": "ssh-ed25519 AAAAPIN",
+  "LOBO_MODEL_SSH_KEY": "base64-fixed",
+  "LOBO_MODEL_URL": "https://b/m.gguf",
+  "LOBO_MODEL_URL_FALLBACK": "https://fallback/m",
+  "LOBO_PROVIDER": "runpod"
+}

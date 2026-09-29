@@ -2,8 +2,11 @@
 
 ## Unreleased
 
+- Rust P3 foundation: shared file-only config loading, masked display, atomic config writes, errors and clock.
+- P3 checks: 36 core tests pass; 77 Go fixture files reproduce exactly. Providers and lifecycle remain unfinished.
+
 - Rust rewrite P2 candidate: add the pod agent, HTTP/SSH downloads, watchdog, metrics, API and provider self-deletion.
-- P2 local checks: 136 workspace tests pass. Static Linux build, image CI and live provider acceptance are still pending.
+- P2 checks: 136 workspace tests and Rust CI pass. Static Linux agent: 8.02 MB. Image CI passed. Final live E2E remains pending.
 
 - Rust rewrite P1: add the workspace, shared protocol types, Go compatibility fixtures and generated TypeScript types.
 - P1 validation: 35 protocol tests pass. The Rust CLI and app remain pending.

@@ -1,0 +1,21 @@
+{
+  "client_id": "me",
+  "disk": 80,
+  "env": {
+    "CF_TUNNEL_TOKEN": "tok",
+    "LOBO_API_KEY": "sk",
+    "LOBO_BOOT_TIMEOUT": "40m",
+    "LOBO_CTX": "65536",
+    "LOBO_EXPIRES_AT": "2026-09-23T22:00:00Z",
+    "LOBO_IDLE_MIN": "30",
+    "LOBO_MODEL": "q8",
+    "LOBO_MODEL_URL": "m",
+    "LOBO_PROVIDER": "vast",
+    "LOBO_RELEASE_SHA256": "s",
+    "LOBO_RELEASE_URL": "r"
+  },
+  "image": "ghcr.io/ggml-org/llama.cpp:server-cuda-b11118",
+  "label": "lobo",
+  "onstart": "#!/bin/bash\nset -e\nterminate() {\n  code=$(curl -s -o /dev/null -w '%{http_code}' -m 15 -X DELETE -H \"Authorization: Bearer $CONTAINER_API_KEY\" \"https://console.vast.ai/api/v0/instances/$CONTAINER_ID/\") || return 1\n  [ \"$code\" = 200 ] || [ \"$code\" = 404 ]\n}\ndie() {\n  trap - ERR\n  echo \"lobo bootstrap failed, terminating instance\" \u003e\u00262\n  for i in $(seq 1 30); do\n    if terminate; then echo \"terminate accepted\" \u003e\u00262; break; fi\n    echo \"terminate failed (try $i), retrying in 20 s\" \u003e\u00262\n    sleep 20\n  done\n  sleep 600\n  exit 1\n}\ntrap die ERR\nexport LOBO_T_BOOT0=$(date +%s.%N)\nif [ -z \"${LOBO_RELEASE_URL:-}\" ] \u0026\u0026 [ -x /lobo/lobo-agent ]; then\n  echo \"lobo bootstrap: baked agent, no release download\" \u003e\u00262\n  export LOBO_T_APT=$LOBO_T_BOOT0 LOBO_T_ZIP=$LOBO_T_BOOT0\nelse\n  timeout 300 bash -c 'apt-get update -qq \u0026\u0026 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unzip \u003e/dev/null'\n  export LOBO_T_APT=$(date +%s.%N)\n  timeout 300 curl -fsSL \"$LOBO_RELEASE_URL\" -o /tmp/lobo-release.zip\n  echo \"$LOBO_RELEASE_SHA256  /tmp/lobo-release.zip\" | sha256sum -c\n  unzip -o -q /tmp/lobo-release.zip -d /lobo\n  export LOBO_T_ZIP=$(date +%s.%N)\nfi\n# A failed exec (missing or non-executable binary) exits the shell without the ERR trap. execfail\n# keeps the shell alive only with errexit off (checked on bash 5.2), then terminate by hand.\nshopt -s execfail\nset +e\nexec /lobo/lobo-agent\ndie",
+  "runtype": "ssh"
+}

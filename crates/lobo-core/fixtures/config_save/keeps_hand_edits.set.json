@@ -1,0 +1,6 @@
+{
+  "LOBO_DOMAIN": "",
+  "LOBO_MIN_MBPS": "150",
+  "LOBO_MODEL_SSH_HOSTKEY": "ssh-ed25519 AAAA#x",
+  "RUNPOD_API_KEY": "new"
+}
