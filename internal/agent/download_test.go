@@ -145,3 +145,77 @@ func TestHTTPSourceErrorsHideSecretURL(t *testing.T) {
 		}
 	}
 }
+
+// A partial dst from an earlier run resumes: its bytes are hashed, only the rest is fetched.
+// A dst longer than the source starts over.
+func TestDownloadResumesPartialFile(t *testing.T) {
+	data := make([]byte, 1<<20)
+	_, _ = rand.Read(data)
+	sum := sha256.Sum256(data)
+	sha := hex.EncodeToString(sum[:])
+	var served atomic.Int64
+	var ranges []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ranges = append(ranges, r.Header.Get("Range"))
+		cw := &countWriter{ResponseWriter: w, n: &served}
+		http.ServeContent(cw, r, "m", time.Time{}, bytes.NewReader(data))
+	}))
+	defer srv.Close()
+	for _, tc := range []struct {
+		name    string
+		have    []byte
+		wantMax int64  // bytes served, probe included
+		wantRng string // range of the main fetch
+	}{
+		{"partial", data[:300_000], int64(len(data)-300_000) + 1, "bytes=300000-"},
+		{"complete", data, 1, ""},
+		{"too long", append(append([]byte{}, data...), 1, 2, 3), int64(len(data)) + 1, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			served.Store(0)
+			ranges = nil
+			dst := filepath.Join(t.TempDir(), "m")
+			if err := os.WriteFile(dst, tc.have, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var last DownloadProgress
+			if err := Download(context.Background(), HTTPSource{srv.URL}, dst, sha, func(p DownloadProgress) { last = p }); err != nil {
+				t.Fatal(err)
+			}
+			got, _ := os.ReadFile(dst)
+			if !bytes.Equal(got, data) {
+				t.Fatalf("content differs: %d bytes", len(got))
+			}
+			if served.Load() > tc.wantMax {
+				t.Fatalf("served %d bytes, want <= %d (ranges %q)", served.Load(), tc.wantMax, ranges)
+			}
+			if ranges[0] != "bytes=0-0" {
+				t.Fatalf("probe %q", ranges[0])
+			}
+			if tc.wantRng != "" && (len(ranges) != 2 || ranges[1] != tc.wantRng) {
+				t.Fatalf("ranges %q", ranges)
+			}
+			if last.Bytes != int64(len(data)) || last.Total != int64(len(data)) {
+				t.Fatalf("progress %+v", last)
+			}
+		})
+	}
+}
+
+type countWriter struct {
+	http.ResponseWriter
+	n *atomic.Int64
+}
+
+func (c *countWriter) Write(b []byte) (int, error) {
+	c.n.Add(int64(len(b)))
+	return c.ResponseWriter.Write(b)
+}
+
+func TestRangeTotal(t *testing.T) {
+	for in, want := range map[string]int64{"bytes 0-0/1234": 1234, "bytes 5-9/*": -1, "": -1, "bytes */77": 77} {
+		if got := rangeTotal(in); got != want {
+			t.Errorf("%q: %d, want %d", in, got, want)
+		}
+	}
+}

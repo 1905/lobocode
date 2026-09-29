@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -75,7 +76,7 @@ func (s HTTPSource) Open(ctx context.Context, offset, length int64) (io.ReadClos
 	case !ranged && resp.StatusCode == http.StatusOK:
 		return body, resp.ContentLength, nil
 	case ranged && resp.StatusCode == http.StatusPartialContent:
-		return body, -1, nil
+		return body, rangeTotal(resp.Header.Get("Content-Range")), nil
 	}
 	_ = body.Close()
 	switch {
@@ -85,6 +86,19 @@ func (s HTTPSource) Open(ctx context.Context, offset, length int64) (io.ReadClos
 		return nil, 0, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	return nil, 0, permanentErr{fmt.Errorf("download %s: HTTP %d", s, resp.StatusCode)}
+}
+
+// rangeTotal reads N from "bytes a-b/N". -1 when absent or "*".
+func rangeTotal(v string) int64 {
+	i := strings.LastIndexByte(v, '/')
+	if i < 0 {
+		return -1
+	}
+	n, err := strconv.ParseInt(v[i+1:], 10, 64)
+	if err != nil || n < 0 {
+		return -1
+	}
+	return n
 }
 
 // cancelBody releases the request context when the body is closed.
