@@ -67,3 +67,7 @@ func All() []Model {
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
+
+// MinFreeMiB is the GPU memory a model needs: weights + 2.5 GiB for KV cache (64K ctx, q8_0) and buffers.
+// Measured 2026-09-25: Q8 @ 64K uses 29,274 MiB of VRAM; weights + 2.5 GiB = 29,831.
+func MinFreeMiB(modelBytes int64) int { return int(modelBytes>>20) + 2560 }

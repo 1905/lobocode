@@ -20,3 +20,5 @@ func memBytes() (uint64, error) {
 	copy(b[:], s)
 	return binary.LittleEndian.Uint64(b[:]), nil
 }
+
+func sysctlString(name string) (string, error) { return syscall.Sysctl(name) }

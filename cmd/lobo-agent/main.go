@@ -116,9 +116,9 @@ func run() error {
 				if strings.Contains(string(out), "CUDA0:") {
 					_, _ = prefix(logs, "gpu-check").Write(out)
 					free, ok := freeMiB(string(out))
-					if !ok || free < minFreeMiB(m.Size) {
+					if !ok || free < model.MinFreeMiB(m.Size) {
 						// Seen live: a host with ~6 GB VRAM held outside our container → cudaMalloc OOM on load.
-						return fmt.Errorf("only %d MiB VRAM free, %s needs %d MiB", free, m.ID, minFreeMiB(m.Size))
+						return fmt.Errorf("only %d MiB VRAM free, %s needs %d MiB", free, m.ID, model.MinFreeMiB(m.Size))
 					}
 					log.Info().Int("attempt", attempt).Dur("after", time.Since(start)).Int("free_mib", free).Msg("gpu check ok")
 					return nil
@@ -286,10 +286,6 @@ func freeMiB(out string) (int, bool) {
 	n, err := strconv.Atoi(m[2])
 	return n, err == nil
 }
-
-// minFreeMiB = weights + 2.5 GiB for KV cache (64K ctx, q8_0) and CUDA buffers.
-// Measured 2026-09-25: Q8 @ 64K uses 29,274 MiB of VRAM; weights + 2.5 GiB = 29,831.
-func minFreeMiB(modelBytes int64) int { return int(modelBytes>>20) + 2560 }
 
 // killSelfFromEnv terminates this pod with the RunPod-injected pod key, without the agent config.
 func killSelfFromEnv() {
