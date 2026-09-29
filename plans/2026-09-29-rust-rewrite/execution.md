@@ -108,3 +108,7 @@ The paused local tests had passed (14 focused tests). Go interop and lint checks
 - P3 Tasks 36–38 plus identity/state-URL helpers from Task 47 are implemented. 14 focused local tests and 3 real Go/Rust interop tests pass. CI now runs interop explicitly; P6 removes this Go dependency. Runtime/model/supervisor/control work remains pending.
 
 - P3 Tasks 39–41 implemented. 29 focused local tests and clippy pass. Extraction owns staging files through cancellation, defers symlinks and rejects targets outside the staged tree. An explicit ignored test verifies the actual pinned archive; not run yet.
+
+- Runtime/model batch 2b98c0c passed Rust CI 36575917465 and image CI 36575917816. The explicit pinned-archive test passed: real download, size/SHA check and extraction. No model weights were downloaded.
+- P3 Tasks 42–47 implemented: Mac hooks, shared supervisor options, CLI/app Spawner prefixes, loopback API and scoped logging. The seven Mac dependency tests and seven supervisor/argument tests pass. Local provider lifecycle remains pending.
+- Supervisor logging uses tracing's per-future WithSubscriber, not a global subscriber (https://docs.rs/tracing/latest/tracing/instrument/trait.WithSubscriber.html). Startup prepares fallible version data before claiming state. Cleanup failures return errors instead of reporting a successful stop.
