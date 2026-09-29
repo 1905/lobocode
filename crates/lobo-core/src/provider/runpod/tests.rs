@@ -364,3 +364,27 @@ async fn cancellation_prevents_next_create_and_preserves_success() {
     ));
     assert!(api.calls.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn create_rejection_is_distinct_from_ambiguous_response() {
+    for (status, body, kind) in [
+        (401, "unauthorized", "rejected"),
+        (500, "upstream failed", "provider_api"),
+        (200, "broken json", "json"),
+    ] {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::any())
+            .respond_with(wiremock::ResponseTemplate::new(status).set_body_string(body))
+            .mount(&server)
+            .await;
+        let client = Client::with_base("k", &server.uri());
+        assert_eq!(
+            client
+                .create(&fixture_opts(), "COMMUNITY", 0.0)
+                .await
+                .unwrap_err()
+                .kind(),
+            kind
+        );
+    }
+}

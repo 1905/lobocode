@@ -141,10 +141,14 @@ impl Client {
             if is_no_capacity(&msg) {
                 return Err(Error::NoCapacity(msg));
             }
-            return Err(Error::Api(format!(
-                "runpod {method} {path}: HTTP {}: {msg}",
-                status.as_u16()
-            )));
+            let detail = format!("runpod {method} {path}: HTTP {}: {msg}", status.as_u16());
+            return Err(
+                if method == Method::POST && path == "/pods" && status.is_client_error() {
+                    Error::CreateRejected(detail)
+                } else {
+                    Error::Api(detail)
+                },
+            );
         }
         Ok(bytes.to_vec())
     }
@@ -239,7 +243,14 @@ impl Provider for RunPodProvider {
                         return Ok(i);
                     }
                     Err(e @ Error::NoCapacity(_)) => last_error = e,
-                    Err(e) => return Err(e),
+                    Err(e @ (Error::CreateRejected(_) | Error::NotFound)) => return Err(e),
+                    Err(e) => {
+                        return Err(Error::UnresolvedCreate {
+                            provider: "runpod".into(),
+                            boot_id: o.boot_id.clone(),
+                            detail: e.to_string(),
+                        });
+                    }
                 }
             }
             note(format!("no 5090 in {cloud} at any network speed"));

@@ -68,6 +68,9 @@ pub fn deps_from_config(cfg: Laptop, w: &Wiring) -> Result<Deps> {
         None
     };
     Ok(Deps {
+        operations: Arc::new(OperationState::persistent(
+            StateFile::default_path().with_file_name("operation.json"),
+        )),
         providers: providers_from_config(&cfg, w),
         releases: Arc::new(BucketReleases::new(&cfg.bucket_url)),
         presign,

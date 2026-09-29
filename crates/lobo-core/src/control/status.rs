@@ -32,11 +32,19 @@ pub async fn snapshot(d: &Deps) -> Result<Snap> {
     })
 }
 pub async fn down(d: &Deps) -> Result<f64> {
+    let mut operation = d
+        .operations
+        .acquire(&tokio_util::sync::CancellationToken::new())
+        .await?;
     let (instances, error) = list_all(d).await;
     let mut errors = vec![];
     let mut spent = 0.0;
     if let Some(e) = error {
         errors.push(Error::Other(format!("list: {e}")));
+    }
+    // Keep the initial list for spend, even if reconciliation deletes one now.
+    if let Err(e) = super::cleanup::pending(d, &mut operation).await {
+        errors.push(e);
     }
     for instance in instances {
         if let Some(start) = instance.started_at.0 {

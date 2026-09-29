@@ -339,3 +339,6 @@ pub fn loose_mode(path: &Path) -> bool {
 pub mod show;
 #[cfg(test)]
 mod tests;
+
+pub use envfile::{HEADER, LAYOUT, LayoutGroup};
+pub use show::{PLAIN_KEYS, mask, masked, show};

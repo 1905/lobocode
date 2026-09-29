@@ -9,6 +9,8 @@ use async_trait::async_trait;
 use lobo_proto::{Manifest, Status};
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 pub mod agent_http;
+pub mod operation_state;
+pub use operation_state::OperationState;
 pub mod status;
 pub use agent_http::HttpAgent;
 pub use status::{down, snapshot, target};
@@ -48,6 +50,7 @@ pub type AgentFactory = Arc<dyn Fn(&str) -> Arc<dyn AgentApi> + Send + Sync>;
 #[derive(Clone)]
 pub struct Deps {
     pub providers: BTreeMap<String, Arc<dyn Provider>>,
+    pub operations: Arc<OperationState>,
     pub releases: Arc<dyn ReleaseResolver>,
     pub presign: Option<Arc<dyn Presigner>>,
     pub new_agent: AgentFactory,
@@ -97,3 +100,13 @@ mod tests;
 pub mod precheck;
 pub mod wiring;
 pub use wiring::{Wiring, deps_from_config, local_provider_from_config, providers_from_config};
+
+mod cleanup;
+
+mod up;
+pub use up::{UpOperation, up};
+
+#[cfg(test)]
+mod up_tests;
+
+pub use precheck::{apply_defaults, check_providers, check_release, check_target};

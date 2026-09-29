@@ -226,6 +226,7 @@ pub fn release() -> Resolved {
 }
 pub fn deps(rp: Arc<FakeRunPod>, ag: Arc<FakeAgent>, clock: Arc<dyn Clock>) -> Deps {
     Deps {
+        operations: Arc::new(OperationState::memory()),
         providers: [(
             "runpod".into(),
             Arc::new(RunPodProvider {
@@ -302,6 +303,27 @@ pub fn local_boot_script() -> Vec<Option<Status>> {
         }),
     ]
 }
+pub async fn events(script: Vec<Option<Status>>, no_cap: &[&str]) -> Vec<lobo_proto::UpEvent> {
+    let rp = Arc::new(FakeRunPod::default());
+    rp.state.lock().unwrap().no_cap = no_cap.iter().map(|s| (*s).to_owned()).collect();
+    let clock = Arc::new(crate::clock::StepClock::new(
+        "2026-09-23T10:00:00Z".parse().unwrap(),
+        Duration::from_secs(1),
+    ));
+    let mut operation = super::up(
+        deps(rp, Arc::new(FakeAgent::new(script)), clock),
+        UpOpts::default(),
+        CancellationToken::new(),
+    );
+    let mut events = operation.take_events().unwrap();
+    let mut out = Vec::new();
+    while let Some(event) = events.recv().await {
+        out.push(event);
+    }
+    let _ = operation.wait().await;
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

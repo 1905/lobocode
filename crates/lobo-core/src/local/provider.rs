@@ -82,6 +82,7 @@ impl EnsureRuntime for PinnedRuntime {
         super::runtime::ensure_runtime(weights, cancel, note).await
     }
 }
+#[derive(Clone)]
 pub struct LocalHooks {
     pub supported: fn() -> Result<()>,
     pub ensure_runtime: Arc<dyn EnsureRuntime>,
@@ -105,6 +106,7 @@ impl Default for LocalHooks {
         }
     }
 }
+#[derive(Clone)]
 pub struct LocalProvider {
     pub spawner: Spawner,
     pub config_path: Option<PathBuf>,

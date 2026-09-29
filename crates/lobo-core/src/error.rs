@@ -17,6 +17,14 @@ pub enum Error {
     AlreadyRunning(String),
     #[error("{0}")]
     Api(String),
+    #[error("{0}")]
+    CreateRejected(String),
+    #[error("unresolved create on {provider}, boot {boot_id}: {detail}")]
+    UnresolvedCreate {
+        provider: String,
+        boot_id: String,
+        detail: String,
+    },
     #[error(transparent)]
     Http(#[from] reqwest::Error),
     #[error(transparent)]
@@ -57,9 +65,10 @@ impl Error {
             Self::NoCapacity(_) => "no_capacity",
             Self::NotFound => "not_found",
             Self::NoCredit => "no_credit",
-            Self::Rejected(_) => "rejected",
+            Self::Rejected(_) | Self::CreateRejected(_) => "rejected",
             Self::AlreadyRunning(_) => "already_running",
             Self::Api(_) => "provider_api",
+            Self::UnresolvedCreate { .. } => "unresolved_create",
             Self::Http(_) => "network",
             Self::Io(_) => "io",
             Self::Json(_) => "json",
@@ -90,8 +99,17 @@ mod tests {
             (Error::NotFound, "not_found"),
             (Error::NoCredit, "no_credit"),
             (Error::Rejected("x".into()), "rejected"),
+            (Error::CreateRejected("x".into()), "rejected"),
             (Error::AlreadyRunning("x".into()), "already_running"),
             (Error::Api("x".into()), "provider_api"),
+            (
+                Error::UnresolvedCreate {
+                    provider: "runpod".into(),
+                    boot_id: "b".into(),
+                    detail: "unknown".into(),
+                },
+                "unresolved_create",
+            ),
             (Error::Io(std::io::Error::other("x")), "io"),
             (
                 Error::Json(serde_json::from_str::<String>("{").unwrap_err()),
