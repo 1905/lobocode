@@ -47,3 +47,21 @@ jobs:
           make proto-fixtures
           git diff --exit-code -- crates/lobo-proto/fixtures crates/lobo-proto/catalog.json
           test -z "$(git status --porcelain -- crates/lobo-proto/fixtures crates/lobo-proto/catalog.json)"
+
+  agent-musl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.1"
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build static agent
+        run: cargo build --release --locked -p lobo-agent --target x86_64-unknown-linux-musl
+      - name: Check static executable
+        run: |
+          file target/x86_64-unknown-linux-musl/release/lobo-agent | tee /dev/stderr | grep -Eq 'statically linked|static-pie linked'
+          ls -l target/x86_64-unknown-linux-musl/release/lobo-agent >> "$GITHUB_STEP_SUMMARY"

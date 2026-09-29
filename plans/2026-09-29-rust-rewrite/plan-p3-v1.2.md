@@ -6,6 +6,8 @@
 **Contracts:** ./contracts.md v1.2 (names and signatures used exactly; extras listed under "Contract additions")
 **Phase:** P3 of 6. Needs P1 (`lobo-proto`) and P2 (`lobo-agent`) done on `feat/rust`.
 
+Execution update (2026-09-29): the user moved GPU rentals to final P6 E2E. P3 requires P2 code, static builds and CI; P2 live acceptance remains pending.
+
 **Goal:** `crates/lobo-core` holds all laptop logic: config file, RunPod/Vast/local providers, up/status/down/target, `lobo test` checks, release (zip, secret scan, R2), bootstrap script, local supervisor, opencode genkey. Behaviour = Go at the recorded master fork after `6a72092` is merged, proven by a Rust port of every Go test in these packages plus golden files written by the Go code.
 
 **Architecture:** Go stays untouched and keeps building until P6 (the Go CLI and the Swift app still use it). `lobo-core` depends on `lobo-proto` (wire types) and `lobo-agent` (Runner, API router, downloader, process helpers). A second Go dumper, `tools/corefixtures`, writes golden files from the real Go functions (`config.Save`, `godotenv.Read`, `bootstrap.Script/Env`, `runpod.BuildCreatePayload`, `vast.CreateBody`, the `gen-api-key` output). Rust tests compare bytes against them. CI re-runs the dumper, so any Go change shows up as a diff. No live calls in P3: every HTTP peer is `wiremock`, every child process is a fake script or a test helper binary.

@@ -1,20 +1,19 @@
-# Pod image: llama.cpp server + lobo-agent baked in. `lobo up --image` (or LOBO_POD_IMAGE) rents this
-# instead of the plain llama image, and the bootstrap skips apt + the release zip download.
-# Built and pushed by .github/workflows/pod-image.yml only; it passes LLAMA_IMAGE = release.DefaultLlamaImage.
+# Pod image: llama.cpp server + lobo-agent (Rust, static musl) baked in.
+# Built by pod-image.yml; LLAMA_IMAGE comes from lobo-proto DEFAULT_LLAMA_IMAGE.
 ARG LLAMA_IMAGE
 
-FROM golang:1.26 AS build
+FROM rust:1.98.1-alpine AS build
 ARG VERSION=dev
 ARG GIT_SHA=none
 ARG LLAMA_IMAGE
+RUN apk add --no-cache musl-dev
 WORKDIR /src
-COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
-COPY cmd/lobo-agent ./cmd/lobo-agent
-COPY internal ./internal
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.version=${VERSION}" -o /out/lobo-agent ./cmd/lobo-agent
-# /api/version body: the release.Manifest fields the CLI and the mac app read (version, git_sha) + the base image.
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY .cargo ./.cargo
+COPY crates ./crates
+RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \
+    LOBO_VERSION="$VERSION" cargo build --release --locked -p lobo-agent --target x86_64-unknown-linux-musl && \
+    mkdir -p /out && cp target/x86_64-unknown-linux-musl/release/lobo-agent /out/lobo-agent
 RUN printf '{"version":"%s","git_sha":"%s","built_by":"github-actions","llama_image":"%s"}\n' \
       "$VERSION" "$GIT_SHA" "$LLAMA_IMAGE" > /out/release.json
 

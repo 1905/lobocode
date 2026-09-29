@@ -28,6 +28,7 @@ The current corrections have not received another independent model review. Runt
 - Add hidden release --no-promote. Upload immutable zip and version metadata only. Test with an explicit release version.
 - Record the shared latest manifest hash before and after candidate testing. It must stay unchanged.
 - Promote a release built from the merged source only after verifying the tagged release. Candidate testing needs no public pointer rollback.
+- GPU rental timing: the user confirmed "you alloed to reng gpu in the end for full e2e test." Defer P2 live rentals to the final P6 run. P3 can start after P2 local/static/CI checks. Keep P2 live acceptance pending until then.
 - Keep one final Codex code review in P6. Builds, fixture checks and focused tests run in every phase.
 - HTTPS workflow push was rejected for missing workflow scope. The existing ~/ssh/github-kass key authenticates as 1905. Use an explicit SSH command with git@github.com:1905/lobocode.git; do not reuse stale account aliases.
 - No Jira issue is identified for lobocode. Do not use unrelated Sputnik issues.
@@ -60,7 +61,8 @@ P1 is protocol infrastructure; it is not a runnable replacement. P2 first delive
 Keep Go on master until P6 cutover. Intermediate Rust candidate builds use feat/rust and normal repository CI.
 Update CHANGELOG.md in the same batch commit. Label partial work and validation limits explicitly.
 
-The P2 live budget is approximately $1. P6 live spending is capped at $5.
+P2 live checks now run during final P6 E2E, not during P2. Keep the final live spending cap at $5.
+Retain the baseline Go CLI binary to check agent compatibility during that same final rental where practical.
 Recheck actual provider prices and account availability before renting. Record actual costs separately from estimates.
 Use cleanup on every live exit path. Only task-owned instances and processes may be stopped.
 
@@ -70,5 +72,8 @@ Use cleanup on every live exit path. Only task-owned instances and processes may
 - Baseline validation passed: Go build, 361 Go tests across 18 packages, Swift tests and `make mac` (bundle plus renders).
 - Baseline merged/pushed as 3117f9b; pod-image CI 36556262206 passed. Finder reopen was not manually exercised in this pass.
 - P1 complete on feat/rust at 5dfe9ab: 35 tests, fmt, clippy, fixture/TS drift and CI 36557109125 pass. Actionlint v1.7.7 passes.
-- P2 starts next. Post-delivery Go regression check remains pending.
+- P2 library, pod wiring and binary are implemented. Local workspace: 136 tests pass. Static build, candidate CI and live providers remain pending.
+- Post-P1 Go regression check: 361 tests passed across 19 packages.
+- P2 runner keeps boot/watchdog futures owned by run. SSH bodies close their socket because russh Handle drop detaches its worker.
+- P2 `pod::run` config-reader reference needs `+ Sync` for the spawned fatal-path wrapper. This is an implementation-driven contract correction.
 - Full P1–P6 acceptance, live tests, final code review and release remain pending.

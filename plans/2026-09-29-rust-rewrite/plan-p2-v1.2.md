@@ -100,7 +100,9 @@
 
 ## Pinned versions
 
-_(Task 1 fills this line from `Cargo.lock`: tokio, tokio-util, async-trait, reqwest, axum, russh, sha2, hex, base64, url, bytes, futures-util, regex-lite, thiserror, tracing, tracing-subscriber, clap, chrono, serde_json, wiremock, tempfile. Plus `zig --version` and `cargo zigbuild --version` from Task 27.)_
+`tokio 1.53.1`, `tokio-util 0.7.19`, `async-trait 0.1.92`, `reqwest 0.12.28`, `axum 0.8.9`, `russh 0.63.3`, `sha2 0.10.9, 0.11.0`, `hex 0.4.3`, `base64 0.22.1, 0.23.1`, `url 2.5.8`, `bytes 1.12.1`, `futures-util 0.3.34`, `regex-lite 0.1.9`, `thiserror 2.0.21`, `tracing 0.1.44`, `tracing-subscriber 0.3.23`, `clap 4.6.7`, `chrono 0.4.45`, `serde_json 1.0.151`, `wiremock 0.6.5`, `tempfile 3.27.0`.
+
+Cross tools: cargo-zigbuild 0.23.4 installed; Zig installation and static build pending.
 
 ---
 
@@ -124,6 +126,17 @@ _(Task 1 fills this line from `Cargo.lock`: tokio, tokio-util, async-trait, reqw
 | Home network DNS-hijacks `*.r2.dev` | test environment | Task 30 note (live only) |
 
 ---
+
+## Implementation record
+
+- Tasks 0–26 are implemented. Local workspace checks: 136 tests passed; fmt and clippy pass. Runtime pod builds and live checks remain pending.
+- Code is grouped into delivery commits. The task checklists describe required outcomes; individual per-task commits and red-first test runs were not recorded.
+- Runner boot and watchdog are owned futures in `run`, not detached tasks. Tunnel exit wins before the stage is cancelled. All 15 runner tests pass.
+- `pod::run` takes a `Sync` config reader so its future can enter `main_flow`'s spawned task.
+- SSH body ownership includes a TCP shutdown guard. russh 0.63.3's client Handle drop only detaches; closing the socket stops its IO worker on cancellation.
+- GPU script tests use a 2-second ordinary command deadline to tolerate host load. The intentional hang test still uses 100 ms.
+- Go regression after P1: 361 tests passed across 19 packages.
+- API status preserves the Go newline. Phase acceptance still requires the static build, CI and both live providers.
 
 ## Task 0 — Preconditions (orchestrator, no implementer)
 
@@ -568,7 +581,7 @@ pub fn boot_timings(get: &dyn Fn(&str) -> Option<String>) -> Timings;           
 Locked:
 ```rust
 pub fn init_logging(logs: LogSource);            // tracing json → stdout + ring, field service="lobo-agent"
-pub async fn run(get: &dyn Fn(&str) -> Option<String>, logs: LogSource) -> Result<()>;  // = main.go run(): config, catalog, release.json, Collector, Deps, Runner, api on AGENT_ADDR
+pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource) -> Result<()>;  // = main.go run(): config, catalog, release.json, Collector, Deps, Runner, api on AGENT_ADDR
 pub async fn main_flow<F>(run: F, api: Option<Arc<dyn PodApi>>, kill_budget: Duration) -> std::process::ExitCode
     where F: Future<Output = Result<()>> + Send + 'static;
 pub fn bench_line(source: &str, conns: usize, bytes: i64, mbps: f64, err: Option<&str>) -> String;  // one JSON object; source cut to 40 chars
@@ -651,7 +664,11 @@ rust.yml new job `agent-musl` (ubuntu-latest, same checkout/toolchain/cache step
 - [ ] Commit. Orchestrator pushes `feat/rust`; `gh run watch` on both workflows → green. Red → `gh run view --log-failed`, fix, push, repeat.
 - [ ] Record the image digest from the pod-image run summary (`ghcr.io/1905/lobocode@sha256:…`) in this plan's "As-built" line.
 
-## Task 30 — Live check (ORCHESTRATOR ONLY — costs money)
+## Task 30 — Live check (deferred to final P6 E2E by user)
+
+User steering, 2026-09-29: rent GPUs at the end for full E2E. Do not rent during P2.
+The checks below remain required final acceptance evidence. P3 may proceed after P2 static builds and CI pass.
+Preserve the Go baseline CLI for compatibility checks during the final rental.
 
 ⚠ Rents real GPUs (RunPod ~$0.69/h, Vast similar; expected total ≈ $1). Implementers never run any step here. The Go CLI drives it; the pod API is unchanged, so the Go CLI works as is.
 
@@ -676,7 +693,7 @@ Failure handling: any step red → `bin/lobo down` at once, capture `lobo logs` 
 - [ ] Write the numbers (boot seconds per stage, MB/s, cost per provider) into "As-built".
 - [ ] `/notify`: "Rust agent live check done: RunPod <ok/fail>, Vast <ok/fail>. Digest <…>. Continuing P3 under full-auto authorization."
 
-## Task 31 — Phase close (orchestrator)
+## Task 31 — Phase close (orchestrator; live acceptance stays pending until P6)
 
 - [ ] `make rust-lint rust-test rust-agent && go test ./...` → all green; `git status` clean.
 - [ ] Every Go test row in the mapping table below has a passing Rust test (`cargo test -p lobo-agent -- --list | wc -l` ≥ 70).

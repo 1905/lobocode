@@ -92,3 +92,9 @@ proto-fixtures:
 
 proto-ts:
 	cargo test --locked -p lobo-proto export_bindings
+
+.PHONY: rust-agent
+rust-agent:
+	cargo zigbuild --release --locked -p lobo-agent --target x86_64-unknown-linux-musl
+	file target/x86_64-unknown-linux-musl/release/lobo-agent | grep -Eq 'statically linked|static-pie linked'
+	ls -l target/x86_64-unknown-linux-musl/release/lobo-agent

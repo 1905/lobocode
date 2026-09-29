@@ -6,6 +6,8 @@
 **Contracts:** ./contracts.md v1.2
 **Phase:** P6 of 6. Starts only when P1–P5 plans are all `done`.
 
+Execution update (2026-09-29): GPU rentals are authorized at the end for full E2E. Include deferred P2 RunPod/Vast boot, API, logs and idle self-delete checks in the final run. Keep the $5 live spending cap.
+
 **Goal:** prove the Rust build on RunPod, Vast and local, port the e2e suite, remove every Go and Swift file, publish a live report, merge `feat/rust` → master, and ship the first Rust release (brew, pod image, dmg).
 
 **Architecture:** no new runtime code. P6 adds one crate (`crates/lobo-e2e`, the live API suite as `#[ignore]` tests), deletes Go/Swift by `mv` to `/tmp/trash`, and rewires Makefile, CI and docs to cargo only. Live checks run from two places: local mode on this Mac, cloud from the Dell in a throwaway container with a pinned `*.r2.dev` IP (home DNS hijacks `*.r2.dev`). A Go reference binary, built before the removal, drives the old-data checks. One model review of the whole branch runs at the end, then `/simplify`, then verify and merge + release under full-auto authorization.
