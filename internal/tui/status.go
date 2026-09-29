@@ -26,8 +26,15 @@ func RenderStatus(s control.Snap) string {
 	if !p.StartedAt.IsZero() {
 		up = s.At.Sub(p.StartedAt)
 	}
+	// Local runs on this Mac: no money, no GPU load reading, no host /proc, no hard expiry. Those rows are hidden,
+	// not shown as 0 or n/a.
+	local := p.Provider == "local"
 	b.WriteString(row("id", p.ID+"  "+dimS.Render(p.Provider+" · "+p.Status)) + "\n")
-	b.WriteString(row("cost", fmt.Sprintf("$%.2f/h  ·  up %s  ·  spent $%.2f", p.CostPerHr, dur(up), p.CostPerHr*up.Hours())) + "\n")
+	if local {
+		b.WriteString(row("cost", "free  ·  up "+dur(up)) + "\n")
+	} else {
+		b.WriteString(row("cost", fmt.Sprintf("$%.2f/h  ·  up %s  ·  spent $%.2f", p.CostPerHr, dur(up), p.CostPerHr*up.Hours())) + "\n")
+	}
 
 	b.WriteString("\n" + section.Render("Release") + "\n")
 	if v := s.Version; v != nil {
@@ -36,7 +43,9 @@ func RenderStatus(s control.Snap) string {
 			dirty = warnS.Render("  ⚠ dirty tree")
 		}
 		b.WriteString(row("version", fmt.Sprintf("%s  ·  git %s%s", v.Version, v.GitSHA, dirty)) + "\n")
-		b.WriteString(row("image", dimS.Render(v.LlamaImage)) + "\n")
+		if v.LlamaImage != "" {
+			b.WriteString(row("image", dimS.Render(v.LlamaImage)) + "\n")
+		}
 	} else {
 		b.WriteString(row("version", dimS.Render("n/a (agent not reachable yet)")) + "\n")
 	}
@@ -65,8 +74,19 @@ func RenderStatus(s control.Snap) string {
 		b.WriteString(row("download", fmt.Sprintf("%s %5.1f%%  %s / %s  %.0f MB/s", bar(f, 24, okS), 100*f, gb(st.Download.Bytes), gb(st.Download.Total), st.Download.MBps)) + "\n")
 	}
 
-	b.WriteString("\n" + section.Render("GPU") + "\n")
-	if g := st.GPU; g != nil {
+	title := "GPU"
+	if local {
+		title = "Mac"
+	}
+	b.WriteString("\n" + section.Render(title) + "\n")
+	if g := st.GPU; g != nil && local {
+		mem := 0.0
+		if g.VRAMTotalMB > 0 {
+			mem = float64(g.VRAMUsedMB) / float64(g.VRAMTotalMB)
+		}
+		b.WriteString(row("device", g.Name) + "\n")
+		b.WriteString(row("memory", fmt.Sprintf("%s %s / %s MB", bar(mem, 24, loadStyle(mem)), num(int64(g.VRAMUsedMB)), num(int64(g.VRAMTotalMB)))) + "\n")
+	} else if g != nil {
 		util := float64(g.UtilPct) / 100
 		vram := 0.0
 		if g.VRAMTotalMB > 0 {
@@ -79,16 +99,18 @@ func RenderStatus(s control.Snap) string {
 		b.WriteString(row("gpu", dimS.Render("n/a")) + "\n")
 	}
 
-	b.WriteString("\n" + section.Render("Host") + "\n")
-	if h := st.Host; h != nil {
-		mem := 0.0
-		if h.MemTotalMB > 0 {
-			mem = float64(h.MemUsedMB) / float64(h.MemTotalMB)
+	if !local {
+		b.WriteString("\n" + section.Render("Host") + "\n")
+		if h := st.Host; h != nil {
+			mem := 0.0
+			if h.MemTotalMB > 0 {
+				mem = float64(h.MemUsedMB) / float64(h.MemTotalMB)
+			}
+			b.WriteString(row("cpu load", fmt.Sprintf("%.2f  %.2f  %.2f  %s", h.Load1, h.Load5, h.Load15, dimS.Render("(1/5/15 min)"))) + "\n")
+			b.WriteString(row("ram", fmt.Sprintf("%s %s / %s MB", bar(mem, 24, loadStyle(mem)), num(int64(h.MemUsedMB)), num(int64(h.MemTotalMB)))) + "\n")
+		} else {
+			b.WriteString(row("host", dimS.Render("n/a")) + "\n")
 		}
-		b.WriteString(row("cpu load", fmt.Sprintf("%.2f  %.2f  %.2f  %s", h.Load1, h.Load5, h.Load15, dimS.Render("(1/5/15 min)"))) + "\n")
-		b.WriteString(row("ram", fmt.Sprintf("%s %s / %s MB", bar(mem, 24, loadStyle(mem)), num(int64(h.MemUsedMB)), num(int64(h.MemTotalMB)))) + "\n")
-	} else {
-		b.WriteString(row("host", dimS.Render("n/a")) + "\n")
 	}
 
 	b.WriteString("\n" + section.Render("LLM") + dimS.Render("  (totals since llama-server start)") + "\n")
@@ -109,7 +131,9 @@ func RenderStatus(s control.Snap) string {
 		kill = warnS.Render(kill)
 	}
 	b.WriteString(row("auto-kill", kill) + "\n")
-	b.WriteString(row("expires", st.ExpiresAt.Local().Format("15:04 Mon")) + "\n")
+	if !local {
+		b.WriteString(row("expires", st.ExpiresAt.Local().Format("15:04 Mon")) + "\n")
+	}
 	if st.MetricsFailures > 0 {
 		b.WriteString(row("metrics", warnS.Render(fmt.Sprintf("⚠ %d failed reads in a row", st.MetricsFailures))) + "\n")
 	}

@@ -73,7 +73,12 @@ Apple Silicon only. Same llama.cpp build and flags as the pod, Metal instead of 
 
 <img src="docs/img/menubar_ready.png" height="28" alt="menu bar: green, 45 t/s">
 
-Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. It runs the same `lobo` CLI and uses the same config file. Build it with `make install-mac`. It's unsigned, so it's for your own Mac.
+Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. It runs the same `lobo` CLI and uses the same config file. Opening the app also shows the panel as a window, so it works when a full menu bar hides the item behind the notch.
+
+Install: download `lobocode.dmg` from the release, open it, drag **lobocode** to **Applications**. Or build it with `make install-mac` (`make dmg` builds the image).
+
+- The app is not notarized. The first open says it can't be opened: go to System Settings → Privacy & Security → **Open Anyway**. Or run `xattr -dr com.apple.quarantine /Applications/lobocode.app`.
+- With the weights on an external drive, macOS asks once to allow access to a removable volume. Allow it, or the app can't see your models.
 
 <details><summary>Settings window</summary>
 <img src="docs/img/settings.png" width="420" alt="settings: provider keys, access, defaults for lobo up">
