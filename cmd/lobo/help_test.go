@@ -14,7 +14,7 @@ var update = flag.Bool("update", false, "rewrite golden files")
 
 func TestRootHelpGolden(t *testing.T) {
 	root := &cobra.Command{Use: "lobo"}
-	root.AddCommand(versionCmd(), configCmd(), genKeyCmd(), releaseCmd(), upCmd(), downCmd(), statusCmd(), logsCmd(), testCmd())
+	root.AddCommand(versionCmd(), configCmd(), genKeyCmd(), releaseCmd(), upCmd(), downCmd(), statusCmd(), logsCmd(), testCmd(), modelsCmd())
 	cfgPath = "/home/u/.config/lobo/config.env"
 	for name, have := range map[string]bool{"help_config": true, "help_noconfig": false} {
 		var b strings.Builder
@@ -32,6 +32,11 @@ func TestRootHelpGolden(t *testing.T) {
 		}
 		if b.String() != string(want) {
 			t.Fatalf("%s differs:\n%s", name, b.String())
+		}
+		for _, w := range []string{"models", "lobo up --provider local"} {
+			if !strings.Contains(b.String(), w) {
+				t.Fatalf("%s: want %q", name, w)
+			}
 		}
 		if strings.Contains(b.String(), "release") || strings.Contains(b.String(), "\x1b[") {
 			t.Fatalf("%s: shows the hidden release command or colour codes", name)

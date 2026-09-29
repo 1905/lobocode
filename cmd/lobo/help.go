@@ -15,13 +15,14 @@ var helpGroups = []struct {
 	cmds  []string
 }{
 	{"Run", []string{"up", "status", "logs", "test", "down"}},
-	{"Setup", []string{"config", "gen-api-key", "version"}},
+	{"Setup", []string{"config", "models", "gen-api-key", "version"}},
 }
 
 var helpExamples = [][2]string{
 	{"lobo config", "set API keys and defaults (first run)"},
 	{"lobo up", "rent a 5090 and boot the model; live progress"},
 	{"lobo up --provider vast", "rent on Vast.ai instead of the default provider"},
+	{"lobo up --provider local", "run on this Mac (Apple Silicon, llama.cpp); no cloud keys"},
 	{"lobo up --q6 --min-mbps 200", "smaller model, drop hosts slower than 200 MB/s"},
 	{"lobo status", "live dashboard: GPU, tokens/s, idle timer, cost"},
 	{"lobo down", "delete every lobo pod on every provider"},
