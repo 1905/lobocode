@@ -27,3 +27,25 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_KEY: ${{ secrets.HOMEBREW_TAP_KEY }}
+
+  # The menu bar app as a drag-to-install disk image, attached to the same GitHub release.
+  # Unsigned (ad-hoc): README tells users how to get past Gatekeeper.
+  dmg:
+    needs: release
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build lobocode.dmg
+        run: make dmg
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" bin/lobocode.dmg --clobber

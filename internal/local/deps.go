@@ -55,8 +55,8 @@ type macDeps struct {
 	poll     time.Duration // WaitHealthy period
 
 	usableMiB func() (int, error)
-	ps        func(ctx context.Context, pid int) (string, error) // `ps -o rss= -p PID` output, KiB
-	host      metrics.GPU                                        // chip name and memory, read once (hostGPU)
+	vmstat    func(ctx context.Context) (string, error) // `vm_stat` output
+	host      metrics.GPU                               // chip name and memory, read once (hostGPU)
 	hostErr   error
 
 	pid          atomic.Int64  // llama-server, 0 until started
@@ -69,8 +69,8 @@ func newDeps(cfg RunConfig, logs io.Writer) *macDeps {
 		cfg: cfg, logs: logs, hfBase: HFBase, poll: 2 * time.Second, llamaDone: make(chan struct{}),
 		llamaURL:  "http://127.0.0.1:" + strconv.Itoa(cfg.Port),
 		usableMiB: UsableMiB,
-		ps: func(ctx context.Context, pid int) (string, error) {
-			b, err := exec.CommandContext(ctx, "ps", "-o", "rss=", "-p", strconv.Itoa(pid)).Output()
+		vmstat: func(ctx context.Context) (string, error) {
+			b, err := exec.CommandContext(ctx, "vm_stat").Output()
 			return string(b), err
 		},
 	}
@@ -203,25 +203,54 @@ func (d *macDeps) waitHealthy(ctx context.Context) error {
 }
 
 // gpu: unified memory, so "VRAM" used = llama-server RSS and total = hw.memsize. No util counter.
+// gpu reports the Mac's used memory, not llama-server's RSS: the GGUF is memory-mapped and Metal reads it in
+// place, so RSS stays at ~2 GB while ~23 GB is in use. Used = active + wired + compressed pages (vm_stat).
 func (d *macDeps) gpu(ctx context.Context) (metrics.GPU, error) {
 	if d.hostErr != nil {
 		return metrics.GPU{}, d.hostErr
 	}
 	g := d.host
-	pid := int(d.pid.Load())
-	if pid == 0 {
-		return g, nil
-	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	out, err := d.ps(ctx, pid)
+	out, err := d.vmstat(ctx)
 	if err != nil {
-		return metrics.GPU{}, fmt.Errorf("ps %d: %w", pid, err)
+		return metrics.GPU{}, fmt.Errorf("vm_stat: %w", err)
 	}
-	kib, err := strconv.Atoi(strings.TrimSpace(out))
+	used, err := parseVMStat(out)
 	if err != nil {
-		return metrics.GPU{}, fmt.Errorf("ps %d: bad rss %q", pid, strings.TrimSpace(out))
+		return metrics.GPU{}, err
 	}
-	g.VRAMUsedMB = kib / 1024
+	g.VRAMUsedMB = used
 	return g, nil
+}
+
+// parseVMStat returns used MiB from `vm_stat` output: (active + wired + compressor) pages × page size.
+func parseVMStat(out string) (int, error) {
+	var page, pages int64
+	found := 0
+	for _, line := range strings.Split(out, "\n") {
+		if i := strings.Index(line, "page size of "); i >= 0 {
+			if _, err := fmt.Sscanf(line[i:], "page size of %d bytes", &page); err != nil {
+				return 0, fmt.Errorf("vm_stat: bad header %q", line)
+			}
+			continue
+		}
+		k, v, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(k) {
+		case "Pages active", "Pages wired down", "Pages occupied by compressor":
+			n, err := strconv.ParseInt(strings.TrimSuffix(strings.TrimSpace(v), "."), 10, 64)
+			if err != nil {
+				return 0, fmt.Errorf("vm_stat: bad %q", line)
+			}
+			pages += n
+			found++
+		}
+	}
+	if page == 0 || found != 3 {
+		return 0, fmt.Errorf("vm_stat: unexpected output")
+	}
+	return int(pages * page >> 20), nil
 }
