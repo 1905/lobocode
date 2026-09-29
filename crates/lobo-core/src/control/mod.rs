@@ -44,12 +44,13 @@ pub struct UpOpts {
     pub ssh_key: String,
     pub image: String,
 }
+pub type AgentFactory = Arc<dyn Fn(&str) -> Arc<dyn AgentApi> + Send + Sync>;
 #[derive(Clone)]
 pub struct Deps {
     pub providers: BTreeMap<String, Arc<dyn Provider>>,
     pub releases: Arc<dyn ReleaseResolver>,
     pub presign: Option<Arc<dyn Presigner>>,
-    pub new_agent: Arc<dyn Fn(&str) -> Arc<dyn AgentApi> + Send + Sync>,
+    pub new_agent: AgentFactory,
     pub cfg: Laptop,
     pub clock: Arc<dyn Clock>,
     pub poll: Duration,
