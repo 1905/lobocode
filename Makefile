@@ -57,8 +57,10 @@ mac: build-lobo
 	mv $(MAC_APP).tmp $(MAC_APP)
 	@echo "built $(MAC_APP)"
 
+# /Applications when writable (admin users), else ~/Applications.
+APP_DIR := $(shell test -w /Applications && echo /Applications || echo $(HOME)/Applications)
 install-mac: mac
-	mkdir -p $(HOME)/Applications
-	if [ -d $(HOME)/Applications/lobocode.app ]; then mkdir -p /tmp/trash && mv $(HOME)/Applications/lobocode.app /tmp/trash/lobocode.app.installed.$$(date +%s); fi
-	cp -R $(MAC_APP) $(HOME)/Applications/lobocode.app
-	@echo "installed ~/Applications/lobocode.app: open it once, it lives in the menu bar"
+	mkdir -p $(APP_DIR)
+	if [ -d $(APP_DIR)/lobocode.app ]; then mkdir -p /tmp/trash && mv $(APP_DIR)/lobocode.app /tmp/trash/lobocode.app.installed.$$(date +%s); fi
+	cp -R $(MAC_APP) $(APP_DIR)/lobocode.app
+	@echo "installed $(APP_DIR)/lobocode.app: open it once, it lives in the menu bar"
