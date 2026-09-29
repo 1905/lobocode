@@ -3,6 +3,30 @@ use crate::{Error, Result};
 use lobo_proto::{Instance, LocalState};
 use std::{path::PathBuf, process::Command};
 
+#[derive(Debug, Clone)]
+pub struct Spawner {
+    pub exe: PathBuf,
+    pub args_prefix: Vec<String>,
+}
+impl Spawner {
+    pub fn cli(exe: PathBuf) -> Self {
+        Self {
+            exe,
+            args_prefix: vec!["local".into(), "run".into()],
+        }
+    }
+    pub fn app(exe: PathBuf) -> Self {
+        Self {
+            exe,
+            args_prefix: vec![
+                super::supervise::SUPERVISOR_ARG.into(),
+                "local".into(),
+                "run".into(),
+            ],
+        }
+    }
+}
+
 pub fn command_of(pid: i32) -> Result<String> {
     let out = Command::new("ps")
         .args(["-ww", "-o", "command=", "-p", &pid.to_string()])

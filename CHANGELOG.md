@@ -2,8 +2,11 @@
 
 ## Unreleased
 
+- Rust P3 Mac runner and supervisor: shared agent lifecycle, loopback API, config forwarding, scoped logs and cancellation cleanup. CLI/app entry points remain pending.
+- Focused checks cover process exit, child environment filtering, API responses, occupied ports and duplicate supervisors. The actual pinned runtime archive passed download/hash/extraction validation; full local inference remains pending.
+
 - Rust P3 model/runtime cache: compatible verification markers, model listing and pinned llama.cpp download/extraction with cancellation cleanup.
-- Runtime checks: 29 focused local tests and clippy pass. Extraction rejects unsafe paths and symlinks. Pinned archive network verification and full local inference remain pending.
+- Runtime checks: 29 focused local tests and clippy pass. Extraction rejects unsafe paths and symlinks. Pinned archive network verification passed in the following batch. Full local inference remains pending.
 
 - Rust P3 local foundation: Apple Silicon memory checks, atomic state claims, Go-compatible process locks and supervisor identity checks.
 - Local checks: 14 focused tests and 3 Go/Rust interop tests pass. Local runtime and supervisor execution are still unfinished.
