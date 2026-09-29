@@ -15,7 +15,7 @@ import (
 
 // Laptop is the control-side config. It only ever comes from the config file.
 type Laptop struct {
-	RunPodAPIKey  string `env:"RUNPOD_API_KEY"` // at least one of RUNPOD_API_KEY / VASTAI_API_KEY
+	RunPodAPIKey  string `env:"RUNPOD_API_KEY"` // cloud: at least one of RUNPOD_API_KEY / VASTAI_API_KEY (RequireCloud)
 	LoboAPIKey    string `env:"LOBO_API_KEY" validate:"required"`
 	CFTunnelToken string `env:"CF_TUNNEL_TOKEN"` // cloud only: RequireCloud
 	Domain        string `env:"LOBO_DOMAIN"`     // cloud only: RequireCloud
@@ -64,12 +64,8 @@ func LoadLaptop(envPath string) (Laptop, error) {
 	if err := validate(l, "R2"); err != nil {
 		return Laptop{}, err
 	}
-	// Local-only setups have no provider key; the cloud path checks it again in RequireCloud.
-	if l.Provider != "local" {
-		if err := l.requireProviderKey(); err != nil {
-			return Laptop{}, err
-		}
-	}
+	// No provider key check here: local-only setups have none, and `up --provider local` is a flag the
+	// file does not know about. Every cloud path calls RequireCloud.
 	if strings.HasPrefix(l.ModelSource, "ssh://") && (l.ModelSSHKeyFile == "" || l.ModelSSHHostKey == "") {
 		return Laptop{}, fmt.Errorf("config: LOBO_MODEL_SOURCE is ssh://: LOBO_MODEL_SSH_KEY_FILE and LOBO_MODEL_SSH_HOSTKEY are required")
 	}
