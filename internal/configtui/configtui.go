@@ -203,14 +203,10 @@ func httpsURL(v string) error {
 	return nil
 }
 
-// localPort matches config: port+1 is the agent API, so 1024-65534.
+// localPort is config.ParseLocalPort: port+1 is the agent API, so 1024-65534.
 func localPort(v string) error {
-	v = strings.TrimSpace(v)
-	if v == "" || v == "0" {
-		return nil
-	}
-	if n, err := strconv.Atoi(v); err != nil || n < 1024 || n > 65534 {
-		return errors.New("a port 1024-65534, or empty for 8931")
+	if _, err := config.ParseLocalPort(strings.TrimSpace(v)); err != nil {
+		return fmt.Errorf("a port 1024-65534, or empty for %d", config.DefaultLocalPort)
 	}
 	return nil
 }

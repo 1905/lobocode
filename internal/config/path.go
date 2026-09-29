@@ -111,7 +111,7 @@ func (l Laptop) Defaults() (Defaults, error) {
 			d.VastMaxDPH = f
 		}
 	}
-	if _, err := l.port(); err != nil {
+	if _, err := ParseLocalPort(l.LocalPort); err != nil {
 		bad["LOBO_LOCAL_PORT"] = err.Error()
 	}
 	if len(bad) > 0 {
@@ -138,20 +138,21 @@ func (l Laptop) Weights() string {
 
 // Port is LOBO_LOCAL_PORT, or DefaultLocalPort when empty, 0 or bad (Defaults reports bad values).
 func (l Laptop) Port() int {
-	if p, err := l.port(); err == nil && p != 0 {
+	if p, err := ParseLocalPort(l.LocalPort); err == nil {
 		return p
 	}
 	return DefaultLocalPort
 }
 
-// port parses LOBO_LOCAL_PORT; 0 = unset. port+1 must be a valid port too (agent API).
-func (l Laptop) port() (int, error) {
-	if l.LocalPort == "" || l.LocalPort == "0" {
-		return 0, nil
+// ParseLocalPort parses a LOBO_LOCAL_PORT value: empty or "0" = DefaultLocalPort, else 1024-65534 (port+1 is
+// the agent API, so it must be a valid port too).
+func ParseLocalPort(v string) (int, error) {
+	if v == "" || v == "0" {
+		return DefaultLocalPort, nil
 	}
-	p, err := strconv.Atoi(l.LocalPort)
+	p, err := strconv.Atoi(v)
 	if err != nil || p < 1024 || p > 65534 {
-		return 0, fmt.Errorf("want a port 1024-65534 (or empty), got %q", l.LocalPort)
+		return 0, fmt.Errorf("want a port 1024-65534 (or empty), got %q", v)
 	}
 	return p, nil
 }
