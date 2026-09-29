@@ -218,7 +218,8 @@ func stateFor(id string) (State, error) {
 	return s, nil
 }
 
-// Delete stops the supervisor: SIGTERM, stopWait, then SIGKILL. The state it verified is removed either way.
+// Delete stops the supervisor: SIGTERM to it, then up to stopWait for its whole process group (llama-server
+// included) to exit, then SIGKILL to the group. The state it verified is removed only once the group is gone.
 // Already gone = nil (provider contract). A pid that fails isSupervisor (reused after a crash) is never
 // signalled: the state is stale, so it is removed and Delete returns nil. Identity is checked again before SIGKILL.
 func (p Provider) Delete(_ context.Context, id string) error {
@@ -236,13 +237,17 @@ func (p Provider) Delete(_ context.Context, id string) error {
 	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return fmt.Errorf("stop local pid %d: %w", pid, err)
 	}
-	if !waitGone(pid, stopWait) {
-		if !isSupervisor(pid, st.BootID) { // gone or reused while we waited: never signal a stranger
+	if !waitGroupGone(pid, stopWait) {
+		if alive(pid) && !isSupervisor(pid, st.BootID) { // reused while we waited: never signal a stranger
 			return RemoveStateIf(pid, st.BootID)
 		}
-		_ = syscall.Kill(pid, syscall.SIGKILL)
-		if !waitGone(pid, 2*time.Second) {
-			return fmt.Errorf("local pid %d survived SIGKILL", pid)
+		// The supervisor (Setsid) leads its own group and llama-server is in it. If the supervisor already
+		// exited, the group id stays ours: a pid is not reused while it names a live process group.
+		if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+			return fmt.Errorf("kill local group %d: %w", pid, err)
+		}
+		if !waitGroupGone(pid, 2*time.Second) {
+			return fmt.Errorf("local group %d survived SIGKILL", pid)
 		}
 	}
 	return RemoveStateIf(pid, st.BootID)
@@ -274,9 +279,10 @@ func isSupervisor(pid int, bootID string) bool {
 	return run && boot
 }
 
-func waitGone(pid int, d time.Duration) bool {
+// waitGroupGone is true once no process is left in group pgid (kill(-pgid, 0) = ESRCH), false after d.
+func waitGroupGone(pgid int, d time.Duration) bool {
 	end := time.Now().Add(d)
-	for alive(pid) {
+	for !errors.Is(syscall.Kill(-pgid, 0), syscall.ESRCH) {
 		if time.Now().After(end) {
 			return false
 		}
