@@ -222,7 +222,6 @@ pub fn release() -> Resolved {
         },
         zip_key: "releases/lobo-2026.09.23-1.zip".into(),
         zip_sha256: "zipsha".into(),
-        ..Default::default()
     }
 }
 pub fn deps(rp: Arc<FakeRunPod>, ag: Arc<FakeAgent>, clock: Arc<dyn Clock>) -> Deps {

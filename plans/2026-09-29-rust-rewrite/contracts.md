@@ -477,3 +477,11 @@ Original name alignment applied 2026-09-29 (plan-p2-v1.1, p3-v1.1, p4-v1.1, p5-v
 ### P3 local test seams (implementation clarification)
 
 `LocalHooks.ps` is `Arc<dyn Fn(i32) -> Result<String> + Send + Sync>` so identity recheck tests own their counters. `LocalHooks.child_env: Vec<(String, String)>` defaults empty and passes fixture settings directly to the child. Neither seam mutates the parent's process environment. Public Spawner fields and CLI/app argv remain unchanged.
+
+### P3 operation ownership (implementation clarification)
+
+`Deps` adds `operations: Arc<OperationState>`. `OperationState::memory()` isolates tests; `OperationState::persistent(path)` stores pending creates beside local state. Wiring selects `local.json`'s sibling `operation.json`. Both CLI and app use the same file and lock.
+
+`up` and `down` hold the operation lock through create/cleanup. Persist provider, boot ID and the pre-create instance IDs before rent; add the returned ID before polling. Clear ownership only after verified cleanup or successful ready handoff. An ambiguous create remains recorded and blocks later starts, including after process restart. Reconciliation may adopt a single new instance from the before/after list, then delete it. An empty list alone does not prove an ambiguous create failed. Multiple candidates remain unresolved.
+
+This is required by the existing v1.2 unresolved-create rule. The earlier Deps field list lacked storage and cross-process ownership. `new_agent` uses the equivalent `AgentFactory` type alias for lint clarity.

@@ -120,3 +120,6 @@ The paused local tests had passed (14 focused tests). Go interop and lint checks
 - CI caught a packaging mistake in 40b51e7: the unanchored `bin/` ignore hid `src/bin/testchild.rs`. Local tests passed with the untracked file; CI had no helper. Scope the ignore to `/bin/`, add the source and rerun CI.
 
 - P3 Task 50, Task 53, Task 54 fakes (events helper pending up), and Tasks 60–63 implemented. Seventeen control tests pass, including defaults precedence, provider errors during down, stale listings, local URLs and config-path forwarding. UpOperation and its cancellation/reconciliation tests remain pending.
+
+- Clean-checkout fix 9489b21 passed Rust CI 36579110545, including all local process tests on Linux. The control batch's new-agent closure triggered clippy type_complexity; an equivalent AgentFactory alias fixes it.
+- Before implementing up, filled the persistence gap in the v1.2 contract: Deps owns an OperationState. CLI/app share an OS-locked pending-operation file, while tests use isolated memory or temporary files. Uncertain creates survive a process restart and block later creates until reconciled.
