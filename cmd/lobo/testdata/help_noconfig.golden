@@ -13,6 +13,7 @@ Run
 
 Setup
   config       Set API keys and defaults for `lobo up` (form in a terminal)
+  models       Catalog models and their state in the local weights folder
   gen-api-key  Create LOBO_API_KEY in the config once (kept across ups) and write opencode.lobo.json with it
   version      Print version, commit and build date
 
@@ -20,6 +21,7 @@ Examples
   lobo config                   set API keys and defaults (first run)
   lobo up                       rent a 5090 and boot the model; live progress
   lobo up --provider vast       rent on Vast.ai instead of the default provider
+  lobo up --provider local      run on this Mac (Apple Silicon, llama.cpp); no cloud keys
   lobo up --q6 --min-mbps 200   smaller model, drop hosts slower than 200 MB/s
   lobo status                   live dashboard: GPU, tokens/s, idle timer, cost
   lobo down                     delete every lobo pod on every provider
