@@ -34,7 +34,7 @@ brew install 1905/tap/lobo
 ```sh
 git clone https://github.com/1905/lobocode && cd lobocode
 make install        # → ~/.local/bin/lobo
-make install-mac    # optional: the menu bar app → ~/Applications/lobocode.app
+make install-mac    # optional: the menu bar app → /Applications/lobocode.app
 ```
 
 ## What you need
