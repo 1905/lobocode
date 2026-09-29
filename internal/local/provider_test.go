@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -145,8 +146,8 @@ func TestProviderLifecycle(t *testing.T) {
 	if list, err := p.List(ctx); err != nil || len(list) != 0 {
 		t.Fatalf("list after delete %+v %v", list, err)
 	}
-	if err := p.Delete(ctx, in.ID); !errors.Is(err, provider.ErrNotFound) {
-		t.Fatalf("delete missing: %v", err)
+	if err := p.Delete(ctx, in.ID); err != nil {
+		t.Fatalf("delete missing: want nil (already gone), got %v", err)
 	}
 }
 
@@ -165,6 +166,42 @@ func TestProviderDeleteKills(t *testing.T) {
 	}
 	if alive(pid) || time.Since(start) < stopWait {
 		t.Fatalf("alive %v after %s", alive(pid), time.Since(start))
+	}
+}
+
+// A state file whose pid is alive but is not our supervisor: never signalled, state removed, nil.
+func TestProviderDeleteStranger(t *testing.T) {
+	tests := []struct {
+		name string
+		ps   func(int) (string, error)
+	}{
+		{name: "real ps sees sleep", ps: commandOf},
+		{name: "other command", ps: func(int) (string, error) { return "/usr/bin/vim notes.txt", nil }},
+		{name: "ps fails", ps: func(int) (string, error) { return "", errors.New("exit status 1") }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, _ := testProvider(t, "ok")
+			swap(t, &psCommand, tt.ps)
+			stranger := exec.Command("sleep", "60")
+			if err := stranger.Start(); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = stranger.Process.Kill(); _ = stranger.Wait() })
+			pid := stranger.Process.Pid
+			if err := WriteState(State{PID: pid, Model: "q6"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := p.Delete(context.Background(), strconv.Itoa(pid)); err != nil {
+				t.Fatal(err)
+			}
+			if !alive(pid) {
+				t.Fatal("stranger was signalled")
+			}
+			if _, err := os.Stat(StatePath()); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("state left: %v", err)
+			}
+		})
 	}
 }
 
