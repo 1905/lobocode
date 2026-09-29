@@ -37,6 +37,14 @@ clap = { version = "4", features = ["derive"] }
 wiremock = "0.6"
 tempfile = "3"
 
+rusty-s3 = "0.10.2"
+tar = "0.4.46"
+flate2 = "1.1.10"
+libc = "0.2.189"
+rand = "0.10.3"
+nix = { version = "0.31.3", features = ["signal", "process", "fs"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+
 [profile.release]
 strip = true
 lto = "thin"

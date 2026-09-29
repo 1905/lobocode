@@ -1,0 +1,20 @@
+{
+  "AA_EXTRA": "a",
+  "CF_TUNNEL_TOKEN": "value",
+  "LOBO_API_KEY": "value",
+  "LOBO_BUCKET_URL": "value",
+  "LOBO_CLOUD": "value",
+  "LOBO_CTX": "value",
+  "LOBO_DOMAIN": "value",
+  "LOBO_IDLE_MIN": "value",
+  "LOBO_LOCAL_PORT": "value",
+  "LOBO_MAX_HOURS": "value",
+  "LOBO_MIN_MBPS": "value",
+  "LOBO_MODEL": "value",
+  "LOBO_PROVIDER": "value",
+  "LOBO_VAST_MAX_DPH": "value",
+  "LOBO_WEIGHTS_DIR": "value",
+  "RUNPOD_API_KEY": "value",
+  "VASTAI_API_KEY": "value",
+  "ZZ_EXTRA": "z"
+}

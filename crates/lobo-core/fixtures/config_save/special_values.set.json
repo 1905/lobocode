@@ -1,0 +1,10 @@
+{
+  "A": "with space",
+  "B": "hash#x",
+  "C": "quote\"slash\\",
+  "D": "$HOME",
+  "E": "line\nnext",
+  "F": "a\tb",
+  "G": "x\ry",
+  "H": "it's"
+}

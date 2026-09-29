@@ -8,8 +8,8 @@ Authorization: the user said, "when plan is fixed start implementation in full a
 | Phase | Plan | State |
 |---|---|---|
 | P1 | [Workspace and protocol](plan-p1-v1.1.md) | done: 5dfe9ab, CI 36557109125 |
-| P2 | [Pod agent](plan-p2-v1.2.md) | in progress |
-| P3 | [Core](plan-p3-v1.2.md) | pending P2 |
+| P2 | [Pod agent](plan-p2-v1.2.md) | code/CI done at ed65ecc; live E2E pending P6 |
+| P3 | [Core](plan-p3-v1.2.md) | config/fixtures implemented; providers next |
 | P4 | [CLI](plan-p4-v1.2.md) | pending P3 |
 | P5 | [App](plan-p5-v1.2.md) | pending P4 |
 | P6 | [Cutover](plan-p6-v1.2.md) | pending P5 |
@@ -77,3 +77,10 @@ Use cleanup on every live exit path. Only task-owned instances and processes may
 - P2 runner keeps boot/watchdog futures owned by run. SSH bodies close their socket because russh Handle drop detaches its worker.
 - P2 `pod::run` config-reader reference needs `+ Sync` for the spawned fatal-path wrapper. This is an implementation-driven contract correction.
 - Full P1–P6 acceptance, live tests, final code review and release remain pending.
+
+- P2 candidate ed65ecc pushed. Rust CI 36561539180 passed; local static musl build passed (8,015,704 bytes). Pod image CI 36561539178 is still running.
+- Runner tests passed five consecutive runs. P3 config preparation starts while image publishing finishes; it depends on the tested P2 library, not a rented pod.
+
+- P2 pod image CI 36561539178 passed. Candidate image: `ghcr.io/1905/lobocode@sha256:7e0d6c8e5c42b06152eea991def5af83df69572d8436767728cdc248c7077f8d`. No GPU rented.
+
+- P3 Tasks 0–13 foundation/config batch implemented. 36 core tests and clippy pass. All 77 generated fixture files reproduce exactly; CI now checks drift. Provider and lifecycle work remains pending.

@@ -1348,3 +1348,10 @@ Contract alignment (contracts v1.1):
 - Item 9: Task 54: `FakeRunPod` state struct and its fields are `pub`.
 - Item 10: Task 64: pins every lobo-core contract item without a `(P5)` tag.
 - Doc ref: header `contracts.md v1.0` → `v1.1`.
+
+## Execution record
+
+Tasks 0–13 implemented as one foundation/config batch. 36 core tests and clippy pass.
+The Go generator produces 77 deterministic fixtures. CI checks fixture drift.
+The task checklists above describe the original sequence; separate red-first commits were not recorded.
+Tasks 14 onward remain pending.

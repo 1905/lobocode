@@ -1,0 +1,32 @@
+{
+  "cloudType": "COMMUNITY",
+  "containerDiskInGb": 60,
+  "dockerEntrypoint": [
+    "bash",
+    "-c"
+  ],
+  "dockerStartCmd": [
+    "set -e\nterminate() {\n  out=$(curl -s -m 15 https://api.runpod.io/graphql -H \"Authorization: Bearer $RUNPOD_API_KEY\" -H \"Content-Type: application/json\" \\\n    -d \"{\\\"query\\\":\\\"mutation { podTerminate(input:{podId:\\\\\\\"$RUNPOD_POD_ID\\\\\\\"}) }\\\"}\") || return 1\n  case \"$out\" in *'\"errors\"'*) return 1 ;; *'\"data\"'*) return 0 ;; esac\n  return 1\n}\ndie() {\n  trap - ERR\n  echo \"lobo bootstrap failed, terminating instance\" \u003e\u00262\n  for i in $(seq 1 30); do\n    if terminate; then echo \"terminate accepted\" \u003e\u00262; break; fi\n    echo \"terminate failed (try $i), retrying in 20 s\" \u003e\u00262\n    sleep 20\n  done\n  sleep 600\n  exit 1\n}\ntrap die ERR\nexport LOBO_T_BOOT0=$(date +%s.%N)\nif [ -z \"${LOBO_RELEASE_URL:-}\" ] \u0026\u0026 [ -x /lobo/lobo-agent ]; then\n  echo \"lobo bootstrap: baked agent, no release download\" \u003e\u00262\n  export LOBO_T_APT=$LOBO_T_BOOT0 LOBO_T_ZIP=$LOBO_T_BOOT0\nelse\n  timeout 300 bash -c 'apt-get update -qq \u0026\u0026 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unzip \u003e/dev/null'\n  export LOBO_T_APT=$(date +%s.%N)\n  timeout 300 curl -fsSL \"$LOBO_RELEASE_URL\" -o /tmp/lobo-release.zip\n  echo \"$LOBO_RELEASE_SHA256  /tmp/lobo-release.zip\" | sha256sum -c\n  unzip -o -q /tmp/lobo-release.zip -d /lobo\n  export LOBO_T_ZIP=$(date +%s.%N)\nfi\n# A failed exec (missing or non-executable binary) exits the shell without the ERR trap. execfail\n# keeps the shell alive only with errexit off (checked on bash 5.2), then terminate by hand.\nshopt -s execfail\nset +e\nexec /lobo/lobo-agent\ndie"
+  ],
+  "env": {
+    "CF_TUNNEL_TOKEN": "tok",
+    "LOBO_API_KEY": "sk",
+    "LOBO_BOOT_TIMEOUT": "40m",
+    "LOBO_CTX": "8192",
+    "LOBO_EXPIRES_AT": "2026-09-23T22:00:00Z",
+    "LOBO_IDLE_MIN": "30",
+    "LOBO_MODEL": "q8",
+    "LOBO_MODEL_URL": "https://b/m.gguf",
+    "LOBO_PROVIDER": "runpod",
+    "LOBO_RELEASE_SHA256": "abc",
+    "LOBO_RELEASE_URL": "https://b/r.zip"
+  },
+  "gpuCount": 1,
+  "gpuTypeIds": [
+    "NVIDIA GeForce RTX 5090"
+  ],
+  "imageName": "img",
+  "name": "lobo",
+  "ports": [],
+  "volumeInGb": 0
+}

@@ -1,7 +1,7 @@
 # Rust rewrite P2 — `lobo-agent` Implementation Plan v1.2
 
 **Date:** 2026-09-29
-**Status:** in progress (full auto authorized 2026-09-29; P1 CI passed).
+**Status:** code/builds/CI complete at ed65ecc; live acceptance deferred to final P6 E2E by user.
 **Spec:** ./spec.md (full-auto implementation authorized, 2026-09-29)
 **Contracts:** ./contracts.md v1.2 (this plan asks for one contract change and several additions, listed at the end)
 **Phase:** P2 of 6. Needs P1 done on `feat/rust` (workspace, `lobo-proto`, `rust.yml`).
@@ -102,7 +102,7 @@
 
 `tokio 1.53.1`, `tokio-util 0.7.19`, `async-trait 0.1.92`, `reqwest 0.12.28`, `axum 0.8.9`, `russh 0.63.3`, `sha2 0.10.9, 0.11.0`, `hex 0.4.3`, `base64 0.22.1, 0.23.1`, `url 2.5.8`, `bytes 1.12.1`, `futures-util 0.3.34`, `regex-lite 0.1.9`, `thiserror 2.0.21`, `tracing 0.1.44`, `tracing-subscriber 0.3.23`, `clap 4.6.7`, `chrono 0.4.45`, `serde_json 1.0.151`, `wiremock 0.6.5`, `tempfile 3.27.0`.
 
-Cross tools: cargo-zigbuild 0.23.4 installed; Zig installation and static build pending.
+Cross tools: cargo-zigbuild 0.23.4, Zig 0.16.0. Local musl build passed. `cargo-zigbuild --version` reports the tool version; `cargo zigbuild --version` is not supported.
 
 ---
 
@@ -772,7 +772,10 @@ New Rust tests with no Go twin (carry-over rules, UA, env isolation, helpers): `
 
 ## As-built
 
-_(Task 29: image digest. Task 27: binary size vs Go 12.3 MB. Task 30: per-provider stage seconds, MB/s, cost.)_
+Candidate: `ed65eccc80c03f8c72216d4fe5b8488927dcddd8`. Rust CI `36561539180` passed.
+Static musl binary: 8,015,704 bytes (8.02 MB; Go plan reference: 12.3 MB). Zig emits a non-fatal deprecated linker optimization warning.
+Pod image CI `36561539178`: passed. Image: `ghcr.io/1905/lobocode@sha256:7e0d6c8e5c42b06152eea991def5af83df69572d8436767728cdc248c7077f8d`.
+GPU evidence: deferred to P6 by user.
 
 ---
 

@@ -263,12 +263,12 @@ Jobs (ubuntu-latest, `actions/checkout@v4`, `dtolnay/rust-toolchain` reading `ru
 | internal/watchdog/watchdog_test.go | 74 | lobo-agent::watchdog | P2 |
 | cmd/lobo-agent/main_test.go | 62 | lobo-agent bin | P2 |
 | internal/bootstrap/bootstrap_test.go | 147 | lobo-core::bootstrap | P3 |
-| internal/config/config_test.go | 389 | lobo-core::config | P3 |
+| internal/config/config_test.go | 389 | lobo-agent::config for TestLoadAgent*; lobo-core::config for the rest | P2/P3 |
 | internal/control/control_test.go (+ controltest/fakes.go) | 703 | lobo-core::control | P3 |
 | internal/checks/checks_test.go | 50 | lobo-core::checks | P3 |
 | internal/release/release_test.go | 117 | lobo-core::release | P3 |
-| internal/runpod/runpod_test.go | 174 | lobo-core::provider::runpod | P3 |
-| internal/vast/vast_test.go | 276 | lobo-core::provider::vast | P3 |
+| internal/runpod/runpod_test.go | 174 | lobo-agent::selfkill for TestSelf; lobo-core::provider::runpod for the rest | P2/P3 |
+| internal/vast/vast_test.go | 276 | lobo-agent::selfkill for TestSelfTerminateAndGone; lobo-core::provider::vast for the rest | P2/P3 |
 | internal/local/{deps,models,platform,provider,runtime,state}_test.go | 1,235 | lobo-core::local | P3 |
 | cmd/lobo/{defaults,help,local,target}_test.go | 450 | lobo-cli | P4 |
 | internal/tui/tui_test.go | 144 | lobo-cli::tui (insta) | P4 |

@@ -11,6 +11,7 @@ on:
       - "Makefile"
       - "app/**"
       - "tools/protofixtures/**"
+      - "tools/corefixtures/**"
       - "internal/**"
       - "cmd/**"
       - "go.mod"
@@ -47,6 +48,12 @@ jobs:
           make proto-fixtures
           git diff --exit-code -- crates/lobo-proto/fixtures crates/lobo-proto/catalog.json
           test -z "$(git status --porcelain -- crates/lobo-proto/fixtures crates/lobo-proto/catalog.json)"
+
+      - name: Check Go core fixtures
+        run: |
+          make core-fixtures
+          git diff --exit-code -- crates/lobo-core/fixtures
+          test -z "$(git status --porcelain -- crates/lobo-core/fixtures)"
 
   agent-musl:
     runs-on: ubuntu-latest
