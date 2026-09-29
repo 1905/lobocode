@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rust P3 local foundation: Apple Silicon memory checks, atomic state claims, Go-compatible process locks and supervisor identity checks.
+- Local checks: 14 focused tests and 3 Go/Rust interop tests pass. Local runtime and supervisor execution are still unfinished.
+
 - Rust P3 release/checks batch: build and scan agent zips, sign R2 requests, publish isolated candidates, validate chat/tool calls and generate API keys/OpenCode config.
 - P3 checks: 105 core tests pass. Candidate publishing and failed uploads leave latest unchanged in HTTP tests; live R2 validation remains pending.
 

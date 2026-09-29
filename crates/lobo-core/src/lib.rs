@@ -7,5 +7,6 @@ pub mod bootstrap;
 pub mod checks;
 pub mod config;
 pub mod genkey;
+pub mod local;
 pub mod provider;
 pub mod release;

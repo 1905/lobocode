@@ -92,3 +92,17 @@ Use cleanup on every live exit path. Only task-owned instances and processes may
 
 - P3 providers 3bc03fc passed Rust CI 36565014524 and pod image CI 36565014449.
 - P3 Tasks 27–35 implemented. 105 core tests and clippy pass. Mock tests cover isolated candidate upload, immutable-write conflict and failed uploads without latest promotion. No live R2 write was made.
+
+## Paused by user
+
+The user said "pause it for now". Stop implementation until the user resumes.
+Last pushed commit: 292505a (release/checks batch). Rust CI 36566162351 and image CI 36566162343 passed.
+Uncommitted work: local platform, state/locking, supervisor identity helpers, state tests and Go interop tests.
+Resume by inspecting this working tree and the last local test result. Finish and verify Tasks 36–38, then continue models/runtime and the remaining P3 work. No GPU or R2 write was made.
+
+## Resumed
+
+The user said "great, continue". Resume the authorized full-auto workflow.
+The paused local tests had passed (14 focused tests). Go interop and lint checks are now running.
+
+- P3 Tasks 36–38 plus identity/state-URL helpers from Task 47 are implemented. 14 focused local tests and 3 real Go/Rust interop tests pass. CI now runs interop explicitly; P6 removes this Go dependency. Runtime/model/supervisor/control work remains pending.

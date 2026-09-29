@@ -54,6 +54,8 @@ jobs:
           make core-fixtures
           git diff --exit-code -- crates/lobo-core/fixtures
           test -z "$(git status --porcelain -- crates/lobo-core/fixtures)"
+      - name: Check Go and Rust local-state compatibility
+        run: LOBO_GO_INTEROP=1 cargo test --locked -p lobo-core --test go_interop
 
   agent-musl:
     runs-on: ubuntu-latest
