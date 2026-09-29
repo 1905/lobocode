@@ -24,6 +24,14 @@ type Instance struct {
 	CostPerHr        float64   `json:"cost_per_hr"`
 	StartedAt        time.Time `json:"started_at"`
 	HostDownloadMbps int       `json:"host_download_mbps"`
+	APIURL           string    `json:"-"` // OpenAI-compatible /v1 base, e.g. https://lobo.example.com/v1
+	AgentURL         string    `json:"-"` // agent /api base, e.g. https://lobo.example.com
+}
+
+// OnDomain sets the URLs of a cloud pod: every pod is reached through the tunnel hostname domain.
+func (in Instance) OnDomain(domain string) Instance {
+	in.APIURL, in.AgentURL = "https://"+domain+"/v1", "https://"+domain
+	return in
 }
 
 // CreateOpts is everything the pod needs; the provider decides where it runs.

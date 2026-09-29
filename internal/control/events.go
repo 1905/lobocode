@@ -54,31 +54,21 @@ type Presigner interface {
 }
 
 type Deps struct {
-	Presign    Presigner                    // nil unless the r2 source is used
-	Providers  map[string]provider.Provider // configured providers by name ("runpod", "vast", "local")
-	Releases   ReleaseResolver
-	Agent      AgentAPI // cloud pods, through the public domain
-	LocalAgent AgentAPI // local supervisor on http://127.0.0.1:<port+1>
-	LocalURL   string   // http://127.0.0.1:<port>/v1
-	Cfg        config.Laptop
-	Clock      func() time.Time
-	Poll       time.Duration // 3 s in real use
+	Presign   Presigner                    // nil unless the r2 source is used
+	Providers map[string]provider.Provider // configured providers by name ("runpod", "vast", "local")
+	Releases  ReleaseResolver
+	NewAgent  func(base string) AgentAPI // agent client for an instance's AgentURL; nil = HTTPAgent with Cfg.LoboAPIKey
+	Cfg       config.Laptop
+	Clock     func() time.Time
+	Poll      time.Duration // 3 s in real use
 }
 
-// agentFor is the agent API client for an instance on provider.
-func (d Deps) agentFor(provider string) AgentAPI {
-	if provider == "local" {
-		return d.LocalAgent
+// agentAt is the agent API client at base (an instance's AgentURL).
+func (d Deps) agentAt(base string) AgentAPI {
+	if d.NewAgent != nil {
+		return d.NewAgent(base)
 	}
-	return d.Agent
-}
-
-// apiURL is the OpenAI-compatible /v1 base for an instance on provider.
-func (d Deps) apiURL(provider string) string {
-	if provider == "local" {
-		return d.LocalURL
-	}
-	return "https://" + d.Cfg.Domain + "/v1"
+	return NewHTTPAgentURL(base, d.Cfg.LoboAPIKey)
 }
 
 // Target is the running instance's agent and /v1 URL; the cloud domain when nothing runs.
@@ -86,7 +76,7 @@ func (d Deps) apiURL(provider string) string {
 func Target(ctx context.Context, d Deps) (AgentAPI, string, error) {
 	l, err := listAll(ctx, d)
 	if len(l) > 0 {
-		return d.agentFor(l[0].Provider), d.apiURL(l[0].Provider), nil
+		return d.agentAt(l[0].AgentURL), l[0].APIURL, nil
 	}
 	if err != nil {
 		return nil, "", err
@@ -94,7 +84,8 @@ func Target(ctx context.Context, d Deps) (AgentAPI, string, error) {
 	if d.Cfg.Domain == "" {
 		return nil, "", fmt.Errorf("nothing running, and LOBO_DOMAIN is empty: start one with `lobo up`")
 	}
-	return d.Agent, d.apiURL(""), nil
+	cloud := provider.Instance{}.OnDomain(d.Cfg.Domain)
+	return d.agentAt(cloud.AgentURL), cloud.APIURL, nil
 }
 
 func (d Deps) now() time.Time {

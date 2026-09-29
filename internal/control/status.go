@@ -35,7 +35,7 @@ func Snapshot(ctx context.Context, d Deps) (Snap, error) {
 	if l[0].Provider != "local" && d.Cfg.Domain == "" {
 		return s, nil // no LOBO_DOMAIN: the pod's agent has no address, show the pod alone
 	}
-	ag := d.agentFor(l[0].Provider)
+	ag := d.agentAt(l[0].AgentURL)
 	s.Status, _ = ag.Status(ctx)
 	s.Version, _ = ag.Version(ctx)
 	return s, nil

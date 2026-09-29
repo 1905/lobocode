@@ -526,7 +526,12 @@ func localDeps(script []*agent.Status) (Deps, *ct.RunPod, *ct.Agent, *ct.Local, 
 	d := ct.Deps(rp, cloud, nil)
 	d.Releases = noReleases{}
 	d.Providers["local"] = lp
-	d.LocalAgent, d.LocalURL = la, "http://127.0.0.1:8931/v1"
+	d.NewAgent = func(base string) AgentAPI {
+		if base == ct.LocalAgentURL {
+			return la
+		}
+		return cloud
+	}
 	return d, rp, cloud, lp, la
 }
 

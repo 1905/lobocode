@@ -20,6 +20,7 @@ const DiskGB = 80
 type Provider struct {
 	C      *Client
 	MaxDPH float64
+	Domain string // tunnel hostname the instances answer on
 	mu     sync.Mutex
 	tried  map[int64]bool
 }
@@ -89,7 +90,7 @@ func (p *Provider) Rent(ctx context.Context, o provider.CreateOpts, note func(st
 			Provider: "vast", ID: strconv.FormatInt(id, 10), Status: "created", CostPerHr: off.DPH,
 			StartedAt: time.Now(), HostDownloadMbps: int(off.InetDown),
 			Detail: fmt.Sprintf("offer %d, %.0f Mbps down, %s", off.ID, off.InetDown, off.Geo),
-		}, nil
+		}.OnDomain(p.Domain), nil
 	}
 	return provider.Instance{}, fmt.Errorf("%w: no untried 1× RTX 5090 offer (verified, reliability ≥0.98, ≤$%.2f/h)", provider.ErrNoCapacity, maxDPH)
 }
@@ -140,7 +141,7 @@ func (p *Provider) List(ctx context.Context) ([]provider.Instance, error) {
 	var out []provider.Instance
 	for _, in := range l {
 		if in.Label == provider.Name {
-			out = append(out, toInstance(in))
+			out = append(out, toInstance(in).OnDomain(p.Domain))
 		}
 	}
 	return out, nil
@@ -155,7 +156,7 @@ func (p *Provider) Get(ctx context.Context, id string) (provider.Instance, error
 	if err != nil {
 		return provider.Instance{}, err
 	}
-	return toInstance(in), nil
+	return toInstance(in).OnDomain(p.Domain), nil
 }
 
 func (p *Provider) Delete(ctx context.Context, id string) error {

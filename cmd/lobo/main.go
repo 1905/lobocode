@@ -72,14 +72,10 @@ func loadCfg() (config.Laptop, error) {
 }
 
 func deps(cfg config.Laptop) control.Deps {
-	port, apiPort := local.ActiveEndpoints(cfg.Port()) // a running instance keeps the ports it started with
 	return control.Deps{
-		Providers:  providers(cfg),
-		Releases:   control.BucketReleases{BucketURL: cfg.BucketURL},
-		Agent:      control.NewHTTPAgent(cfg.Domain, cfg.LoboAPIKey),
-		LocalAgent: control.NewHTTPAgentURL(fmt.Sprintf("http://127.0.0.1:%d", apiPort), cfg.LoboAPIKey),
-		LocalURL:   fmt.Sprintf("http://127.0.0.1:%d/v1", port),
-		Cfg:        cfg,
+		Providers: providers(cfg),
+		Releases:  control.BucketReleases{BucketURL: cfg.BucketURL},
+		Cfg:       cfg,
 	}
 }
 
@@ -470,11 +466,11 @@ func providers(cfg config.Laptop) map[string]provider.Provider {
 		m["local"] = local.Provider{Exe: exe, ConfigPath: conf, Weights: cfg.Weights(), Port: cfg.Port()}
 	}
 	if cfg.RunPodAPIKey != "" {
-		m["runpod"] = runpod.Provider{C: runpod.New(cfg.RunPodAPIKey)}
+		m["runpod"] = runpod.Provider{C: runpod.New(cfg.RunPodAPIKey), Domain: cfg.Domain}
 	}
 	if cfg.VastAPIKey != "" {
 		maxDPH, _ := strconv.ParseFloat(cfg.VastMaxDPH, 64)
-		m["vast"] = &vast.Provider{C: vast.New(cfg.VastAPIKey), MaxDPH: maxDPH}
+		m["vast"] = &vast.Provider{C: vast.New(cfg.VastAPIKey), MaxDPH: maxDPH, Domain: cfg.Domain}
 	}
 	return m
 }

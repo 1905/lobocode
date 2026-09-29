@@ -129,7 +129,14 @@ func (f *Agent) Logs(context.Context, int) (string, error) {
 	return "last log line", nil
 }
 
+// Local URLs of the fake local provider (the supervisor on its default ports).
+const (
+	LocalAPIURL   = "http://127.0.0.1:8931/v1"
+	LocalAgentURL = "http://127.0.0.1:8932"
+)
+
 // Local is a fake local provider (Name "local"): Rent records the options and runs one instance.
+// Like the real one, every instance it returns carries the local URLs.
 type Local struct {
 	mu      sync.Mutex
 	Running []provider.Instance
@@ -144,19 +151,23 @@ func (f *Local) Rent(_ context.Context, o provider.CreateOpts, _ func(string)) (
 	f.Created = append(f.Created, o)
 	in := provider.Instance{Provider: "local", ID: "4242", Status: "running", Detail: "this Mac, " + o.Model}
 	f.Running = append(f.Running, in)
-	return in, nil
+	return localURLs(in), nil
 }
 func (f *Local) List(context.Context) ([]provider.Instance, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]provider.Instance(nil), f.Running...), nil
+	var out []provider.Instance
+	for _, in := range f.Running {
+		out = append(out, localURLs(in))
+	}
+	return out, nil
 }
 func (f *Local) Get(_ context.Context, id string) (provider.Instance, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, in := range f.Running {
 		if in.ID == id {
-			return in, nil
+			return localURLs(in), nil
 		}
 	}
 	return provider.Instance{}, provider.ErrNotFound
@@ -173,6 +184,11 @@ func (f *Local) Delete(_ context.Context, id string) error {
 	}
 	f.Running = keep
 	return nil
+}
+
+func localURLs(in provider.Instance) provider.Instance {
+	in.APIURL, in.AgentURL = LocalAPIURL, LocalAgentURL
+	return in
 }
 
 // LocalBootScript is a local boot: supervisor answering at once, Metal check, download, load, ready.
@@ -193,8 +209,10 @@ func Release() release.Resolved {
 	}
 }
 
+// Deps: RunPod on lobo.example.com; every agent client is ag.
 func Deps(rp *RunPod, ag *Agent, clock func() time.Time) control.Deps {
-	return control.Deps{Providers: map[string]provider.Provider{"runpod": runpod.Provider{C: rp}}, Releases: Releases{Release()}, Agent: ag, Poll: time.Millisecond, Clock: clock,
+	return control.Deps{Providers: map[string]provider.Provider{"runpod": runpod.Provider{C: rp, Domain: "lobo.example.com"}}, Releases: Releases{Release()},
+		NewAgent: func(string) control.AgentAPI { return ag }, Poll: time.Millisecond, Clock: clock,
 		Cfg: config.Laptop{Domain: "lobo.example.com", BucketURL: "https://pub-x.r2.dev", LoboAPIKey: "sk", CFTunnelToken: "tok"}}
 }
 

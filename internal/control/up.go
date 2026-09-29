@@ -233,12 +233,12 @@ func retriable(detail string) bool {
 // boot rents one instance and follows it. retry=true means the host was bad and the instance was deleted.
 func boot(ctx context.Context, d Deps, p provider.Provider, o UpOpts, co provider.CreateOpts, attempt int, relVersion, modelID string, start time.Time, ch chan<- Event) (retry bool, _ error) {
 	co.BootID = newBootID()
-	ag := d.agentFor(p.Name())
 	isLocal := p.Name() == "local" // one Mac: a bad "host" is not replaced, the run is stopped and reported
 	pod, err := p.Rent(ctx, co, func(s string) { ch <- Event{Phase: "create", Detail: s} })
 	if err != nil {
 		return false, fmt.Errorf("rent on %s: %w", p.Name(), err)
 	}
+	ag := d.agentAt(pod.AgentURL)
 	ch <- Event{Phase: "create", Detail: fmt.Sprintf("%s %s, %s, $%.2f/h, release %s, %s ctx %d", p.Name(), pod.ID, pod.Detail, pod.CostPerHr, relVersion, modelID, o.Ctx)}
 
 	poll := d.Poll
@@ -301,7 +301,7 @@ func boot(ctx context.Context, d Deps, p provider.Provider, o UpOpts, co provide
 			case string(agent.StageReady):
 				ver, _ := ag.Version(ctx)
 				tim := st.Timings
-				ri := &ReadyInfo{URL: d.apiURL(p.Name()), CostPerHr: pod.CostPerHr, Elapsed: d.now().Sub(start), Version: relVersion,
+				ri := &ReadyInfo{URL: pod.APIURL, CostPerHr: pod.CostPerHr, Elapsed: d.now().Sub(start), Version: relVersion,
 					PodID: pod.ID, Provider: p.Name(), Detail: pod.Detail, Attempts: attempt, Timings: &tim, HostDownloadMbps: pod.HostDownloadMbps}
 				if !pod.StartedAt.IsZero() && !tim.ContainerStartedAt.IsZero() {
 					ri.RentS = tim.ContainerStartedAt.Sub(pod.StartedAt).Seconds()
