@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-29
 **Scope:** /Users/kass/dev/lobocode
-**Status:** parked (user, 2026-09-29: "park spec, first fix what we have now")
+**Status:** approved for implementation after plan correction (user: full auto, 2026-09-29). Earlier review covered v1.0 only.
 
 ## TL;DR
 
@@ -16,7 +16,7 @@
 
 **P5 — Tauri app.** What: same shape as today: menu bar item + small panel, Settings window. It calls `lobo-core` directly, with no CLI subprocess. Opening it from Finder also shows the panel, which fixes the item hidden behind the notch. Why: the CLI dependency is the thing you dislike. You do: review PNG renders of every panel state before merge. Does NOT do: Windows/Linux builds.
 
-**P6 — cutover.** What: live checks on a RunPod pod, a Vast instance and local. The e2e suite runs. Then merge `feat/rust` to master, and Go + Swift are gone. Why: you chose a big-bang replace. Master keeps the working Go build until this merge. You do: approve the merge after the live report. Does NOT do: keep Go around afterwards.
+**P6 — cutover.** What: live checks on a RunPod pod, a Vast instance and local. The e2e suite runs. Then merge `feat/rust` to master, and Go + Swift are gone. Why: you chose a big-bang replace. Master keeps the working Go build until this merge. You do: receive QA and final reports; full-auto execution is authorized. Does NOT do: keep Go around afterwards.
 
 ## Problem(s)
 
@@ -26,10 +26,10 @@
 
 ## Goals
 
-1. One Rust workspace. All laptop logic lives in `lobo-core`, which the CLI and the app both link (P1, P3, P5).
+1. One Rust core workspace and a separate Tauri app workspace. All laptop logic lives in `lobo-core`, which the CLI and the app both link (P1, P3, P5).
 2. Boundary types live once in `lobo-proto`. The TypeScript types are generated from it and never hand-written (P1).
 3. The pod agent and the local supervisor share one agent library (P2).
-4. Full feature parity with the Go/Swift build as of `5443667` (P4, P5, P6). The checklist is in "Parity".
+4. Full feature parity with the Go/Swift build at the recorded master fork after `fix/app-silent` (`6a72092`) is merged, plus later master changes tracked in the P6 port ledger (P4, P5, P6). The checklist is in "Parity".
 5. Every live-learned behaviour listed under "Carry-over rules" survives the rewrite, each with a test (P2–P4).
 6. Merge only after live boots on RunPod, Vast and local pass (P6).
 
@@ -48,9 +48,9 @@ crates/
   lobo-proto/   types crossing a boundary: agent Status/Timings/Download, UpEvent/ReadyInfo, Manifest/Resolved,
                 model catalog + chunk sha table, local ModelsInfo. serde + ts-rs (TS export).
   lobo-agent/   lib: Runner, watchdog, downloader (HTTP range/parallel/resume/sha, SSH source), metrics
-                (llama /metrics, nvidia-smi, /proc, macOS sysctl/ps), /api server (axum), process helpers,
-                CleanEnv, LlamaArgs.  bin: lobo-agent (x86_64-unknown-linux-musl, static).
-  lobo-core/    config (dotenv read/write keeping comments + Layout), providers (runpod REST+GraphQL, vast,
+                (llama /metrics, nvidia-smi, /proc), /api server (axum), process helpers,
+                CleanEnv, LlamaArgs, pod self-terminate (selfkill: RunPod GraphQL, Vast REST).  bin: lobo-agent (x86_64-unknown-linux-musl, static).
+  lobo-core/    config (dotenv read/write keeping comments + Layout), providers (runpod REST, vast,
                 local), control (up/status/down/target/test checks), release (zip, secret scan, R2 upload,
                 presign), bootstrap script, local supervisor (uses lobo-agent), opencode genkey.
   lobo-cli/     bin: lobo. clap commands, ratatui views (up progress, status dashboard), inquire wizard, --json.
@@ -68,13 +68,13 @@ Crate choices (why): tokio + reqwest(rustls) (async HTTP), serde, clap (derive),
 ## Flows
 
 ```
-CLI:  lobo up ─► lobo-core::control::up(opts, sink) ─► provider.rent ─► poll agent /api/status ─► events → ratatui | --json
-App:  panel START ─► tauri command up(opts) ─► same lobo-core::control::up(opts, sink=tauri event channel) ─► Svelte UI
-Local supervisor: CLI `lobo local run …` | app `lobocode --lobo-local-run …` ─► lobo-core::local::supervise ─► lobo-agent Runner (Mac hooks)
+CLI:  lobo up ─► lobo-core::control::up(deps, opts, cancel) ─► provider.rent ─► poll agent /api/status ─► events → ratatui | --json
+App:  panel START ─► tauri command up(opts) ─► same lobo-core::control::up(deps, opts, cancel) ─► Svelte UI
+Local supervisor: CLI `lobo local run …` | app `lobocode --lobo-local-run local run …` ─► lobo-core::local::supervise ─► lobo-agent Runner (Mac hooks)
 Pod:  bootstrap.sh ─► /lobo/lobo-agent (Rust, baked image or release zip) ─► Runner (pod hooks)
 ```
 
-The app never parses CLI output. Errors are typed (`lobo_core::Error`) and reach the UI as `{kind, message}`.
+The app never parses CLI output. Errors are typed (`lobo_core::Error`) and reach the UI as `{kind, message}`. Exception: `up` failures arrive as `UpEvent.err` (a string, same as `lobo up --json`); the app shows them as kind `up`. No wire change. Cancelled `up` uses an owned operation with separate event and completion channels. Successful cleanup ends with phase `cancelled`. A 120 s app deadline only warns; it never detaches a creating worker. Cleanup errors remain visible. Details: contracts.md and execution.md.
 
 ## Parity (v1 must have all)
 
@@ -105,7 +105,10 @@ The app never parses CLI output. Errors are typed (`lobo_core::Error`) and reach
 | Path | Change |
 |---|---|
 | `Cargo.toml`, `crates/*`, `app/*` | New workspace per "Workspace". |
-| `cmd/`, `internal/`, `e2e/`, `go.mod`, `go.sum`, `macos/` | Removed on the branch (moved, then `git add -A`), in the phase that replaces each part. |
+| `macos/` | Removed in P5 after render verification and QA notification (moved, then `git add -A`). |
+| `cmd/`, `internal/`, `e2e/`, `go.mod`, `go.sum` | Removed at P6, not earlier: the Go fixture dumpers and drift checks (P1, P3, P4) and `git merge master` need the Go module until cutover. |
+| `tools/protofixtures/`, `tools/corefixtures/`, `tools/clifixtures/`, `cmd/lobo/capture_test.go` | Go/Python fixture generators added in P1/P3/P4. Removed at P6; their generated fixtures stay as frozen golden files. |
+| `app/src-tauri/` | Its own cargo workspace (path deps on `crates/`), so the pod image and ubuntu CI never build Tauri. |
 | `docker/pod/Dockerfile` | Rust musl build stage for `lobo-agent`. Same base image and `/lobo` layout. |
 | `.github/workflows/pod-image.yml`, `release.yml`, `.goreleaser.yaml` | Build Rust. Brew formula still `lobo`. App bundle built by `cargo tauri build` (unsigned, dev). |
 | `Makefile` | Targets map to cargo/pnpm: build, test, lint (clippy -D warnings), install, install-mac, e2e, release. |
@@ -149,3 +152,13 @@ The app never parses CLI output. Errors are typed (`lobo_core::Error`) and reach
 - **P6** live cutover checks (RunPod, Vast, local, e2e), then merge `feat/rust` → master, Go/Swift gone.
 
 Each phase gets its own plan file in this dir (one spec, several plans, because a single plan for all of it would be too big to review).
+
+## Execution update — 2026-09-29
+
+The user authorized implementation, commit, merge, push and release in full auto after the plan is corrected. `execution.md` identifies the active plans, decisions and remaining checks. This supersedes the parked status and old per-phase approval waits.
+
+Keep Go extra-argument behavior. Use shared CLI validation for app readiness (invalid bucket URL shows SETUP). First Rust release: v0.2.0. Add hidden release --no-promote for immutable candidate uploads; shared latest stays unchanged until cutover release verification.
+
+Parity exceptions: parser/help layout, OS error wording, JSON escapes and terminal log colors may differ as listed in P4. Wizard uses sequential prompts and has no Shift+Tab back navigation. Preserve existing command outcomes. Cancellation cleanup is an intentional fix.
+
+Full-auto delivery uses required CI and smoke tests first, then QA notification, then full acceptance tests and final reporting. Keep the one final Codex code review; no extra per-phase model review.
