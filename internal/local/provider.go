@@ -291,7 +291,9 @@ func waitGroupGone(pgid int, d time.Duration) bool {
 	return true
 }
 
+// instance is the running supervisor. Its URLs use the ports it started with, whatever the config says now.
 func instance(s State) provider.Instance {
 	return provider.Instance{Provider: "local", ID: strconv.Itoa(s.PID), Status: "running", CostPerHr: 0,
-		StartedAt: s.StartedAt, Detail: "this Mac, " + s.Model}
+		StartedAt: s.StartedAt, Detail: "this Mac, " + s.Model,
+		APIURL: fmt.Sprintf("http://127.0.0.1:%d/v1", s.Port), AgentURL: fmt.Sprintf("http://127.0.0.1:%d", s.APIPort)}
 }

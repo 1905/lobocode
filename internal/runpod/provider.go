@@ -21,8 +21,11 @@ type API interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// Provider rents lobo pods on RunPod.
-type Provider struct{ C API }
+// Provider rents lobo pods on RunPod. Domain is the tunnel hostname its pods answer on.
+type Provider struct {
+	C      API
+	Domain string
+}
 
 func (Provider) Name() string { return "runpod" }
 
@@ -40,7 +43,7 @@ func (p Provider) Rent(ctx context.Context, o provider.CreateOpts, note func(str
 			var pod Pod
 			pod, err = p.C.Create(ctx, o, cloud, mbps)
 			if err == nil {
-				in := toInstance(pod)
+				in := toInstance(pod).OnDomain(p.Domain)
 				in.Detail = cloud
 				if mbps > 0 {
 					in.Detail += fmt.Sprintf(", host ≥%.0f Mbps", mbps)
@@ -66,7 +69,7 @@ func (p Provider) List(ctx context.Context) ([]provider.Instance, error) {
 	var out []provider.Instance
 	for _, pod := range ps {
 		if pod.Name == PodName {
-			out = append(out, toInstance(pod))
+			out = append(out, toInstance(pod).OnDomain(p.Domain))
 		}
 	}
 	return out, nil
@@ -80,7 +83,7 @@ func (p Provider) Get(ctx context.Context, id string) (provider.Instance, error)
 	if strings.EqualFold(pod.DesiredStatus, "TERMINATED") {
 		return provider.Instance{}, provider.ErrNotFound
 	}
-	return toInstance(pod), nil
+	return toInstance(pod).OnDomain(p.Domain), nil
 }
 
 func (p Provider) Delete(ctx context.Context, id string) error { return p.C.Delete(ctx, id) }
