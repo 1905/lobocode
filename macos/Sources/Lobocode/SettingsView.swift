@@ -60,6 +60,12 @@ struct SettingsView: View {
                     plain("LOBO_VAST_MAX_DPH", "vast max $/h", "1.20")
                     plain("LOBO_POD_IMAGE", "pod image", "ghcr.io/1905/lobocode@sha256:…")
                 }
+                if ConfigShow.localSupported {
+                    section("local") {
+                        weightsRow
+                        plain("LOBO_LOCAL_PORT", "port", "8931")
+                    }
+                }
                 HStack {
                     if let (msg, color) = status { Text(msg).font(Theme.mono(10)).foregroundColor(color) }
                     Spacer()
@@ -147,6 +153,55 @@ struct SettingsView: View {
         }
     }
 
+    static let defaultWeights = "~/Library/Application Support/lobo/weights"
+
+    /// Weights folder: editable path (empty = default) + [choose…] + free space on its volume.
+    private var weightsRow: some View {
+        let key = "LOBO_WEIGHTS_DIR"
+        let value = f.plain[key] ?? ""
+        let placeholder = store.models?.weights ?? SettingsView.defaultWeights
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                label("weights")
+                input(TextField(placeholder, text: Binding(get: { f.plain[key] ?? "" }, set: { f.plain[key] = $0 })),
+                      value: value, placeholder: placeholder)
+                Button("[choose…]") { chooseWeights() }.buttonStyle(LinkButtonStyle(color: Theme.cyan))
+            }
+            if let free = weightsFree(value) {
+                Text("\(Fmt.gb(free)) GB free").font(Theme.mono(10)).foregroundColor(Theme.dim).padding(.leading, 118)
+            }
+        }
+    }
+
+    /// The CLI's number for the saved folder; a newly typed or chosen one is measured here (never in render mode).
+    private func weightsFree(_ typed: String) -> Int64? {
+        let saved = store.config?.values["LOBO_WEIGHTS_DIR"] ?? ""
+        if rendering || typed.trimmingCharacters(in: .whitespaces) == saved { return store.models?.free_bytes }
+        return SettingsView.freeBytes(typed.isEmpty ? SettingsView.defaultWeights : typed)
+    }
+
+    /// Free bytes on the volume of `path`, or of its nearest existing parent (the folder may not exist yet).
+    static func freeBytes(_ path: String) -> Int64? {
+        var url = URL(fileURLWithPath: (path.trimmingCharacters(in: .whitespaces) as NSString).expandingTildeInPath)
+        while !FileManager.default.fileExists(atPath: url.path), url.pathComponents.count > 1 { url.deleteLastPathComponent() }
+        let attrs = try? FileManager.default.attributesOfFileSystem(forPath: url.path)
+        return (attrs?[.systemFreeSize] as? NSNumber)?.int64Value
+    }
+
+    private func chooseWeights() {
+        guard !rendering else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        let cur = f.plain["LOBO_WEIGHTS_DIR"] ?? ""
+        let start = cur.isEmpty ? (store.models?.weights ?? "") : (cur as NSString).expandingTildeInPath
+        if !start.isEmpty { panel.directoryURL = URL(fileURLWithPath: start) }
+        if panel.runModal() == .OK, let url = panel.url { f.plain["LOBO_WEIGHTS_DIR"] = url.path }
+    }
+
     private func picker(_ key: String, _ name: String, _ options: [String], def: String) -> some View {
         HStack {
             label(name)
@@ -161,7 +216,8 @@ struct SettingsView: View {
     }
 
     private static let plainKeys = ["LOBO_DOMAIN", "LOBO_BUCKET_URL", "LOBO_PROVIDER", "LOBO_MODEL", "LOBO_MIN_MBPS", "LOBO_CTX",
-                                    "LOBO_IDLE_MIN", "LOBO_MAX_HOURS", "LOBO_CLOUD", "LOBO_VAST_MAX_DPH", "LOBO_POD_IMAGE"]
+                                    "LOBO_IDLE_MIN", "LOBO_MAX_HOURS", "LOBO_CLOUD", "LOBO_VAST_MAX_DPH", "LOBO_POD_IMAGE",
+                                    "LOBO_WEIGHTS_DIR", "LOBO_LOCAL_PORT"]
 
     private func load() {
         var n = Fields()
@@ -191,6 +247,8 @@ struct SettingsView: View {
         }
         if let v = set["LOBO_VAST_MAX_DPH"], !v.isEmpty, (Double(v) ?? 0) <= 0 { return "LOBO_VAST_MAX_DPH: a price like 1.20" }
         if let v = set["LOBO_DOMAIN"], v.contains("/") || v.contains(" ") { return "LOBO_DOMAIN: bare hostname, no https://" }
+        // The agent API listens on port+1, so 65535 is out (the CLI's rule).
+        if let v = set["LOBO_LOCAL_PORT"], !v.isEmpty, !(1024...65534).contains(Int(v) ?? -1) { return "LOBO_LOCAL_PORT: whole number 1024-65534, or empty" }
         return nil
     }
 
