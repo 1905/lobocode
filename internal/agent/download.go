@@ -24,16 +24,21 @@ type DownloadProgress struct {
 const maxResumes = 8
 
 // Download streams src into dst, hashing while writing. A dropped stream resumes from the current
-// offset (single connection). A checksum mismatch moves the file to dst+".bad".
+// offset (single connection). A partial dst left by an earlier run is resumed too: its bytes are hashed
+// and only the rest is fetched. A checksum mismatch moves the file to dst+".bad".
 func Download(ctx context.Context, src Source, dst, sha string, onProgress func(DownloadProgress)) error {
-	f, err := os.Create(dst)
+	f, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, 0o666)
 	if err != nil {
 		return err
 	}
 	h := sha256.New()
 	pw := &progressWriter{total: -1, start: time.Now(), fn: onProgress}
+	done, err := resumePartial(ctx, src, f, h, pw)
+	if err != nil {
+		f.Close()
+		return err
+	}
 	var lastErr error
-	done := false
 	for attempt := 0; attempt <= maxResumes && !done; attempt++ {
 		if attempt > 0 {
 			select {
@@ -67,6 +72,36 @@ func Download(ctx context.Context, src Source, dst, sha string, onProgress func(
 	return nil
 }
 
+// resumePartial picks up an existing dst: hashes its bytes and moves pw to its end. It asks src for the
+// total first (a 1-byte read): a file longer than the source, or a source with no known total, starts over.
+// done=true: dst already holds every byte.
+func resumePartial(ctx context.Context, src Source, f *os.File, h hash.Hash, pw *progressWriter) (bool, error) {
+	fi, err := f.Stat()
+	if err != nil || fi.Size() == 0 {
+		return false, err
+	}
+	body, total, err := src.Open(ctx, 0, 1)
+	if err != nil {
+		if pe, ok := err.(permanentErr); ok {
+			return false, pe.error
+		}
+		return false, err
+	}
+	_ = body.Close()
+	if total < 0 || fi.Size() > total {
+		if err := f.Truncate(0); err != nil {
+			return false, err
+		}
+		_, err := f.Seek(0, io.SeekStart)
+		return false, err
+	}
+	if _, err := io.CopyBuffer(h, f, make([]byte, 4<<20)); err != nil { // leaves f at its end
+		return false, err
+	}
+	pw.n, pw.base, pw.total = fi.Size(), fi.Size(), total
+	return pw.n == total, nil
+}
+
 // copyFrom streams src from the current offset. done=true means the full length arrived.
 func copyFrom(ctx context.Context, src Source, f io.Writer, h hash.Hash, pw *progressWriter) (bool, error) {
 	body, total, err := src.Open(ctx, pw.n, -1)
@@ -94,6 +129,7 @@ func copyFrom(ctx context.Context, src Source, f io.Writer, h hash.Hash, pw *pro
 
 type progressWriter struct {
 	n, total int64
+	base     int64 // bytes already on disk at start: not counted in MBps
 	start    time.Time
 	last     time.Time
 	fn       func(DownloadProgress)
@@ -112,7 +148,7 @@ func (p *progressWriter) report(force bool) {
 	p.last = time.Now()
 	mbps := 0.0
 	if s := time.Since(p.start).Seconds(); s > 0 {
-		mbps = float64(p.n) / s / 1e6
+		mbps = float64(p.n-p.base) / s / 1e6
 	}
 	p.fn(DownloadProgress{Bytes: p.n, Total: p.total, MBps: mbps})
 }
