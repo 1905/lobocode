@@ -39,11 +39,14 @@ make install-mac    # optional: the menu bar app → ~/Applications/lobocode.app
 
 ## What you need
 
+**On this Mac** (Apple Silicon, 32 GB+): nothing else. See [Run on this Mac](#run-on-this-mac).
+
+**In the cloud:**
 - A **RunPod** or **Vast.ai** API key. One is enough.
 - A **Cloudflare named tunnel** token and a hostname routed to it. That hostname is your endpoint.
 - A public **bucket URL** that holds the model GGUF.
 
-`lobo config` asks for all of it and writes `~/.config/lobo/config.env`.
+`lobo config` asks for what your choice needs and writes `~/.config/lobo/config.env`.
 
 ## Use
 
