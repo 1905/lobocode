@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -118,9 +117,8 @@ func runLocal(ctx context.Context, o runOpts) error {
 		}
 	}()
 
-	deps := local.NewDeps(local.RunConfig{Weights: weights, LlamaServer: bin, APIKey: cfg.LoboAPIKey, Port: o.Port, Ctx: o.Ctx, Model: m},
+	deps, waitLlama := local.NewDeps(local.RunConfig{Weights: weights, LlamaServer: bin, APIKey: cfg.LoboAPIKey, Port: o.Port, Ctx: o.Ctx, Model: m},
 		io.MultiWriter(os.Stdout, logs), cancel)
-	llama := trackLlama(&deps)
 	log.Info().Str("model", m.File).Int("ctx", o.Ctx).Int("port", o.Port).Int("api_port", o.APIPort).Str("weights", weights).Msg("start")
 	r := agent.NewRunner(deps, agent.RunnerConfig{
 		BootID: o.BootID, Model: m.ID, Ctx: o.Ctx, Idle: time.Duration(o.IdleMin) * time.Minute,
@@ -137,7 +135,7 @@ func runLocal(ctx context.Context, o runOpts) error {
 
 	err = r.Run(ctx)
 	cancel() // CommandContext kills llama-server; wait so it does not outlive the supervisor
-	if !llama.wait(localLlamaStop) {
+	if !waitLlama(localLlamaStop) {
 		log.Warn().Msg("llama-server did not exit in time")
 	}
 	_ = srv.Close()
@@ -146,46 +144,6 @@ func runLocal(ctx context.Context, o runOpts) error {
 		return nil
 	}
 	return err
-}
-
-// llamaTracker wraps StartLlama so shutdown can wait for llama-server to exit.
-type llamaTracker struct {
-	started atomic.Bool
-	done    chan struct{}
-}
-
-func trackLlama(d *agent.Deps) *llamaTracker {
-	t := &llamaTracker{done: make(chan struct{})}
-	start := d.StartLlama
-	d.StartLlama = func(ctx context.Context) (<-chan error, error) {
-		t.started.Store(true) // before start: a shutdown racing the start still waits
-		exited, err := start(ctx)
-		if err != nil {
-			close(t.done)
-			return nil, err
-		}
-		out := make(chan error, 1)
-		go func() {
-			e := <-exited
-			close(t.done)
-			out <- e
-		}()
-		return out, nil
-	}
-	return t
-}
-
-// wait is true once llama-server has exited or never started, false after timeout.
-func (t *llamaTracker) wait(timeout time.Duration) bool {
-	if !t.started.Load() {
-		return true
-	}
-	select {
-	case <-t.done:
-		return true
-	case <-time.After(timeout):
-		return false
-	}
 }
 
 func modelsCmd() *cobra.Command {
