@@ -108,8 +108,7 @@ final class Store: ObservableObject {
             Task { @MainActor in self?.now = Date() }
         }
         pollTask = Task { [weak self] in
-            await self?.loadConfig()
-            await self?.loadModels()
+            await self?.loadConfig() // lists the models once at start
             while !Task.isCancelled {
                 await self?.refresh()
                 let wait = self?.pollInterval ?? 30
@@ -173,17 +172,20 @@ final class Store: ObservableObject {
 
     // MARK: - CLI calls
 
-    func loadConfig() async {
+    /// Reads the config, then (`models`) re-lists the local models: LOBO_WEIGHTS_DIR may have moved.
+    func loadConfig(models: Bool = true) async {
         guard let cli else { return }
-        guard let r = try? await cli.run(["config", "show", "--json"]), r.ok,
-              let c = try? JSON.decoder.decode(ConfigShow.self, from: r.out) else { return }
-        config = c
-        if up == nil, phase != .booting {
-            provider = c.defaultProvider
-            model = c.defaultModel
-            modelAutoPicked = false
+        if let r = try? await cli.run(["config", "show", "--json"]), r.ok,
+           let c = try? JSON.decoder.decode(ConfigShow.self, from: r.out) {
+            config = c
+            if up == nil, phase != .booting {
+                provider = c.defaultProvider
+                model = c.defaultModel
+                modelAutoPicked = false
+            }
+            applyDefaultTarget()
         }
-        applyDefaultTarget()
+        if models { await loadModels() }
     }
 
     func loadModels() async {
@@ -200,9 +202,11 @@ final class Store: ObservableObject {
         applyDefaultTarget()
     }
 
-    func refresh() async {
+    /// One status poll. `models`: also re-list the local models when nothing runs (panel open, after down,
+    /// after a failed boot). A plain poll tick never runs `models --json`.
+    func refresh(models: Bool = false) async {
         guard let cli else { return }
-        if config == nil || !(config?.ready ?? false) { await loadConfig() }
+        if config == nil || !(config?.ready ?? false) { await loadConfig(models: false) }
         guard config?.ready ?? false else { phase = .noConfig; return }
         do {
             let r = try await cli.run(["status", "--json"])
@@ -210,7 +214,7 @@ final class Store: ObservableObject {
             let s = try JSON.decoder.decode(Snapshot.self, from: r.out)
             warning = nil
             apply(s)
-            if phase == .off { await loadModels() }
+            if models, s.down { await loadModels() }
         } catch {
             warning = error.localizedDescription
         }
@@ -300,7 +304,7 @@ final class Store: ObservableObject {
             phase = .failed(msg)
             notify("lobo boot failed", msg)
         }
-        Task { await refresh() }
+        Task { await refresh(models: true) }
     }
 
     /// Stop = end the `up` run cleanly, then delete every lobo pod, then check again: a create request
@@ -318,18 +322,18 @@ final class Store: ObservableObject {
             }
             do {
                 let r = try await cli.run(["down", "--json"])
-                guard r.ok else { phase = .failed("down: " + r.message); await refresh(); return }
+                guard r.ok else { phase = .failed("down: " + r.message); await refresh(models: true); return }
                 if !local { // a local process has no in-flight create request to land late
                     try? await Task.sleep(nanoseconds: 10_000_000_000)
                     let r2 = try await cli.run(["down", "--json"])
-                    guard r2.ok else { phase = .failed("down: " + r2.message); await refresh(); return }
+                    guard r2.ok else { phase = .failed("down: " + r2.message); await refresh(models: true); return }
                 }
                 phase = .off
             } catch {
                 // Could not even run the CLI: keep the pod visible, never claim OFF.
                 phase = .failed("down did not run: \(error.localizedDescription)")
             }
-            await refresh()
+            await refresh(models: true)
         }
     }
 
