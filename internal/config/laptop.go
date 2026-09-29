@@ -17,9 +17,9 @@ import (
 type Laptop struct {
 	RunPodAPIKey  string `env:"RUNPOD_API_KEY"` // at least one of RUNPOD_API_KEY / VASTAI_API_KEY
 	LoboAPIKey    string `env:"LOBO_API_KEY" validate:"required"`
-	CFTunnelToken string `env:"CF_TUNNEL_TOKEN" validate:"required"`
-	Domain        string `env:"LOBO_DOMAIN" validate:"required"`
-	BucketURL     string `env:"LOBO_BUCKET_URL" validate:"required,url"`
+	CFTunnelToken string `env:"CF_TUNNEL_TOKEN"` // cloud only: RequireCloud
+	Domain        string `env:"LOBO_DOMAIN"`     // cloud only: RequireCloud
+	BucketURL     string `env:"LOBO_BUCKET_URL" validate:"omitempty,url"`
 	// Optional model source over SSH (the model server). Empty = public bucket URL.
 	ModelSource     string `env:"LOBO_MODEL_SOURCE"`       // ssh://lobo@203.0.113.10:22
 	ModelSSHKeyFile string `env:"LOBO_MODEL_SSH_KEY_FILE"` // private key of the restricted lobo user
@@ -30,13 +30,16 @@ type Laptop struct {
 	VastMaxDPH      string `env:"LOBO_VAST_MAX_DPH"`       // optional: max $/h for a Vast 5090 offer (default 1.20)
 	PodImage        string `env:"LOBO_POD_IMAGE"`          // optional: image with lobo-agent baked in (ghcr.io/1905/lobocode@sha256:…); skips the release zip
 	// Defaults for `lobo up` (flags override). Parsed by Defaults().
-	Provider string `env:"LOBO_PROVIDER"`  // runpod | vast, used when both keys are set
+	Provider string `env:"LOBO_PROVIDER"`  // runpod | vast | local; runpod/vast used when both keys are set
 	Model    string `env:"LOBO_MODEL"`     // q8 | q6
 	Cloud    string `env:"LOBO_CLOUD"`     // runpod: secure | community first
 	Ctx      string `env:"LOBO_CTX"`       // 0 = release default
 	IdleMin  string `env:"LOBO_IDLE_MIN"`  // 0 = release default
 	MaxHours string `env:"LOBO_MAX_HOURS"` // 0 = release default
-	R2       R2Creds
+	// Local mode (llama.cpp on this Mac). Parsed by Weights() / Port().
+	WeightsDir string `env:"LOBO_WEIGHTS_DIR"` // GGUFs + runtime/; empty = ~/Library/Application Support/lobo/weights
+	LocalPort  string `env:"LOBO_LOCAL_PORT"`  // llama-server port, agent API on port+1; empty or 0 = 8931
+	R2         R2Creds
 }
 
 // R2Creds are the S3 upload keys. Laptop-only: never put them in a pod or a release.
@@ -61,8 +64,11 @@ func LoadLaptop(envPath string) (Laptop, error) {
 	if err := validate(l, "R2"); err != nil {
 		return Laptop{}, err
 	}
-	if l.RunPodAPIKey == "" && l.VastAPIKey == "" {
-		return Laptop{}, fmt.Errorf("config: set RUNPOD_API_KEY or VASTAI_API_KEY")
+	// Local-only setups have no provider key; the cloud path checks it again in RequireCloud.
+	if l.Provider != "local" {
+		if err := l.requireProviderKey(); err != nil {
+			return Laptop{}, err
+		}
 	}
 	if strings.HasPrefix(l.ModelSource, "ssh://") && (l.ModelSSHKeyFile == "" || l.ModelSSHHostKey == "") {
 		return Laptop{}, fmt.Errorf("config: LOBO_MODEL_SOURCE is ssh://: LOBO_MODEL_SSH_KEY_FILE and LOBO_MODEL_SSH_HOSTKEY are required")
@@ -71,6 +77,30 @@ func LoadLaptop(envPath string) (Laptop, error) {
 		return Laptop{}, fmt.Errorf("config: LOBO_MODEL_SOURCE: want r2 or ssh://user@host:port, got %q", s)
 	}
 	return l, nil
+}
+
+// RequireCloud checks the keys a cloud provider (runpod, vast) needs. Local mode needs none of them.
+func (l Laptop) RequireCloud() error {
+	var missing []string
+	for _, kv := range [][2]string{{"CF_TUNNEL_TOKEN", l.CFTunnelToken}, {"LOBO_DOMAIN", l.Domain}, {"LOBO_BUCKET_URL", l.BucketURL}} {
+		if kv[1] == "" {
+			missing = append(missing, kv[0])
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("config: cloud needs %s", strings.Join(missing, ", "))
+	}
+	if err := validate1.Var(l.BucketURL, "url"); err != nil {
+		return fmt.Errorf("config: LOBO_BUCKET_URL: want a URL, got %q", l.BucketURL)
+	}
+	return l.requireProviderKey()
+}
+
+func (l Laptop) requireProviderKey() error {
+	if l.RunPodAPIKey == "" && l.VastAPIKey == "" {
+		return fmt.Errorf("config: set RUNPOD_API_KEY or VASTAI_API_KEY")
+	}
+	return nil
 }
 
 // RequireR2 checks the upload keys. Only `lobo release` needs them.

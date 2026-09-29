@@ -13,10 +13,11 @@ var Layout = []struct {
 	Title string
 	Keys  []string
 }{
-	{"providers (at least one)", []string{"RUNPOD_API_KEY", "VASTAI_API_KEY"}},
+	{"providers (at least one, or LOBO_PROVIDER=local)", []string{"RUNPOD_API_KEY", "VASTAI_API_KEY"}},
 	{"access", []string{"LOBO_DOMAIN", "LOBO_API_KEY", "CF_TUNNEL_TOKEN", "LOBO_BUCKET_URL"}},
 	{"defaults for `lobo up` (flags override; empty or 0 = built-in / release default)", []string{
-		"LOBO_PROVIDER", "LOBO_MIN_MBPS", "LOBO_MODEL", "LOBO_CTX", "LOBO_IDLE_MIN", "LOBO_MAX_HOURS", "LOBO_CLOUD", "LOBO_VAST_MAX_DPH"}},
+		"LOBO_PROVIDER", "LOBO_MIN_MBPS", "LOBO_MODEL", "LOBO_CTX", "LOBO_IDLE_MIN", "LOBO_MAX_HOURS", "LOBO_CLOUD", "LOBO_VAST_MAX_DPH",
+		"LOBO_WEIGHTS_DIR", "LOBO_LOCAL_PORT"}},
 }
 
 const header = `# lobo config. Edit by hand or run ` + "`lobo config`" + `.

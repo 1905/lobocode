@@ -44,7 +44,7 @@ func LooseMode(path string) bool {
 
 // Defaults are the user's defaults for `lobo up`. Zero values mean "use the built-in / release default".
 type Defaults struct {
-	Provider   string // runpod | vast
+	Provider   string // runpod | vast | local
 	Model      string // q8 | q6
 	Cloud      string // secure | community
 	Ctx        int
@@ -97,7 +97,7 @@ func (l Laptop) Defaults() (Defaults, error) {
 		}
 		return n
 	}
-	d.Provider = oneOf("LOBO_PROVIDER", l.Provider, "runpod", "vast")
+	d.Provider = oneOf("LOBO_PROVIDER", l.Provider, "runpod", "vast", "local")
 	d.Model = oneOf("LOBO_MODEL", l.Model, "q8", "q6")
 	d.Cloud = oneOf("LOBO_CLOUD", l.Cloud, "secure", "community")
 	d.Ctx = num("LOBO_CTX", l.Ctx, 512)
@@ -111,10 +111,49 @@ func (l Laptop) Defaults() (Defaults, error) {
 			d.VastMaxDPH = f
 		}
 	}
+	if _, err := l.port(); err != nil {
+		bad["LOBO_LOCAL_PORT"] = err.Error()
+	}
 	if len(bad) > 0 {
 		return d, &DefaultsError{Bad: bad}
 	}
 	return d, nil
+}
+
+// DefaultLocalPort is the local llama-server port. The agent API listens on port+1.
+const DefaultLocalPort = 8931
+
+// Weights is the local weights folder (LOBO_WEIGHTS_DIR, leading ~/ expanded).
+func (l Laptop) Weights() string {
+	home, _ := os.UserHomeDir()
+	switch w := l.WeightsDir; {
+	case w == "":
+		return filepath.Join(home, "Library", "Application Support", "lobo", "weights")
+	case w == "~" || strings.HasPrefix(w, "~/"):
+		return filepath.Join(home, strings.TrimPrefix(w, "~"))
+	default:
+		return w
+	}
+}
+
+// Port is LOBO_LOCAL_PORT, or DefaultLocalPort when empty, 0 or bad (Defaults reports bad values).
+func (l Laptop) Port() int {
+	if p, err := l.port(); err == nil && p != 0 {
+		return p
+	}
+	return DefaultLocalPort
+}
+
+// port parses LOBO_LOCAL_PORT; 0 = unset. port+1 must be a valid port too (agent API).
+func (l Laptop) port() (int, error) {
+	if l.LocalPort == "" || l.LocalPort == "0" {
+		return 0, nil
+	}
+	p, err := strconv.Atoi(l.LocalPort)
+	if err != nil || p < 1024 || p > 65534 {
+		return 0, fmt.Errorf("want a port 1024-65534 (or empty), got %q", l.LocalPort)
+	}
+	return p, nil
 }
 
 // Providers lists providers that have a key, in a stable order.
