@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -100,17 +101,20 @@ func TestDownload(t *testing.T) {
 		name      string
 		m         model.Model
 		file      []byte // nil = missing
-		marker    bool
+		marker    string // "" = none, else a markers key
 		wantHits  int32
 		wantErr   string
 		wantMark  bool
 		wantBad   bool
 		wantVerif bool
 	}{
-		{name: "complete+marker", m: good, file: body, marker: true, wantHits: 0, wantMark: true},
+		{name: "complete+marker", m: good, file: body, marker: "valid", wantHits: 0, wantMark: true},
 		{name: "complete no marker", m: good, file: body, wantHits: 0, wantMark: true, wantVerif: true},
+		{name: "complete, stale mtime", m: good, file: body, marker: "stale mtime", wantHits: 0, wantMark: true, wantVerif: true},
+		{name: "complete, old format", m: good, file: body, marker: "old format", wantHits: 0, wantMark: true, wantVerif: true},
+		{name: "complete, wrong sha", m: good, file: body, marker: "wrong sha", wantHits: 0, wantMark: true, wantVerif: true},
 		{name: "missing", m: good, wantHits: 1, wantMark: true},
-		{name: "short", m: good, file: body[:100], marker: true, wantHits: 2, wantMark: true}, // probe + rest
+		{name: "short", m: good, file: body[:100], marker: "old format", wantHits: 2, wantMark: true}, // probe + rest
 		{name: "bad sha download", m: bad, wantHits: 1, wantErr: "sha256", wantBad: true},
 		{name: "bad sha on disk", m: bad, file: body, wantHits: 0, wantErr: "sha256", wantBad: true, wantVerif: true},
 	}
@@ -123,8 +127,8 @@ func TestDownload(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if tt.marker {
-				if err := os.WriteFile(MarkerPath(w, tt.m.File), nil, 0o644); err != nil {
+			if tt.marker != "" {
+				if err := os.WriteFile(MarkerPath(w, tt.m.File), []byte(testMarker(t, w, tt.m, tt.marker)), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -140,8 +144,9 @@ func TestDownload(t *testing.T) {
 			if hits.Load() != tt.wantHits {
 				t.Fatalf("hits %d, want %d", hits.Load(), tt.wantHits)
 			}
-			if _, err := os.Stat(MarkerPath(w, tt.m.File)); (err == nil) != tt.wantMark {
-				t.Fatalf("marker: %v", err)
+			if markerValid(w, tt.m) != tt.wantMark {
+				b, _ := os.ReadFile(MarkerPath(w, tt.m.File))
+				t.Fatalf("marker valid %v, want %v: %q", !tt.wantMark, tt.wantMark, b)
 			}
 			if verif != tt.wantVerif {
 				t.Fatalf("verifying progress %v", verif)
@@ -164,6 +169,30 @@ func TestDownload(t *testing.T) {
 			}
 		})
 	}
+}
+
+// testMarker is a marker body for <w>/<m.File>: "valid", "stale mtime", "old format" (`<sha>\n`), "wrong sha",
+// "wrong size". A missing file gets its fields from m and the zero mtime.
+func testMarker(t *testing.T, w string, m model.Model, kind string) string {
+	t.Helper()
+	size, mtime := m.Size, int64(0)
+	if fi, err := os.Stat(filepath.Join(w, m.File)); err == nil {
+		size, mtime = fi.Size(), fi.ModTime().UnixNano()
+	}
+	switch kind {
+	case "valid":
+		return fmt.Sprintf("%s %d %d\n", m.SHA256, size, mtime)
+	case "stale mtime":
+		return fmt.Sprintf("%s %d %d\n", m.SHA256, size, mtime-1)
+	case "old format":
+		return m.SHA256 + "\n"
+	case "wrong sha":
+		return fmt.Sprintf("%s %d %d\n", strings.Repeat("a", 64), size, mtime)
+	case "wrong size":
+		return fmt.Sprintf("%s %d %d\n", m.SHA256, size+1, mtime)
+	}
+	t.Fatalf("marker kind %q", kind)
+	return ""
 }
 
 func TestStartLlama(t *testing.T) {

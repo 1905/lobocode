@@ -124,15 +124,15 @@ func lastLine(s string) string {
 	return s[strings.LastIndexByte(s, '\n')+1:]
 }
 
-// download makes <weights>/<file> complete and verified. Full size + marker: done. Full size, no marker:
-// hash once, then mark. Short or missing: HF download (agent.Download hashes inline), then mark.
+// download makes <weights>/<file> complete and verified. Full size + valid marker (markerValid): done. Full
+// size, no valid marker: hash once, then mark. Short or missing: HF download (agent.Download hashes inline), then mark.
 // A sha mismatch moves the file to <weights>/.bad/ and fails: never serve an unverified file.
 func (d *macDeps) download(ctx context.Context, onProgress func(agent.DownloadProgress)) error {
 	m, w := d.cfg.Model, d.cfg.Weights
 	dst, marker := filepath.Join(w, m.File), MarkerPath(w, m.File)
 	fi, err := os.Stat(dst)
 	if err == nil && fi.Size() == m.Size {
-		if _, err := os.Stat(marker); err == nil {
+		if markerValid(w, m) {
 			return nil
 		}
 		got, err := hashFile(ctx, dst, m.Size, onProgress)
@@ -142,7 +142,7 @@ func (d *macDeps) download(ctx context.Context, onProgress func(agent.DownloadPr
 		if got != m.SHA256 {
 			return d.quarantine(dst, fmt.Errorf("%s: sha256 %s, want %s", m.File, got, m.SHA256))
 		}
-		return os.WriteFile(marker, []byte(m.SHA256+"\n"), 0o644)
+		return writeMarker(w, m)
 	}
 	if err := os.Remove(marker); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -153,7 +153,7 @@ func (d *macDeps) download(ctx context.Context, onProgress func(agent.DownloadPr
 		}
 		return err
 	}
-	return os.WriteFile(marker, []byte(m.SHA256+"\n"), 0o644)
+	return writeMarker(w, m)
 }
 
 // quarantine moves a bad file to <weights>/.bad/<file>.<unix> and returns cause.
