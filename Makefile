@@ -16,7 +16,7 @@ build-lobo:
 	go build -ldflags '$(LDFLAGS)' -o $(BIN)/lobo ./cmd/lobo
 
 build-agent:
-	$(AGENT_ENV) go build -o $(BIN)/lobo-agent ./cmd/lobo-agent
+	$(AGENT_ENV) go build -trimpath -ldflags "-s -w" -o $(BIN)/lobo-agent ./cmd/lobo-agent
 
 # Build and install `lobo` into $(PREFIX)/bin (default ~/.local/bin). Then: `lobo config`, `lobo up`.
 install: build-lobo
