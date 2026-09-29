@@ -262,3 +262,82 @@ func TestLoadLaptopIgnoresBadDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLoadLaptopLocalOnly(t *testing.T) {
+	l, err := LoadLaptop(writeEnv(t, "LOBO_API_KEY=sk-x\nLOBO_PROVIDER=local\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = l.RequireCloud()
+	for _, k := range []string{"CF_TUNNEL_TOKEN", "LOBO_DOMAIN", "LOBO_BUCKET_URL"} {
+		if err == nil || !strings.Contains(err.Error(), k) {
+			t.Fatalf("want %s in %v", k, err)
+		}
+	}
+	if _, err := LoadLaptop(writeEnv(t, "LOBO_API_KEY=sk-x\n")); err == nil || !strings.Contains(err.Error(), "RUNPOD_API_KEY") {
+		t.Fatalf("no provider key and not local: got %v", err)
+	}
+	if _, err := LoadLaptop(writeEnv(t, "LOBO_PROVIDER=local\n")); err == nil || !strings.Contains(err.Error(), "LOBO_API_KEY") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestRequireCloud(t *testing.T) {
+	l, err := LoadLaptop(writeEnv(t, fullEnv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.RequireCloud(); err != nil {
+		t.Fatal(err)
+	}
+	l.BucketURL = "not a url"
+	if err := l.RequireCloud(); err == nil || !strings.Contains(err.Error(), "LOBO_BUCKET_URL") {
+		t.Fatalf("got %v", err)
+	}
+	// LOBO_PROVIDER=local skips the provider-key check at load; the cloud path still needs a key.
+	l, err = LoadLaptop(writeEnv(t, strings.Replace(fullEnv, "RUNPOD_API_KEY=rp\n", "LOBO_PROVIDER=local\n", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.RequireCloud(); err == nil || !strings.Contains(err.Error(), "RUNPOD_API_KEY") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestWeightsPort(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		l       Laptop
+		weights string
+		port    int
+	}{
+		{Laptop{}, filepath.Join(home, "Library/Application Support/lobo/weights"), 8931},
+		{Laptop{WeightsDir: "/Volumes/Extreme/_lobocode", LocalPort: "9000"}, "/Volumes/Extreme/_lobocode", 9000},
+		{Laptop{WeightsDir: "~/w", LocalPort: "x"}, filepath.Join(home, "w"), 8931},
+	} {
+		if got := c.l.Weights(); got != c.weights {
+			t.Fatalf("%+v: weights %s want %s", c.l, got, c.weights)
+		}
+		if got := c.l.Port(); got != c.port {
+			t.Fatalf("%+v: port %d want %d", c.l, got, c.port)
+		}
+	}
+}
+
+func TestDefaultsLocal(t *testing.T) {
+	d, err := Laptop{Provider: "local", LocalPort: "9000"}.Defaults()
+	if err != nil || d.Provider != "local" {
+		t.Fatalf("%+v %v", d, err)
+	}
+	if _, err := (Laptop{LocalPort: "0"}).Defaults(); err != nil {
+		t.Fatalf("0 = default: %v", err)
+	}
+	for _, p := range []string{"-1", "abc", "65535", "80"} {
+		if _, err := (Laptop{LocalPort: p}).Defaults(); err == nil || !strings.Contains(err.Error(), "LOBO_LOCAL_PORT") {
+			t.Fatalf("LOBO_LOCAL_PORT=%s: got %v", p, err)
+		}
+	}
+}

@@ -58,7 +58,7 @@ func TestApplyDefaults(t *testing.T) {
 
 func TestMaskedUnknownKeys(t *testing.T) {
 	for k, clear := range map[string]bool{"CUSTOM_API_KEY": false, "DATABASE_PASSWORD": false, "RUNPOD_API_KEY": false, "R2_SECRET_KEY": false,
-		"LOBO_FEESH_HTTP_URL": false, "LOBO_DOMAIN": true, "LOBO_CTX": true} {
+		"LOBO_FEESH_HTTP_URL": false, "LOBO_DOMAIN": true, "LOBO_CTX": true, "LOBO_WEIGHTS_DIR": true, "LOBO_LOCAL_PORT": true} {
 		v := "value-that-is-long-enough"
 		if got := masked(k, v); (got == v) != clear {
 			t.Fatalf("%s: got %q", k, got)

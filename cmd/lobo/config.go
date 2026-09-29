@@ -205,6 +205,7 @@ var plainKeys = map[string]bool{
 	"LOBO_DOMAIN": true, "LOBO_BUCKET_URL": true, "LOBO_PROVIDER": true, "LOBO_MODEL": true, "LOBO_CTX": true,
 	"LOBO_IDLE_MIN": true, "LOBO_MAX_HOURS": true, "LOBO_MIN_MBPS": true, "LOBO_CLOUD": true, "LOBO_VAST_MAX_DPH": true, "LOBO_POD_IMAGE": true,
 	"LOBO_MODEL_SOURCE": true, "LOBO_MODEL_SSH_KEY_FILE": true, "LOBO_MODEL_SSH_HOSTKEY": true, "R2_ACCOUNT_ID": true, "R2_ENDPOINT": true,
+	"LOBO_WEIGHTS_DIR": true, "LOBO_LOCAL_PORT": true,
 }
 
 func masked(k, v string) string {
