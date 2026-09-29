@@ -15,10 +15,6 @@ func TestFreeMiB(t *testing.T) {
 	if _, ok := freeMiB("no devices"); ok {
 		t.Fatal("want !ok")
 	}
-	// Q8 @ 64K measured 29,274 MiB used: need more than that, but a clean 5090 (31,602 free) must pass.
-	if need := minFreeMiB(28595762272); need <= 29274 || need >= 31602 {
-		t.Fatal(need)
-	}
 }
 
 func TestDownloadAnyFallsBackOnAnyError(t *testing.T) {

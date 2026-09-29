@@ -49,3 +49,10 @@ func TestAll(t *testing.T) {
 		t.Fatalf("%+v", all)
 	}
 }
+
+func TestMinFreeMiB(t *testing.T) {
+	// Q8 @ 64K measured 29,274 MiB used: need more than that, but a clean 5090 (31,602 free) must pass.
+	if need := MinFreeMiB(28595762272); need <= 29274 || need >= 31602 {
+		t.Fatal(need)
+	}
+}
