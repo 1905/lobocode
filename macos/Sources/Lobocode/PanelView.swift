@@ -78,7 +78,7 @@ struct Header: View {
         }
         var parts = [p.provider]
         if let d = p.detail, !d.isEmpty { parts.append(d) }
-        if p.provider != "local" { parts.append(String(format: "$%.2f/h", p.cost_per_hr)) } // local: $0 sits in the footer
+        if p.cost_per_hr > 0 { parts.append(String(format: "$%.2f/h", p.cost_per_hr)) } // free (local): $0 sits in the footer
         return parts.joined(separator: " · ")
     }
 }
