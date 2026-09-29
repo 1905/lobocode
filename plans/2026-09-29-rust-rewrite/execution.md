@@ -9,7 +9,7 @@ Authorization: the user said, "when plan is fixed start implementation in full a
 |---|---|---|
 | P1 | [Workspace and protocol](plan-p1-v1.1.md) | done: 5dfe9ab, CI 36557109125 |
 | P2 | [Pod agent](plan-p2-v1.2.md) | code/CI done at ed65ecc; live E2E pending P6 |
-| P3 | [Core](plan-p3-v1.2.md) | config/bootstrap/cloud providers implemented; release/local/control pending |
+| P3 | [Core](plan-p3-v1.2.md) | config/cloud/release/checks implemented; local/control pending |
 | P4 | [CLI](plan-p4-v1.2.md) | pending P3 |
 | P5 | [App](plan-p5-v1.2.md) | pending P4 |
 | P6 | [Cutover](plan-p6-v1.2.md) | pending P5 |
@@ -87,3 +87,8 @@ Use cleanup on every live exit path. Only task-owned instances and processes may
 
 - P3 foundation a658c35 passed Rust CI 36563716290 and image CI 36563716069.
 - P3 Tasks 14–26 implemented. 80 core tests pass. Submitted creates stay awaited on cancel; Vast adoption continues on cancel. No live provider request was made. Cross-operation blocking after an unresolved create remains part of the upcoming control work.
+
+- Release implementation research: rusty-s3 0.10.2 source confirms path-style signing, paginated ListObjectsV2 parsing and custom signed headers. R2 documents conditional PutObject support (https://developers.cloudflare.com/r2/api/s3/api/). Task 31 now requires signed If-None-Match:* on immutable uploads, since HEAD alone races. Mock and final live verification remain pending.
+
+- P3 providers 3bc03fc passed Rust CI 36565014524 and pod image CI 36565014449.
+- P3 Tasks 27–35 implemented. 105 core tests and clippy pass. Mock tests cover isolated candidate upload, immutable-write conflict and failed uploads without latest promotion. No live R2 write was made.

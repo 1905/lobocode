@@ -625,7 +625,7 @@ impl Store {
   pub async fn publish(&self, zip: &Path, r: &Resolved) -> Result<()>;  // store.go:47-68
 }
 ```
-Publish: HEAD zip key and meta key first (200 → `Error::Release("release <v> already exists (<key>); run make release again")`, 404 → continue, other → error). Then PUT zip (`Content-Type: application/zip`), then meta json, then `latest.json` (`application/json`, `Cache-Control: no-cache`, pretty JSON). Every request is a presigned URL (1 h) sent with reqwest.
+Publish: HEAD zip key and meta key first (200 → `Error::Release("release <v> already exists (<key>); run make release again")`, 404 → continue, other → error). Then PUT zip (`Content-Type: application/zip`), then meta json, then `latest.json` (`application/json`, `Cache-Control: no-cache`, pretty JSON). Every request is a presigned URL (1 h) sent with reqwest. Versioned PUTs sign and send `If-None-Match: *`; HEAD alone cannot prevent concurrent publishers overwriting the same release. A 412 fails the publish before latest. Add a conditional-write conflict test. R2 supports these conditions: https://developers.cloudflare.com/r2/api/s3/api/. This is documented support; live verification remains pending P6.
 - [ ] Failing tests (wiremock, requests recorded): `publish_order_zip_meta_latest` (HEAD, HEAD, PUT zip, PUT meta, PUT latest; each URL query has `X-Amz-Signature`); `publish_refuses_existing_release` (HEAD 200 → error, no PUT); `list_follows_continuation` (two XML pages → all keys).
 - [ ] Implement. `cargo test -p lobo-core release::store` → pass (5).
 - [ ] Commit: `lobo-core: R2 publish (zip → meta → latest) and listing`.
@@ -1354,4 +1354,4 @@ Contract alignment (contracts v1.1):
 Tasks 0–13 implemented as one foundation/config batch. 36 core tests and clippy pass.
 The Go generator produces 77 deterministic fixtures. CI checks fixture drift.
 The task checklists above describe the original sequence; separate red-first commits were not recorded.
-Tasks 14–26 implemented in the provider batch. 80 core tests pass, including cancellation during create and delayed Vast reconciliation. Tasks 27 onward remain pending.
+Tasks 14–26 implemented in the provider batch. 80 core tests pass, including cancellation during create and delayed Vast reconciliation. Tasks 27–35 implemented in the release/checks batch. 105 core tests and clippy pass. Tasks 36 onward remain pending.

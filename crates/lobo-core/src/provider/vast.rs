@@ -117,7 +117,12 @@ impl Client {
             error,
         })
     }
-    async fn json(&self, method: Method, path: &str, body: Option<&Value>) -> Result<Value> {
+    async fn json<T: serde::de::DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<T> {
         let bytes = self
             .request(method.clone(), path, body)
             .await
@@ -125,14 +130,18 @@ impl Client {
         serde_json::from_slice(&bytes).map_err(|e| Error::Api(format!("vast {method} {path}: {e}")))
     }
     pub async fn search_offers(&self, max_dph: f64, min_mbps: i64) -> Result<Vec<Offer>> {
-        let mut v = self
+        #[derive(Deserialize)]
+        struct Offers {
+            offers: Option<Vec<Offer>>,
+        }
+        let v: Offers = self
             .json(
                 Method::POST,
                 "/bundles",
                 Some(&search_query(max_dph, min_mbps)),
             )
             .await?;
-        Ok(serde_json::from_value::<Option<Vec<Offer>>>(v["offers"].take())?.unwrap_or_default())
+        Ok(v.offers.unwrap_or_default())
     }
     pub async fn create(&self, offer_id: i64, body: &Value) -> Result<i64> {
         let path = format!("/asks/{offer_id}/");
@@ -167,14 +176,22 @@ impl Client {
         Ok(result.new_contract)
     }
     pub async fn list(&self) -> Result<Vec<Inst>> {
-        let mut v = self.json(Method::GET, "/instances/", None).await?;
-        Ok(serde_json::from_value::<Option<Vec<Inst>>>(v["instances"].take())?.unwrap_or_default())
+        #[derive(Deserialize)]
+        struct Instances {
+            instances: Option<Vec<Inst>>,
+        }
+        let v: Instances = self.json(Method::GET, "/instances/", None).await?;
+        Ok(v.instances.unwrap_or_default())
     }
     pub async fn get(&self, id: i64) -> Result<Inst> {
-        let mut v = self
+        #[derive(Deserialize)]
+        struct OneInstance {
+            instances: Option<Inst>,
+        }
+        let v: OneInstance = self
             .json(Method::GET, &format!("/instances/{id}/"), None)
             .await?;
-        serde_json::from_value::<Option<Inst>>(v["instances"].take())?.ok_or(Error::NotFound)
+        v.instances.ok_or(Error::NotFound)
     }
     pub async fn destroy(&self, id: i64) -> Result<()> {
         match self
