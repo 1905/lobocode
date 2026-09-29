@@ -2,8 +2,6 @@ package local
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -134,7 +132,7 @@ func (d *macDeps) download(ctx context.Context, onProgress func(agent.DownloadPr
 		if markerValid(w, m) {
 			return nil
 		}
-		got, err := hashFile(ctx, dst, m.Size, onProgress)
+		got, err := agent.HashFile(ctx, dst, m.Size, onProgress)
 		if err != nil {
 			return err
 		}
@@ -166,48 +164,6 @@ func (d *macDeps) quarantine(src string, cause error) error {
 		return fmt.Errorf("%w (quarantine: %v)", cause, err)
 	}
 	return fmt.Errorf("%w, moved to %s", cause, to)
-}
-
-// hashFile sha256s path, reporting Verifying progress at most every 500 ms and once at the end.
-func hashFile(ctx context.Context, path string, total int64, onProgress func(agent.DownloadProgress)) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	buf := make([]byte, 4<<20)
-	var n int64
-	start, last := time.Now(), time.Time{}
-	report := func(force bool) {
-		if onProgress == nil || (!force && time.Since(last) < 500*time.Millisecond) {
-			return
-		}
-		last = time.Now()
-		mbps := 0.0
-		if s := time.Since(start).Seconds(); s > 0 {
-			mbps = float64(n) / s / 1e6
-		}
-		onProgress(agent.DownloadProgress{Bytes: n, Total: total, MBps: mbps, Verifying: true})
-	}
-	report(true)
-	for {
-		if err := ctx.Err(); err != nil {
-			return "", err
-		}
-		k, err := f.Read(buf)
-		h.Write(buf[:k])
-		n += int64(k)
-		report(false)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return "", err
-		}
-	}
-	report(true)
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (d *macDeps) startLlama(ctx context.Context) (<-chan error, error) {
