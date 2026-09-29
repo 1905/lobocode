@@ -9,6 +9,8 @@ struct SettingsView: View {
     @State private var f = Fields()
     @State private var status: (String, Color)?
     @State private var saving = false
+    /// Free bytes measured for a typed or chosen weights folder: (that path, bytes).
+    @State private var measured: (path: String, free: Int64?)?
 
     static let secrets = ["RUNPOD_API_KEY", "VASTAI_API_KEY", "CF_TUNNEL_TOKEN"]
 
@@ -172,13 +174,20 @@ struct SettingsView: View {
                 Text("\(Fmt.gb(free)) GB free").font(Theme.mono(10)).foregroundColor(Theme.dim).padding(.leading, 118)
             }
         }
+        .task(id: value) {
+            guard !rendering, !isSavedWeights(value) else { return }
+            measured = (value, SettingsView.freeBytes(value.isEmpty ? SettingsView.defaultWeights : value))
+        }
     }
 
-    /// The CLI's number for the saved folder; a newly typed or chosen one is measured here (never in render mode).
+    private func isSavedWeights(_ typed: String) -> Bool {
+        typed.trimmingCharacters(in: .whitespaces) == (store.config?.values["LOBO_WEIGHTS_DIR"] ?? "")
+    }
+
+    /// The CLI's number for the saved folder; a newly typed or chosen one is measured once per edit (never in render mode).
     private func weightsFree(_ typed: String) -> Int64? {
-        let saved = store.config?.values["LOBO_WEIGHTS_DIR"] ?? ""
-        if rendering || typed.trimmingCharacters(in: .whitespaces) == saved { return store.models?.free_bytes }
-        return SettingsView.freeBytes(typed.isEmpty ? SettingsView.defaultWeights : typed)
+        if rendering || isSavedWeights(typed) { return store.models?.free_bytes }
+        return measured?.path == typed ? measured?.free : nil
     }
 
     /// Free bytes on the volume of `path`, or of its nearest existing parent (the folder may not exist yet).
