@@ -218,7 +218,7 @@ func stateFor(id string) (State, error) {
 	return s, nil
 }
 
-// Delete stops the supervisor: SIGTERM, stopWait, then SIGKILL. The state file is removed either way.
+// Delete stops the supervisor: SIGTERM, stopWait, then SIGKILL. The state it verified is removed either way.
 // Already gone = nil (provider contract). A pid that fails isSupervisor (reused after a crash) is never
 // signalled: the state is stale, so it is removed and Delete returns nil. Identity is checked again before SIGKILL.
 func (p Provider) Delete(_ context.Context, id string) error {
@@ -231,21 +231,21 @@ func (p Provider) Delete(_ context.Context, id string) error {
 	}
 	pid := st.PID
 	if !isSupervisor(pid, st.BootID) {
-		return RemoveState()
+		return RemoveStateIf(pid, st.BootID)
 	}
 	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return fmt.Errorf("stop local pid %d: %w", pid, err)
 	}
 	if !waitGone(pid, stopWait) {
 		if !isSupervisor(pid, st.BootID) { // gone or reused while we waited: never signal a stranger
-			return RemoveState()
+			return RemoveStateIf(pid, st.BootID)
 		}
 		_ = syscall.Kill(pid, syscall.SIGKILL)
 		if !waitGone(pid, 2*time.Second) {
 			return fmt.Errorf("local pid %d survived SIGKILL", pid)
 		}
 	}
-	return RemoveState()
+	return RemoveStateIf(pid, st.BootID)
 }
 
 // commandOf is the full command line of pid (`ps -ww -o command=`, -ww = never cut to a width); an error
