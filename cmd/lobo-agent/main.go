@@ -150,14 +150,7 @@ func run() error {
 		},
 		StartLlama: func(ctx context.Context) (<-chan error, error) {
 			host, port, _ := strings.Cut(agent.LlamaAddr, ":")
-			args := []string{
-				"-m", modelDir + "/" + m.File, "--alias", m.Alias,
-				"--host", host, "--port", port,
-				"-ngl", "99", "-c", strconv.Itoa(cfg.Ctx), "--parallel", "1",
-				"-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
-				"--jinja", "--reasoning", "off",
-				"--metrics", "--no-webui",
-			}
+			args := append([]string{"-m", modelDir + "/" + m.File}, agent.LlamaArgs(m, host, port, cfg.Ctx)...)
 			env := append(childEnv, "LD_LIBRARY_PATH=/app:/usr/local/cuda/lib64", "LLAMA_API_KEY="+cfg.LoboAPIKey)
 			return agent.StartProcess(ctx, llamaBin, args, env, prefix(logs, "llama"))
 		},
