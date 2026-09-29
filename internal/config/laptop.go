@@ -17,8 +17,8 @@ import (
 type Laptop struct {
 	RunPodAPIKey  string `env:"RUNPOD_API_KEY"` // cloud: at least one of RUNPOD_API_KEY / VASTAI_API_KEY (RequireCloud)
 	LoboAPIKey    string `env:"LOBO_API_KEY" validate:"required"`
-	CFTunnelToken string `env:"CF_TUNNEL_TOKEN"` // cloud only: RequireCloud
-	Domain        string `env:"LOBO_DOMAIN"`     // cloud only: RequireCloud
+	CFTunnelToken string `env:"CF_TUNNEL_TOKEN"` // cloud up only: RequireCloud / RequireTunnel
+	Domain        string `env:"LOBO_DOMAIN"`     // cloud up only: RequireCloud / RequireTunnel
 	BucketURL     string `env:"LOBO_BUCKET_URL" validate:"omitempty,url"`
 	// Optional model source over SSH (the model server). Empty = public bucket URL.
 	ModelSource     string `env:"LOBO_MODEL_SOURCE"`       // ssh://lobo@203.0.113.10:22
@@ -65,7 +65,7 @@ func LoadLaptop(envPath string) (Laptop, error) {
 		return Laptop{}, err
 	}
 	// No provider key check here: local-only setups have none, and `up --provider local` is a flag the
-	// file does not know about. Every cloud path calls RequireCloud.
+	// file does not know about. `up` on a cloud provider calls RequireCloud; down/status need only RequireProviderKey.
 	if strings.HasPrefix(l.ModelSource, "ssh://") && (l.ModelSSHKeyFile == "" || l.ModelSSHHostKey == "") {
 		return Laptop{}, fmt.Errorf("config: LOBO_MODEL_SOURCE is ssh://: LOBO_MODEL_SSH_KEY_FILE and LOBO_MODEL_SSH_HOSTKEY are required")
 	}
@@ -75,28 +75,61 @@ func LoadLaptop(envPath string) (Laptop, error) {
 	return l, nil
 }
 
-// RequireCloud checks the keys a cloud provider (runpod, vast) needs. Local mode needs none of them.
+// RequireCloud checks every key `up` on a cloud provider (runpod, vast) needs. Local mode needs none of them.
 func (l Laptop) RequireCloud() error {
-	var missing []string
-	for _, kv := range [][2]string{{"CF_TUNNEL_TOKEN", l.CFTunnelToken}, {"LOBO_DOMAIN", l.Domain}, {"LOBO_BUCKET_URL", l.BucketURL}} {
-		if kv[1] == "" {
-			missing = append(missing, kv[0])
-		}
+	if m := missing(l.tunnel(), l.bucket()); len(m) > 0 {
+		return fmt.Errorf("config: cloud needs %s", strings.Join(m, ", "))
 	}
-	if len(missing) > 0 {
-		return fmt.Errorf("config: cloud needs %s", strings.Join(missing, ", "))
+	if err := l.RequireBucket(); err != nil {
+		return err
 	}
-	if err := validate1.Var(l.BucketURL, "url"); err != nil {
-		return fmt.Errorf("config: LOBO_BUCKET_URL: want a URL, got %q", l.BucketURL)
-	}
-	return l.requireProviderKey()
+	return l.RequireProviderKey()
 }
 
-func (l Laptop) requireProviderKey() error {
+// RequireProviderKey checks that at least one cloud provider has a key. `down` and `status` need no more.
+func (l Laptop) RequireProviderKey() error {
 	if l.RunPodAPIKey == "" && l.VastAPIKey == "" {
 		return fmt.Errorf("config: set RUNPOD_API_KEY or VASTAI_API_KEY")
 	}
 	return nil
+}
+
+// RequireTunnel checks the keys a pod needs to publish its API: CF_TUNNEL_TOKEN and LOBO_DOMAIN.
+func (l Laptop) RequireTunnel() error {
+	if m := missing(l.tunnel()); len(m) > 0 {
+		return fmt.Errorf("config: tunnel needs %s", strings.Join(m, ", "))
+	}
+	return nil
+}
+
+// RequireBucket checks LOBO_BUCKET_URL: set and a URL.
+func (l Laptop) RequireBucket() error {
+	if l.BucketURL == "" {
+		return fmt.Errorf("config: set LOBO_BUCKET_URL")
+	}
+	if err := validate1.Var(l.BucketURL, "url"); err != nil {
+		return fmt.Errorf("config: LOBO_BUCKET_URL: want a URL, got %q", l.BucketURL)
+	}
+	return nil
+}
+
+func (l Laptop) tunnel() [][2]string {
+	return [][2]string{{"CF_TUNNEL_TOKEN", l.CFTunnelToken}, {"LOBO_DOMAIN", l.Domain}}
+}
+
+func (l Laptop) bucket() [][2]string { return [][2]string{{"LOBO_BUCKET_URL", l.BucketURL}} }
+
+// missing lists the names of the empty {name, value} pairs.
+func missing(groups ...[][2]string) []string {
+	var m []string
+	for _, g := range groups {
+		for _, kv := range g {
+			if kv[1] == "" {
+				m = append(m, kv[0])
+			}
+		}
+	}
+	return m
 }
 
 // RequireR2 checks the upload keys. Only `lobo release` needs them.

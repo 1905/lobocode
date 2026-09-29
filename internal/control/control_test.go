@@ -668,3 +668,30 @@ func TestHTTPAgentURL(t *testing.T) {
 		t.Fatal(NewHTTPAgent("lobo.example.com", "sk").Base)
 	}
 }
+
+// A cloud pod with no LOBO_DOMAIN: show the pod, skip the agent (it has no address), no error.
+func TestSnapshotNoDomain(t *testing.T) {
+	tests := []struct {
+		name      string
+		domain    string
+		wantCalls int
+	}{
+		{name: "domain set", domain: "lobo.example.com", wantCalls: 2},
+		{name: "no domain", wantCalls: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rp := &ct.RunPod{Pods: []runpod.Pod{{ID: "a", Name: "lobo"}}}
+			ag := &ct.Agent{Script: []*agent.Status{{Stage: agent.StageReady}}}
+			d := ct.Deps(rp, ag, nil)
+			d.Cfg.Domain = tt.domain
+			s, err := Snapshot(context.Background(), d)
+			if err != nil || s.Down || s.Pod == nil || s.Pod.ID != "a" {
+				t.Fatalf("%+v %v", s, err)
+			}
+			if ag.Calls() != tt.wantCalls {
+				t.Fatalf("agent calls %d want %d", ag.Calls(), tt.wantCalls)
+			}
+		})
+	}
+}

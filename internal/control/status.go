@@ -22,7 +22,7 @@ type Snap struct {
 	At      time.Time          `json:"at"`
 }
 
-// Snapshot collects pod + release + agent status. An unreachable agent is not an error.
+// Snapshot collects pod + release + agent status. An unreachable agent, or a cloud pod with no LOBO_DOMAIN, is not an error.
 func Snapshot(ctx context.Context, d Deps) (Snap, error) {
 	l, err := running(ctx, d)
 	if err != nil {
@@ -32,6 +32,9 @@ func Snapshot(ctx context.Context, d Deps) (Snap, error) {
 		return Snap{Down: true, At: d.now()}, nil
 	}
 	s := Snap{Pod: &l[0], At: d.now()}
+	if l[0].Provider != "local" && d.Cfg.Domain == "" {
+		return s, nil // no LOBO_DOMAIN: the pod's agent has no address, show the pod alone
+	}
 	ag := d.agentFor(l[0].Provider)
 	s.Status, _ = ag.Status(ctx)
 	s.Version, _ = ag.Version(ctx)
