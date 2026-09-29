@@ -10,11 +10,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/1905/lobocode/internal/agent"
 	"github.com/1905/lobocode/internal/model"
@@ -83,8 +83,7 @@ func hfServer(t *testing.T, file string, body []byte) (string, *atomic.Int32) {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Length", strconv.Itoa(len(body))) // agent.Download needs the total
-		_, _ = w.Write(body)
+		http.ServeContent(w, r, file, time.Time{}, bytes.NewReader(body)) // Range support, like HF
 	}))
 	t.Cleanup(srv.Close)
 	return srv.URL + "/", &hits
@@ -111,7 +110,7 @@ func TestDownload(t *testing.T) {
 		{name: "complete+marker", m: good, file: body, marker: true, wantHits: 0, wantMark: true},
 		{name: "complete no marker", m: good, file: body, wantHits: 0, wantMark: true, wantVerif: true},
 		{name: "missing", m: good, wantHits: 1, wantMark: true},
-		{name: "short", m: good, file: body[:100], marker: true, wantHits: 1, wantMark: true},
+		{name: "short", m: good, file: body[:100], marker: true, wantHits: 2, wantMark: true}, // probe + rest
 		{name: "bad sha download", m: bad, wantHits: 1, wantErr: "sha256", wantBad: true},
 		{name: "bad sha on disk", m: bad, file: body, wantHits: 0, wantErr: "sha256", wantBad: true, wantVerif: true},
 	}
