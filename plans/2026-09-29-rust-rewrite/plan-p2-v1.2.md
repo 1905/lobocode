@@ -1,7 +1,7 @@
 # Rust rewrite P2 — `lobo-agent` Implementation Plan v1.2
 
 **Date:** 2026-09-29
-**Status:** approved for implementation after plan correction (user: full auto, 2026-09-29). Earlier review covered v1.0 only.
+**Status:** in progress (full auto authorized 2026-09-29; P1 CI passed).
 **Spec:** ./spec.md (full-auto implementation authorized, 2026-09-29)
 **Contracts:** ./contracts.md v1.2 (this plan asks for one contract change and several additions, listed at the end)
 **Phase:** P2 of 6. Needs P1 done on `feat/rust` (workspace, `lobo-proto`, `rust.yml`).

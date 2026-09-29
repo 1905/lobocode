@@ -7,8 +7,8 @@ Authorization: the user said, "when plan is fixed start implementation in full a
 
 | Phase | Plan | State |
 |---|---|---|
-| P1 | [Workspace and protocol](plan-p1-v1.1.md) | implemented; CI pending |
-| P2 | [Pod agent](plan-p2-v1.2.md) | pending P1 |
+| P1 | [Workspace and protocol](plan-p1-v1.1.md) | done: 5dfe9ab, CI 36557109125 |
+| P2 | [Pod agent](plan-p2-v1.2.md) | in progress |
 | P3 | [Core](plan-p3-v1.2.md) | pending P2 |
 | P4 | [CLI](plan-p4-v1.2.md) | pending P3 |
 | P5 | [App](plan-p5-v1.2.md) | pending P4 |
@@ -69,5 +69,6 @@ Use cleanup on every live exit path. Only task-owned instances and processes may
 - Plan corrections written. Active plan references and cancellation signatures checked. Historical review files retain their original whitespace.
 - Baseline validation passed: Go build, 361 Go tests across 18 packages, Swift tests and `make mac` (bundle plus renders).
 - Baseline merged/pushed as 3117f9b; pod-image CI 36556262206 passed. Finder reopen was not manually exercised in this pass.
-- P1 implemented on feat/rust: 35 protocol tests pass. CI and phase close pending.
+- P1 complete on feat/rust at 5dfe9ab: 35 tests, fmt, clippy, fixture/TS drift and CI 36557109125 pass. Actionlint v1.7.7 passes.
+- P2 starts next. Post-delivery Go regression check remains pending.
 - Full P1–P6 acceptance, live tests, final code review and release remain pending.

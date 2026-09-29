@@ -162,3 +162,7 @@ Keep Go extra-argument behavior. Use shared CLI validation for app readiness (in
 Parity exceptions: parser/help layout, OS error wording, JSON escapes and terminal log colors may differ as listed in P4. Wizard uses sequential prompts and has no Shift+Tab back navigation. Preserve existing command outcomes. Cancellation cleanup is an intentional fix.
 
 Full-auto delivery uses required CI and smoke tests first, then QA notification, then full acceptance tests and final reporting. Keep the one final Codex code review; no extra per-phase model review.
+
+## As-built P1
+
+Completed on feat/rust at 5dfe9ab. Rust CI 36557109125 passed. The protocol library has 35 passing tests, 15 JSON fixtures, a Go-generated model catalog and 22 generated TypeScript types. No Rust agent, CLI or desktop application ships in P1. Full rewrite acceptance remains pending.
