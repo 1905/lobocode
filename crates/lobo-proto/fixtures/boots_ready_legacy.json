@@ -1,0 +1,25 @@
+{
+  "pod_id": "0ntwbuvvmevk22",
+  "cloud": "COMMUNITY",
+  "attempts": 1,
+  "rent_to_container_s": 28.085583488,
+  "timings": {
+    "container_started_at": "2026-09-25T00:59:54.619583488Z",
+    "bootstrap_apt_s": 2.8609321117401123,
+    "bootstrap_zip_s": 1.5304715633392334,
+    "tunnel_s": 0.557432668,
+    "gpu_check_s": 0.338709111,
+    "download_s": 83.000194363,
+    "download_mbps": 344.5276503540718,
+    "download_source": "https://models.example.com/q8.gguf",
+    "download_conns": 8,
+    "verify_s": 20.186409376,
+    "load_s": 7.894501188,
+    "ready_at": "2026-09-25T01:01:50.992458886Z"
+  },
+  "url": "https://lobo.example.com/v1",
+  "version": "2026.09.24-4",
+  "git_sha": "a4005dd",
+  "usd_per_h": 0.69,
+  "elapsed_ns": 150041193542
+}

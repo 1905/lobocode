@@ -1,0 +1,36 @@
+{
+  "stage": "download",
+  "stage_detail": "",
+  "download": {
+    "bytes": 1024,
+    "total": 8192,
+    "mbps": 1.25,
+    "verifying": true,
+    "source": "fallback"
+  },
+  "uptime_s": 0,
+  "idle_s": 0,
+  "kill_in_s": 0,
+  "kill_reason": "",
+  "expires_at": "0001-01-01T00:00:00Z",
+  "gpu": null,
+  "host": null,
+  "llama": null,
+  "metrics_failures": 0,
+  "model": "",
+  "ctx": 0,
+  "timings": {
+    "container_started_at": "0001-01-01T00:00:00Z",
+    "bootstrap_apt_s": 0,
+    "bootstrap_zip_s": 0,
+    "tunnel_s": 0,
+    "gpu_check_s": 0,
+    "download_s": 0,
+    "download_mbps": 0,
+    "download_source": "",
+    "download_conns": 0,
+    "verify_s": 0,
+    "load_s": 0,
+    "ready_at": "0001-01-01T00:00:00Z"
+  }
+}

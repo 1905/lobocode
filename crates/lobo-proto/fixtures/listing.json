@@ -1,0 +1,24 @@
+{
+  "weights": "/weights",
+  "free_bytes": 42,
+  "models": [
+    {
+      "id": "q6",
+      "file": "sample",
+      "size": 42,
+      "on_disk": 42,
+      "verified": true
+    },
+    {
+      "id": "q8",
+      "file": "sample",
+      "size": 42,
+      "on_disk": 42,
+      "verified": false
+    }
+  ],
+  "runtime": {
+    "version": "sample",
+    "present": true
+  }
+}

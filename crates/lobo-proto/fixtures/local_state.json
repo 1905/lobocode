@@ -1,0 +1,9 @@
+{
+  "pid": 42,
+  "port": 8931,
+  "api_port": 8932,
+  "model": "sample",
+  "weights": "/weights",
+  "started_at": "2026-09-29T10:00:00+02:00",
+  "boot_id": "sample"
+}

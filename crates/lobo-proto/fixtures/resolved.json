@@ -1,0 +1,22 @@
+{
+  "manifest": {
+    "version": "sample",
+    "git_sha": "sample",
+    "git_dirty": true,
+    "built_at": "2026-09-29T10:00:00.5Z",
+    "built_by": "sample",
+    "llama_image": "ghcr.io/ggml-org/llama.cpp:server-cuda-b11118",
+    "model": {
+      "id": "q8",
+      "file": "sample",
+      "sha256": "sample"
+    },
+    "defaults": {
+      "ctx": 65536,
+      "idle_min": 30,
+      "max_hours": 12
+    }
+  },
+  "zip_key": "releases/lobo-fixture.zip",
+  "zip_sha256": "fixture-sha"
+}

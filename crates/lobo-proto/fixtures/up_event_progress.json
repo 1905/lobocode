@@ -1,0 +1,11 @@
+{
+  "phase": "download",
+  "detail": "downloading",
+  "download": {
+    "bytes": 42,
+    "total": 42,
+    "mbps": 1.25,
+    "verifying": true,
+    "source": "sample"
+  }
+}

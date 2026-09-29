@@ -1,0 +1,49 @@
+name: Rust
+
+on:
+  push:
+    branches: [master, "feat/**"]
+    paths:
+      - "crates/**"
+      - "Cargo.*"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - "Makefile"
+      - "app/**"
+      - "tools/protofixtures/**"
+      - "internal/**"
+      - "cmd/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/rust.yml"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.1"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Rust lint and tests
+        run: make rust-lint rust-test
+      - name: Check generated TypeScript
+        run: |
+          make proto-ts
+          git diff --exit-code -- app/ui/src/proto
+          test -z "$(git status --porcelain -- app/ui/src/proto)"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check Go wire fixtures
+        run: |
+          make proto-fixtures
+          git diff --exit-code -- crates/lobo-proto/fixtures crates/lobo-proto/catalog.json
+          test -z "$(git status --porcelain -- crates/lobo-proto/fixtures crates/lobo-proto/catalog.json)"

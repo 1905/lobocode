@@ -1,0 +1,31 @@
+{
+  "phase": "ready",
+  "ready": {
+    "pod_id": "sample",
+    "provider": "runpod",
+    "detail": "sample",
+    "attempts": 42,
+    "rent_to_container_s": 1.25,
+    "host_download_mbps": 42,
+    "timings": {
+      "container_started_at": "2026-09-29T10:00:00.5Z",
+      "bootstrap_apt_s": 1.25,
+      "bootstrap_zip_s": 1.25,
+      "tunnel_s": 1.25,
+      "gpu_check_s": 1.25,
+      "download_s": 1.25,
+      "download_mbps": 1.25,
+      "download_source": "https://models.example.com/q8.gguf",
+      "download_conns": 42,
+      "verify_s": 1.25,
+      "load_s": 1.25,
+      "ready_at": "2026-09-29T10:00:00.5Z"
+    },
+    "url": "https://lobo.example.com/v1",
+    "version": "sample",
+    "git_sha": "sample",
+    "usd_per_h": 1.25,
+    "elapsed_ns": 123456789012
+  },
+  "done": true
+}

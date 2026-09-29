@@ -13,3 +13,4 @@ boots.jsonl
 .playwright-cli/
 macos/.build/
 .superpowers/
+target/
