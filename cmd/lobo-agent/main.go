@@ -123,9 +123,9 @@ func run() error {
 					log.Info().Int("attempt", attempt).Dur("after", time.Since(start)).Int("free_mib", free).Msg("gpu check ok")
 					return nil
 				}
-				log.Warn().Int("attempt", attempt).Str("out", lastLine(string(out))).Msg("gpu check failed, retrying")
+				log.Warn().Int("attempt", attempt).Str("out", agent.LastLine(string(out))).Msg("gpu check failed, retrying")
 				if time.Since(start) > 3*time.Minute {
-					return fmt.Errorf("llama-server sees no CUDA device after %d tries / %s: %s", attempt, time.Since(start).Round(time.Second), lastLine(string(out)))
+					return fmt.Errorf("llama-server sees no CUDA device after %d tries / %s: %s", attempt, time.Since(start).Round(time.Second), agent.LastLine(string(out)))
 				}
 				select {
 				case <-ctx.Done():
@@ -216,16 +216,6 @@ func prefix(w io.Writer, name string) io.Writer {
 		}
 	}()
 	return pw
-}
-
-func lastLine(s string) string {
-	lines := strings.Split(strings.TrimSpace(s), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.Contains(lines[i], "error") || strings.Contains(lines[i], "fail") {
-			return strings.TrimSpace(lines[i])
-		}
-	}
-	return strings.TrimSpace(lines[len(lines)-1])
 }
 
 var freeRe = regexp.MustCompile(`CUDA0: .*\((\d+) MiB, (\d+) MiB free\)`)
