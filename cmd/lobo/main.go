@@ -91,12 +91,21 @@ func checkTarget(cfg config.Laptop, provider string) error {
 	return cfg.RequireCloud()
 }
 
-// requireCloudIfKeyed: down and status reach the cloud only when a cloud provider has a key.
-func requireCloudIfKeyed(cfg config.Laptop) error {
-	if len(cfg.Providers()) == 0 {
-		return nil
+// checkProviders: down and status only list and delete, so they need a provider, not the tunnel or bucket.
+// A missing CF_TUNNEL_TOKEN must never block deleting a billing pod.
+func checkProviders(cfg config.Laptop) error {
+	if localSupported() == nil {
+		return nil // local is always there; a cloud provider joins only with its key
 	}
-	return cfg.RequireCloud()
+	return cfg.RequireProviderKey()
+}
+
+// checkRelease: `lobo release` uploads to R2 and logs the zip URL against LOBO_BUCKET_URL.
+func checkRelease(cfg config.Laptop) error {
+	if err := cfg.RequireR2(); err != nil {
+		return err
+	}
+	return cfg.RequireBucket()
 }
 
 var localSupported = local.Supported // swapped in tests
@@ -111,10 +120,7 @@ func releaseCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := cfg.RequireR2(); err != nil {
-				return err
-			}
-			if err := cfg.RequireCloud(); err != nil { // the zip URL is logged against LOBO_BUCKET_URL
+			if err := checkRelease(cfg); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -315,7 +321,7 @@ func downCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := requireCloudIfKeyed(cfg); err != nil {
+			if err := checkProviders(cfg); err != nil {
 				return err
 			}
 			spent, err := control.Down(cmd.Context(), deps(cfg))
@@ -343,7 +349,7 @@ func statusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := requireCloudIfKeyed(cfg); err != nil {
+			if err := checkProviders(cfg); err != nil {
 				return err
 			}
 			d := deps(cfg)

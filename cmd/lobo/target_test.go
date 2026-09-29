@@ -47,15 +47,48 @@ func TestCheckTarget(t *testing.T) {
 	}
 }
 
-func TestRequireCloudIfKeyed(t *testing.T) {
-	if err := requireCloudIfKeyed(config.Laptop{LoboAPIKey: "sk"}); err != nil {
-		t.Fatalf("local only: %v", err)
+func TestCheckProviders(t *testing.T) {
+	tests := []struct {
+		name      string
+		cfg       config.Laptop
+		supported error
+		wantErr   string
+	}{
+		{name: "local only, Apple Silicon", cfg: config.Laptop{LoboAPIKey: "sk"}},
+		{name: "runpod key, no tunnel, domain or bucket", cfg: config.Laptop{LoboAPIKey: "sk", RunPodAPIKey: "r"}, supported: errors.New("no")},
+		{name: "vast key only", cfg: config.Laptop{LoboAPIKey: "sk", VastAPIKey: "v"}, supported: errors.New("no")},
+		{name: "no keys, not Apple Silicon", cfg: config.Laptop{LoboAPIKey: "sk"}, supported: errors.New("no"), wantErr: "RUNPOD_API_KEY or VASTAI_API_KEY"},
+		{name: "full cloud config", cfg: cloudCfg},
 	}
-	if err := requireCloudIfKeyed(config.Laptop{LoboAPIKey: "sk", RunPodAPIKey: "r"}); err == nil || !strings.Contains(err.Error(), "LOBO_DOMAIN") {
-		t.Fatalf("runpod key, no domain: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			swapSupported(t, tt.supported)
+			err := checkProviders(tt.cfg)
+			if tt.wantErr == "" && err != nil || tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("err %v, want %q", err, tt.wantErr)
+			}
+		})
 	}
-	if err := requireCloudIfKeyed(cloudCfg); err != nil {
-		t.Fatal(err)
+}
+
+func TestCheckRelease(t *testing.T) {
+	r2 := config.R2Creds{AccountID: "a", AccessKey: "k", SecretKey: "s", Endpoint: "https://r2.example.com"}
+	tests := []struct {
+		name    string
+		cfg     config.Laptop
+		wantErr string
+	}{
+		{name: "r2 + bucket, no provider or tunnel", cfg: config.Laptop{LoboAPIKey: "sk", BucketURL: "https://pub-x.r2.dev", R2: r2}},
+		{name: "no r2", cfg: cloudCfg, wantErr: "R2_"},
+		{name: "no bucket", cfg: config.Laptop{LoboAPIKey: "sk", R2: r2}, wantErr: "LOBO_BUCKET_URL"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkRelease(tt.cfg)
+			if tt.wantErr == "" && err != nil || tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("err %v, want %q", err, tt.wantErr)
+			}
+		})
 	}
 }
 

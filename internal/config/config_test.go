@@ -348,3 +348,43 @@ func TestDefaultsLocal(t *testing.T) {
 		}
 	}
 }
+
+func TestRequireParts(t *testing.T) {
+	full := Laptop{RunPodAPIKey: "r", CFTunnelToken: "tok", Domain: "lobo.example.com", BucketURL: "https://pub-x.r2.dev"}
+	tests := []struct {
+		name    string
+		check   func(Laptop) error
+		l       Laptop
+		wantErr []string
+	}{
+		{name: "provider key: runpod", check: Laptop.RequireProviderKey, l: Laptop{RunPodAPIKey: "r"}},
+		{name: "provider key: vast", check: Laptop.RequireProviderKey, l: Laptop{VastAPIKey: "v"}},
+		{name: "provider key: none", check: Laptop.RequireProviderKey, l: Laptop{CFTunnelToken: "tok"}, wantErr: []string{"RUNPOD_API_KEY", "VASTAI_API_KEY"}},
+		{name: "tunnel: ok", check: Laptop.RequireTunnel, l: Laptop{CFTunnelToken: "tok", Domain: "d"}},
+		{name: "tunnel: both missing", check: Laptop.RequireTunnel, l: Laptop{RunPodAPIKey: "r"}, wantErr: []string{"CF_TUNNEL_TOKEN", "LOBO_DOMAIN"}},
+		{name: "bucket: ok", check: Laptop.RequireBucket, l: Laptop{BucketURL: "https://b.dev"}},
+		{name: "bucket: missing", check: Laptop.RequireBucket, l: Laptop{}, wantErr: []string{"LOBO_BUCKET_URL"}},
+		{name: "bucket: not a url", check: Laptop.RequireBucket, l: Laptop{BucketURL: "nope"}, wantErr: []string{"LOBO_BUCKET_URL", "want a URL"}},
+		{name: "cloud: full", check: Laptop.RequireCloud, l: full},
+		{name: "cloud: tunnel and bucket missing, named together", check: Laptop.RequireCloud, l: Laptop{RunPodAPIKey: "r", Domain: "d"}, wantErr: []string{"CF_TUNNEL_TOKEN", "LOBO_BUCKET_URL"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.check(tt.l)
+			if len(tt.wantErr) == 0 {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("want error naming %v", tt.wantErr)
+			}
+			for _, w := range tt.wantErr {
+				if !strings.Contains(err.Error(), w) {
+					t.Fatalf("%v: want %q", err, w)
+				}
+			}
+		})
+	}
+}
