@@ -13,6 +13,9 @@ import (
 
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/1905/lobocode/internal/config"
+	"github.com/1905/lobocode/internal/local"
 )
 
 // Mask shows enough of a secret to recognise it: "abcd…wxyz". Short values are fully hidden.
@@ -59,17 +62,26 @@ type state struct {
 	Provider, Model, Cloud   string
 	MinMBps, Ctx, Idle, MaxH string
 	VastDPH                  string
+	Weights, Port            string // LOBO_WEIGHTS_DIR, LOBO_LOCAL_PORT
+	LocalOK                  bool   // this Mac can run local mode: offer "local" as the provider
 	Save                     bool
 }
 
-func newState(cur map[string]string) *state {
-	s := &state{Cur: cur, APIKey: "keep", Save: true,
+func newState(cur map[string]string, localOK bool) *state {
+	s := &state{Cur: cur, APIKey: "keep", Save: true, LocalOK: localOK,
+		Weights: cur["LOBO_WEIGHTS_DIR"], Port: cur["LOBO_LOCAL_PORT"],
 		Domain: cur["LOBO_DOMAIN"], Bucket: cur["LOBO_BUCKET_URL"],
 		Provider: cur["LOBO_PROVIDER"], Model: cur["LOBO_MODEL"], Cloud: cur["LOBO_CLOUD"],
 		MinMBps: cur["LOBO_MIN_MBPS"], Ctx: cur["LOBO_CTX"], Idle: cur["LOBO_IDLE_MIN"], MaxH: cur["LOBO_MAX_HOURS"],
 		VastDPH: cur["LOBO_VAST_MAX_DPH"]}
 	if cur["LOBO_API_KEY"] == "" {
 		s.APIKey = "new"
+	}
+	if s.Provider == "local" && !localOK {
+		s.Provider = ""
+	}
+	if s.Provider == "" && localOK && cur["RUNPOD_API_KEY"] == "" && cur["VASTAI_API_KEY"] == "" {
+		s.Provider = "local"
 	}
 	if s.Provider == "" {
 		s.Provider = "runpod"
@@ -86,6 +98,33 @@ func newState(cur map[string]string) *state {
 func (s *state) runpodKey() string { return resolveSecret(s.Cur["RUNPOD_API_KEY"], s.Runpod) }
 func (s *state) vastKey() string   { return resolveSecret(s.Cur["VASTAI_API_KEY"], s.Vast) }
 func (s *state) bothKeys() bool    { return s.runpodKey() != "" && s.vastKey() != "" }
+func (s *state) isLocal() bool     { return s.LocalOK && s.Provider == "local" }
+
+// providerKeys validates the provider keys (typed is the Vast field): local needs none.
+func (s *state) providerKeys(typed string) error {
+	if !s.isLocal() && s.runpodKey() == "" && resolveSecret(s.Cur["VASTAI_API_KEY"], typed) == "" {
+		return errors.New("set at least one provider key")
+	}
+	return nil
+}
+
+// tunnelToken validates the typed tunnel token: a cloud pod serves its API through it, local does not.
+func (s *state) tunnelToken(typed string) error {
+	if !s.isLocal() && resolveSecret(s.Cur["CF_TUNNEL_TOKEN"], typed) == "" {
+		return errors.New("required: the pod serves the API through this tunnel")
+	}
+	return nil
+}
+
+// cloudOnly makes check optional for local: empty passes, a value that is set is still checked.
+func (s *state) cloudOnly(check func(string) error) func(string) error {
+	return func(v string) error {
+		if s.isLocal() && strings.TrimSpace(v) == "" {
+			return nil
+		}
+		return check(v)
+	}
+}
 
 // result is the KEY=value set to save. newKey is used when the user picked "generate".
 func (s *state) result(newKey string) map[string]string {
@@ -104,11 +143,13 @@ func (s *state) result(newKey string) map[string]string {
 		"LOBO_PROVIDER":     "",
 		"LOBO_CLOUD":        "",
 		"LOBO_VAST_MAX_DPH": "",
+		"LOBO_WEIGHTS_DIR":  strings.TrimSpace(s.Weights),
+		"LOBO_LOCAL_PORT":   strings.TrimSpace(s.Port),
 	}
 	if s.APIKey == "new" {
 		out["LOBO_API_KEY"] = newKey
 	}
-	if s.bothKeys() {
+	if s.isLocal() || s.bothKeys() && s.Provider != "local" {
 		out["LOBO_PROVIDER"] = s.Provider
 	}
 	if out["RUNPOD_API_KEY"] != "" {
@@ -118,7 +159,7 @@ func (s *state) result(newKey string) map[string]string {
 		out["LOBO_VAST_MAX_DPH"] = strings.TrimSpace(s.VastDPH)
 	}
 	// "0" and the built-in values are the same as unset: keep the file short.
-	for k, def := range map[string]string{"LOBO_MIN_MBPS": "100", "LOBO_CTX": "0", "LOBO_IDLE_MIN": "0", "LOBO_MAX_HOURS": "0", "LOBO_MODEL": "q8", "LOBO_CLOUD": "community", "LOBO_PROVIDER": "runpod", "LOBO_VAST_MAX_DPH": "1.20"} {
+	for k, def := range map[string]string{"LOBO_MIN_MBPS": "100", "LOBO_CTX": "0", "LOBO_IDLE_MIN": "0", "LOBO_MAX_HOURS": "0", "LOBO_MODEL": "q8", "LOBO_CLOUD": "community", "LOBO_PROVIDER": "runpod", "LOBO_VAST_MAX_DPH": "1.20", "LOBO_LOCAL_PORT": strconv.Itoa(config.DefaultLocalPort)} {
 		if out[k] == def || out[k] == "0" {
 			out[k] = ""
 		}
@@ -158,6 +199,18 @@ func httpsURL(v string) error {
 	}
 	if u, err := url.Parse(v); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return errors.New("a URL like https://pub-….r2.dev")
+	}
+	return nil
+}
+
+// localPort matches config: port+1 is the agent API, so 1024-65534.
+func localPort(v string) error {
+	v = strings.TrimSpace(v)
+	if v == "" || v == "0" {
+		return nil
+	}
+	if n, err := strconv.Atoi(v); err != nil || n < 1024 || n > 65534 {
+		return errors.New("a port 1024-65534, or empty for 8931")
 	}
 	return nil
 }
@@ -202,17 +255,22 @@ func (s *state) form(path string) *huh.Form {
 			"this form only rewrites the keys it shows and keeps everything else.\n\n" +
 			"Enter: next · Shift+Tab: back · Ctrl+C: quit without saving")
 
-	keys := huh.NewGroup(
-		head,
+	keyFields := []huh.Field{head} // the note tops the first group shown
+	if s.LocalOK {
+		keyFields = nil
+	}
+	keys := huh.NewGroup(append(keyFields,
 		secretInput("RunPod API key", "runpod.io → Settings → API keys.", s.Cur["RUNPOD_API_KEY"], &s.Runpod),
 		secretInput("Vast.ai API key", "cloud.vast.ai → Account → API keys. Optional.", s.Cur["VASTAI_API_KEY"], &s.Vast).
-			Validate(func(v string) error {
-				if s.runpodKey() == "" && resolveSecret(s.Cur["VASTAI_API_KEY"], v) == "" {
-					return errors.New("set at least one provider key")
-				}
-				return nil
-			}),
-	).Title("1/4 · GPU providers")
+			Validate(s.providerKeys),
+	)...).Title("1/4 · GPU providers")
+
+	where := huh.NewGroup(
+		head,
+		huh.NewSelect[string]().Title("Default provider").
+			Description("Local runs llama.cpp on this Mac and needs no cloud keys. `lobo up --provider …` still overrides this.").
+			Options(providerOptions(true)...).Value(&s.Provider),
+	).Title("1/4 · Where lobo runs").WithHideFunc(func() bool { return !s.LocalOK })
 
 	apiDesc := "Clients (OpenCode etc.) send this as the Bearer key. Now: " + Mask(s.Cur["LOBO_API_KEY"]) + "."
 	apiOpts := []huh.Option[string]{huh.NewOption("keep the current key", "keep"), huh.NewOption("generate a new key", "new")}
@@ -220,26 +278,21 @@ func (s *state) form(path string) *huh.Form {
 		apiOpts = []huh.Option[string]{huh.NewOption("generate a key", "new")}
 	}
 	access := huh.NewGroup(
-		huh.NewInput().Title("Domain").Description("The hostname your Cloudflare tunnel serves, e.g. lobo.example.com.").
-			Value(&s.Domain).Validate(hostname),
+		huh.NewInput().Title("Domain").Description("The hostname your Cloudflare tunnel serves, e.g. lobo.example.com. Cloud only.").
+			Value(&s.Domain).Validate(s.cloudOnly(hostname)),
 		huh.NewSelect[string]().Title("LOBO API key").Description(apiDesc).Options(apiOpts...).Value(&s.APIKey),
-		secretInput("Cloudflare tunnel token", "Zero Trust → Networks → Tunnels → your tunnel → token.", s.Cur["CF_TUNNEL_TOKEN"], &s.Tunnel).
-			Validate(func(v string) error {
-				if resolveSecret(s.Cur["CF_TUNNEL_TOKEN"], v) == "" {
-					return errors.New("required: the pod serves the API through this tunnel")
-				}
-				return nil
-			}),
-		huh.NewInput().Title("Bucket URL").Description("Public R2 URL with releases/ and models/.").
-			Value(&s.Bucket).Validate(httpsURL),
+		secretInput("Cloudflare tunnel token", "Zero Trust → Networks → Tunnels → your tunnel → token. Cloud only.", s.Cur["CF_TUNNEL_TOKEN"], &s.Tunnel).
+			Validate(s.tunnelToken),
+		huh.NewInput().Title("Bucket URL").Description("Public R2 URL with releases/ and models/. Cloud only.").
+			Value(&s.Bucket).Validate(s.cloudOnly(httpsURL)),
 	).Title("2/4 · Access")
 
 	pick := huh.NewGroup(
 		huh.NewSelect[string]().Title("Default provider").
 			Description("Both keys are set. `lobo up --provider …` still overrides this.").
-			Options(huh.NewOption("RunPod", "runpod"), huh.NewOption("Vast.ai (cheapest verified host)", "vast")).
+			Options(providerOptions(false)...).
 			Value(&s.Provider),
-	).Title("3/4 · Provider").WithHideFunc(func() bool { return !s.bothKeys() })
+	).Title("3/4 · Provider").WithHideFunc(func() bool { return s.LocalOK || !s.bothKeys() })
 
 	defaults := huh.NewGroup(
 		huh.NewInput().Title("Minimum download speed, MB/s").
@@ -268,12 +321,20 @@ func (s *state) form(path string) *huh.Form {
 			Value(&s.VastDPH).Validate(positiveFloat),
 	).Title("3/4 · Vast.ai").WithHideFunc(func() bool { return s.vastKey() == "" })
 
+	localGroup := huh.NewGroup(
+		huh.NewInput().Title("Weights folder").
+			Description("GGUF files and the llama.cpp runtime. Empty = "+config.Laptop{}.Weights()+".").
+			Value(&s.Weights),
+		huh.NewInput().Title("Local port").Description("llama-server port; the agent API uses port+1. Empty = 8931.").
+			Value(&s.Port).Validate(localPort),
+	).Title("3/4 · Local (this Mac)").WithHideFunc(func() bool { return !s.LocalOK })
+
 	confirm := huh.NewGroup(
 		huh.NewConfirm().Title("Save to "+path+"?").DescriptionFunc(func() string { return s.summary() }, s).
 			Affirmative("Save").Negative("Discard").Value(&s.Save),
 	).Title("4/4 · Save")
 
-	return huh.NewForm(keys, access, pick, defaults, perProvider, vastGroup, confirm).WithTheme(theme()).WithShowHelp(true)
+	return huh.NewForm(where, keys, access, pick, defaults, perProvider, vastGroup, localGroup, confirm).WithTheme(theme()).WithShowHelp(true)
 }
 
 var summaryRows = [][2]string{
@@ -281,6 +342,16 @@ var summaryRows = [][2]string{
 	{"CF_TUNNEL_TOKEN", "Tunnel token"}, {"LOBO_BUCKET_URL", "Bucket URL"}, {"LOBO_PROVIDER", "Default provider"},
 	{"LOBO_MIN_MBPS", "Min MB/s"}, {"LOBO_MODEL", "Model"}, {"LOBO_CTX", "Context"}, {"LOBO_IDLE_MIN", "Idle minutes"},
 	{"LOBO_MAX_HOURS", "Max hours"}, {"LOBO_CLOUD", "RunPod cloud"}, {"LOBO_VAST_MAX_DPH", "Vast max $/h"},
+	{"LOBO_WEIGHTS_DIR", "Weights folder"}, {"LOBO_LOCAL_PORT", "Local port"},
+}
+
+// providerOptions are the provider choices; "local (this Mac)" only when this Mac can run it.
+func providerOptions(localOK bool) []huh.Option[string] {
+	opts := []huh.Option[string]{huh.NewOption("RunPod", "runpod"), huh.NewOption("Vast.ai (cheapest verified host)", "vast")}
+	if localOK {
+		opts = append([]huh.Option[string]{huh.NewOption("local (this Mac)", "local")}, opts...)
+	}
+	return opts
 }
 
 // summary is the review text before saving: secrets masked.
@@ -306,7 +377,7 @@ func (s *state) summary() string {
 // Run shows the form for the config at path with its current values cur.
 // It returns the KEY=value set to pass to config.Save, and false when the user quit or chose Discard.
 func Run(path string, cur map[string]string) (map[string]string, bool, error) {
-	s := newState(cur)
+	s := newState(cur, local.Supported() == nil)
 	if err := s.form(path).Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return nil, false, nil
