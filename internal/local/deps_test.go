@@ -227,13 +227,12 @@ func TestStartLlama(t *testing.T) {
 
 func TestGPUMetrics(t *testing.T) {
 	d := newDeps(RunConfig{}, &syncBuf{})
-	d.sysctl = func(name string) (string, error) {
+	d.host, d.hostErr = hostGPU(func(name string) (string, error) {
 		if name != "machdep.cpu.brand_string" {
 			return "", errors.New(name)
 		}
 		return "Apple M1 Max", nil
-	}
-	d.memBytes = func() (uint64, error) { return 64 << 30, nil }
+	}, func() (uint64, error) { return 64 << 30, nil })
 	var gotPID int
 	d.ps = func(_ context.Context, pid int) (string, error) { gotPID = pid; return "  24225792\n", nil }
 
