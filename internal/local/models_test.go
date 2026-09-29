@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/1905/lobocode/internal/model"
 )
@@ -23,7 +25,7 @@ func TestList(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Close()
-	if err := os.WriteFile(MarkerPath(w, q6.File), []byte(q6.SHA256), 0o644); err != nil {
+	if err := writeMarker(w, q6); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(w, q8.File), []byte("short"), 0o644); err != nil {
@@ -97,5 +99,74 @@ func TestListJSON(t *testing.T) {
 func TestMarkerPath(t *testing.T) {
 	if got := MarkerPath("/w", "a.gguf"); got != "/w/a.gguf.sha256-ok" {
 		t.Fatal(got)
+	}
+}
+
+func TestMarkerValid(t *testing.T) {
+	body := []byte("gguf bytes")
+	m := model.Model{ID: "t", File: "t.gguf", SHA256: strings.Repeat("b", 64), Size: int64(len(body))}
+	tests := []struct {
+		name   string
+		marker string // testMarker kind; "" = none, "written" = writeMarker
+		change func(t *testing.T, path string)
+		want   bool
+	}{
+		{name: "written", marker: "written", want: true},
+		{name: "valid", marker: "valid", want: true},
+		{name: "no marker"},
+		{name: "stale mtime", marker: "stale mtime"},
+		{name: "old format", marker: "old format"},
+		{name: "wrong sha", marker: "wrong sha"},
+		{name: "wrong size", marker: "wrong size"},
+		{name: "file touched after marking", marker: "written", change: func(t *testing.T, path string) {
+			later := time.Now().Add(time.Hour)
+			if err := os.Chtimes(path, later, later); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "same length, new bytes", marker: "written", change: func(t *testing.T, path string) {
+			later := time.Now().Add(time.Hour)
+			if err := os.WriteFile(path, []byte("GGUF BYTES"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(path, later, later); err != nil { // coarse clocks: force an mtime change
+				t.Fatal(err)
+			}
+		}},
+		{name: "file gone", marker: "written", change: func(t *testing.T, path string) {
+			if err := os.Rename(path, path+".x"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := t.TempDir()
+			path := filepath.Join(w, m.File)
+			if err := os.WriteFile(path, body, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			switch tt.marker {
+			case "":
+			case "written":
+				if err := writeMarker(w, m); err != nil {
+					t.Fatal(err)
+				}
+			default:
+				if err := os.WriteFile(MarkerPath(w, m.File), []byte(testMarker(t, w, m, tt.marker)), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.change != nil {
+				tt.change(t, path)
+			}
+			if got := markerValid(w, m); got != tt.want {
+				b, _ := os.ReadFile(MarkerPath(w, m.File))
+				t.Fatalf("markerValid = %v, want %v; marker %q", got, tt.want, b)
+			}
+			if tmps, _ := filepath.Glob(filepath.Join(w, ".sha256-ok-*")); len(tmps) != 0 {
+				t.Fatalf("temp markers left: %v", tmps)
+			}
+		})
 	}
 }
