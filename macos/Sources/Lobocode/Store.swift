@@ -288,7 +288,7 @@ final class Store: ObservableObject {
         if let r = ev.ready {
             readyURL = r.url
             phase = .ready
-            let cost = r.provider == "local" ? "local" : "$\(String(format: "%.2f", r.usd_per_h))/h"
+            let cost = r.usd_per_h > 0 ? "$\(String(format: "%.2f", r.usd_per_h))/h" : "local"
             notify("lobo ready", "\(r.url) · \(Fmt.duration(Double(r.elapsed_ns) / 1e9)) · \(cost)")
         }
     }
