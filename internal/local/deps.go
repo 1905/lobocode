@@ -55,9 +55,9 @@ type macDeps struct {
 	poll     time.Duration // WaitHealthy period
 
 	usableMiB func() (int, error)
-	sysctl    func(name string) (string, error)
-	memBytes  func() (uint64, error)
 	ps        func(ctx context.Context, pid int) (string, error) // `ps -o rss= -p PID` output, KiB
+	host      metrics.GPU                                        // chip name and memory, read once (hostGPU)
+	hostErr   error
 
 	pid          atomic.Int64  // llama-server, 0 until started
 	llamaStarted atomic.Bool   // set before the start: a shutdown racing it still waits
@@ -65,15 +65,30 @@ type macDeps struct {
 }
 
 func newDeps(cfg RunConfig, logs io.Writer) *macDeps {
-	return &macDeps{
+	d := &macDeps{
 		cfg: cfg, logs: logs, hfBase: HFBase, poll: 2 * time.Second, llamaDone: make(chan struct{}),
 		llamaURL:  "http://127.0.0.1:" + strconv.Itoa(cfg.Port),
-		usableMiB: UsableMiB, sysctl: sysctlString, memBytes: memBytes,
+		usableMiB: UsableMiB,
 		ps: func(ctx context.Context, pid int) (string, error) {
 			b, err := exec.CommandContext(ctx, "ps", "-o", "rss=", "-p", strconv.Itoa(pid)).Output()
 			return string(b), err
 		},
 	}
+	d.host, d.hostErr = hostGPU(sysctlString, memBytes)
+	return d
+}
+
+// hostGPU is the chip name and unified memory size; they do not change while the supervisor runs.
+func hostGPU(sysctl func(name string) (string, error), mem func() (uint64, error)) (metrics.GPU, error) {
+	name, err := sysctl("machdep.cpu.brand_string")
+	if err != nil {
+		return metrics.GPU{}, err
+	}
+	b, err := mem()
+	if err != nil {
+		return metrics.GPU{}, err
+	}
+	return metrics.GPU{Name: strings.TrimSpace(name), VRAMTotalMB: int(b >> 20)}, nil
 }
 
 type stopKiller func()
@@ -189,15 +204,10 @@ func (d *macDeps) waitHealthy(ctx context.Context) error {
 
 // gpu: unified memory, so "VRAM" used = llama-server RSS and total = hw.memsize. No util counter.
 func (d *macDeps) gpu(ctx context.Context) (metrics.GPU, error) {
-	name, err := d.sysctl("machdep.cpu.brand_string")
-	if err != nil {
-		return metrics.GPU{}, err
+	if d.hostErr != nil {
+		return metrics.GPU{}, d.hostErr
 	}
-	mem, err := d.memBytes()
-	if err != nil {
-		return metrics.GPU{}, err
-	}
-	g := metrics.GPU{Name: strings.TrimSpace(name), VRAMTotalMB: int(mem >> 20)}
+	g := d.host
 	pid := int(d.pid.Load())
 	if pid == 0 {
 		return g, nil
