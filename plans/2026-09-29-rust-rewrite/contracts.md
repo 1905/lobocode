@@ -165,10 +165,10 @@ pub mod pod { /* bin wiring (PodTunnel, PodGpuCheck, ModelDownload, main_flow, â
 pub use error::{Error, Result};
 pub mod error {
     pub enum Error { Config(String), Defaults(BTreeMap<String, String>), NoCapacity(String), NotFound, NoCredit, Rejected(String),
-                     AlreadyRunning(String), Api(String), Http(reqwest::Error), Io(std::io::Error), Json(serde_json::Error),
+                     AlreadyRunning(String), Api(String), CreateRejected(String), UnresolvedCreate { provider: String, boot_id: String, detail: String }, Http(reqwest::Error), Io(std::io::Error), Json(serde_json::Error),
                      Agent(lobo_agent::Error), Local(String), Release(String), Cancelled, Multi(Vec<Error>), Other(String) }
     impl Error { pub fn kind(&self) -> &'static str; pub fn is_not_found(&self) -> bool; pub fn is_no_capacity(&self) -> bool; }
-    // kind(): config, no_capacity, not_found, no_credit, rejected, already_running, provider_api, network, io, json,
+    // kind(): config, no_capacity, not_found, no_credit, rejected, already_running, provider_api, unresolved_create, network, io, json,
     //         agent, local, release, cancelled, multi, other. Stable: the app shows it.
     // Display: byte-identical to Go wherever the Go CLI printed it (require_*, apply_defaults, provider, control,
     //          ensure_api_key "read <path>: â€¦"). P4's Go replay compares stderr bytes.
@@ -256,7 +256,7 @@ pub mod control {
     pub struct UpOpts { pub model: String, pub ctx: i64, pub release: String, pub idle_min: i64, pub max_life: Duration, pub timeout: Duration,
                         pub source: String, pub conns: i64, pub cloud: String, pub provider: String, pub min_mbps: i64, pub ssh_key: String, pub image: String }
     #[derive(Clone)]
-    pub struct Deps { pub providers: BTreeMap<String, Arc<dyn Provider>>, pub releases: Arc<dyn ReleaseResolver>,
+    pub struct Deps { pub providers: BTreeMap<String, Arc<dyn Provider>>, pub operations: Arc<OperationState>, pub releases: Arc<dyn ReleaseResolver>,
                       pub presign: Option<Arc<dyn Presigner>>, pub new_agent: Arc<dyn Fn(&str) -> Arc<dyn AgentApi> + Send + Sync>,
                       pub cfg: Laptop, pub clock: Arc<dyn Clock>, pub poll: Duration }
     pub const MAX_GPU_RETRIES: u32 = 4; pub const CONTAINER_TIMEOUT: Duration; /* 6 min */
@@ -273,6 +273,7 @@ pub mod control {
     }
     // Drop requests cancellation. CLI/controller MUST keep the operation and runtime alive through wait().
     // EOF is event transport completion only. wait() reports cleanup errors and worker panics separately.
+    // Progress may be dropped under backpressure; a reserved channel slot guarantees terminal delivery.
     // Events never block cleanup: if the consumer closes, cancel and discard pending progress while joining.
     // Cancellation reaches provider retries and local runtime preparation. Check before every create/spawn.
     // Await a submitted create request; cancel never abandons its response. Delete any returned instance.
@@ -383,7 +384,7 @@ pub mod local {
     pub fn log_path(state: &StateFile) -> PathBuf;
     #[async_trait] pub trait EnsureRuntime: Send + Sync { async fn ensure(&self, weights: &Path, cancel: CancellationToken, note: &(dyn Fn(String) + Sync)) -> Result<PathBuf>; }
     pub struct LocalHooks { pub supported: fn() -> Result<()>, pub ensure_runtime: Arc<dyn EnsureRuntime>, pub free_bytes: fn(&Path) -> Result<u64>,
-                            pub ps: fn(i32) -> Result<String>, pub state_wait: Duration, pub stop_wait: Duration }   // impl Default
+                            pub ps: Arc<dyn Fn(i32) -> Result<String> + Send + Sync>, pub child_env: Vec<(String, String)>, pub state_wait: Duration, pub stop_wait: Duration }   // impl Default
     pub struct LocalProvider { pub spawner: Spawner, pub config_path: Option<PathBuf>, pub weights: PathBuf, pub port: u16,
                                pub state: StateFile, pub hooks: LocalHooks }    // impl Provider, name "local", replaceable false
     // (P5)

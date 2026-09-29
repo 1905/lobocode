@@ -9,7 +9,7 @@ Authorization: the user said, "when plan is fixed start implementation in full a
 |---|---|---|
 | P1 | [Workspace and protocol](plan-p1-v1.1.md) | done: 5dfe9ab, CI 36557109125 |
 | P2 | [Pod agent](plan-p2-v1.2.md) | code/CI done at ed65ecc; live E2E pending P6 |
-| P3 | [Core](plan-p3-v1.2.md) | config/cloud/release/checks implemented; local/control pending |
+| P3 | [Core](plan-p3-v1.2.md) | paused: implementation complete; phase-close checks/CI pending |
 | P4 | [CLI](plan-p4-v1.2.md) | pending P3 |
 | P5 | [App](plan-p5-v1.2.md) | pending P4 |
 | P6 | [Cutover](plan-p6-v1.2.md) | pending P5 |
@@ -123,3 +123,25 @@ The paused local tests had passed (14 focused tests). Go interop and lint checks
 
 - Clean-checkout fix 9489b21 passed Rust CI 36579110545, including all local process tests on Linux. The control batch's new-agent closure triggered clippy type_complexity; an equivalent AgentFactory alias fixes it.
 - Before implementing up, filled the persistence gap in the v1.2 contract: Deps owns an OperationState. CLI/app share an OS-locked pending-operation file, while tests use isolated memory or temporary files. Uncertain creates survive a process restart and block later creates until reconciled.
+
+- Operation storage and cleanup implemented ahead of up: pending records use 0600 files, atomic replacement, fsync and an OS lock. Empty/ambiguous listings retain uncertainty; a single new instance can be adopted and deleted. Down now uses the same operation lock. Up integration remains pending.
+- Provider errors distinguish explicit RunPod create rejection from an uncertain response. RunPod/Vast uncertain creates include provider and boot ID. RunPod v1 create/list documentation and Vast create documentation were checked before this work. They do not establish retry idempotency or prove absence after one list response: https://docs.runpod.io/api-reference/pods/POST/pods ; https://docs.runpod.io/api-reference/pods/GET/pods ; https://docs.vast.ai/api-reference/instances/create-instance . No live provider request was made.
+
+- P3 Tasks 55–59 implemented with the owned UpOperation. 24 start tests pass, including delayed/uncertain creates, failed cleanup, stale statuses, source selection, bad-host retries and panic cleanup. Thirteen real local process tests pass, including cancellation through the core worker before state publication and during runtime preparation.
+- Full event queues can drop intermediate progress; an owned reserved channel permit guarantees room for the terminal event. A closed receiver requests cancellation, then the worker stays awaited. Successful ready delivery hands ownership back to normal running-state management; dropping a completed operation does not delete the instance.
+- Task 64 API compile check passes. Missing planned re-exports were added. Contracts now include the actual operation-state/error fields rather than conflicting appended notes alone.
+- Task 65 adds core-macos on macos-14 with an explicit arm64 check. GitHub's current runner reference lists macos-14 as Apple Silicon: https://docs.github.com/en/actions/reference/runners/github-hosted-runners . The workflow result still needs verification.
+- Previous control/lint batch 1bdbbe7 passed Rust CI 36579862212 and image CI 36579862281. Current P3 close checks remain in progress; no GPU rental or live R2 write.
+
+
+## Paused again — 2026-09-29
+
+The user said "pause work for now. commit everything,". Save all current changes locally, then stop. Do not push or continue implementation until resumed.
+
+- P3 owned start operation, persistent recovery, cancellation cleanup and API exports are implemented. The new Apple Silicon CI job is written but has not run.
+- Latest local workspace tests passed. This run did not enable the three Go interop checks and ignored the pinned runtime network test. The real archive test passed in an earlier batch.
+- Workspace clippy, documentation checks and workflow actionlint passed. Fixture regeneration completed; inspect the fixture diff when resuming.
+- Pending phase-close work: explicit Go interop, Go regression checks, final formatting/drift checks, push and Ubuntu/macOS/image CI. No P3 completion notification has been sent.
+- P4–P6 remain pending. Before P4 implementation, correct its stale TUI interruption text claiming that a pod keeps booting; cancellation now waits for cleanup.
+- Estimated progress remains about 45% by planned tasks. This is not a time estimate or full acceptance.
+- No GPU rental, live R2 write or model-weight download was made.

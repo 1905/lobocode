@@ -74,3 +74,16 @@ jobs:
         run: |
           file target/x86_64-unknown-linux-musl/release/lobo-agent | tee /dev/stderr | grep -Eq 'statically linked|static-pie linked'
           ls -l target/x86_64-unknown-linux-musl/release/lobo-agent >> "$GITHUB_STEP_SUMMARY"
+
+  core-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.1"
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify Apple Silicon runner
+        run: test "$(uname -m)" = arm64
+      - name: Test core and local process lifecycle
+        run: cargo test --locked -p lobo-core -j 2

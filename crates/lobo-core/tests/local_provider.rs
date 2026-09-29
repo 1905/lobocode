@@ -357,3 +357,100 @@ async fn cancelled_runtime_cannot_spawn() {
     ));
     assert!(!f.tmp.path().join("pid").exists());
 }
+
+struct UnusedRelease;
+#[async_trait]
+impl lobo_core::control::ReleaseResolver for UnusedRelease {
+    async fn resolve(&self, _: &str) -> Result<lobo_proto::Resolved> {
+        panic!("local start must not resolve cloud releases")
+    }
+}
+struct ReadyAgent;
+#[async_trait]
+impl lobo_core::control::AgentApi for ReadyAgent {
+    async fn status(&self) -> Result<lobo_proto::Status> {
+        Ok(lobo_proto::Status {
+            stage: lobo_proto::Stage::Ready,
+            ..Default::default()
+        })
+    }
+    async fn version(&self) -> Result<lobo_proto::Manifest> {
+        Ok(Default::default())
+    }
+    async fn logs(&self, _: usize) -> Result<String> {
+        Ok(String::new())
+    }
+}
+fn core_deps(f: &Fixture) -> lobo_core::control::Deps {
+    lobo_core::control::Deps {
+        providers: [("local".into(), Arc::new(f.p.clone()) as Arc<dyn Provider>)].into(),
+        operations: Arc::new(lobo_core::control::OperationState::memory()),
+        releases: Arc::new(UnusedRelease),
+        presign: None,
+        new_agent: Arc::new(|_| Arc::new(ReadyAgent)),
+        cfg: Default::default(),
+        clock: Arc::new(lobo_core::clock::SystemClock),
+        poll: Duration::from_millis(1),
+    }
+}
+#[tokio::test]
+async fn core_cancel_after_spawn_waits_for_real_local_group() {
+    let f = Fixture::new("no-state-child");
+    let mut op = lobo_core::control::up(
+        core_deps(&f),
+        lobo_core::control::UpOpts {
+            provider: "local".into(),
+            ..Default::default()
+        },
+        CancellationToken::new(),
+    );
+    let mut events = op.take_events().unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !f.tmp.path().join("child-ready").exists() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    op.cancel();
+    assert!(matches!(op.wait().await, Err(Error::Cancelled)));
+    assert!(wait_group_gone(f.pid("pid"), Duration::ZERO).await);
+    assert!(!f.p.state.path.exists());
+    assert_eq!(events.recv().await.unwrap().phase, "cancelled");
+}
+struct WaitingRuntime(Arc<tokio::sync::Notify>);
+#[async_trait]
+impl EnsureRuntime for WaitingRuntime {
+    async fn ensure(
+        &self,
+        _: &Path,
+        c: CancellationToken,
+        _: &(dyn Fn(String) + Sync),
+    ) -> Result<PathBuf> {
+        self.0.notify_one();
+        c.cancelled().await;
+        Err(Error::Cancelled)
+    }
+}
+#[tokio::test]
+async fn core_cancel_during_runtime_preparation_spawns_nothing() {
+    let mut f = Fixture::new("ok");
+    let entered = Arc::new(tokio::sync::Notify::new());
+    f.p.hooks.ensure_runtime = Arc::new(WaitingRuntime(entered.clone()));
+    let mut op = lobo_core::control::up(
+        core_deps(&f),
+        lobo_core::control::UpOpts {
+            provider: "local".into(),
+            ..Default::default()
+        },
+        CancellationToken::new(),
+    );
+    let mut events = op.take_events().unwrap();
+    tokio::time::timeout(Duration::from_secs(5), entered.notified())
+        .await
+        .unwrap();
+    op.cancel();
+    assert!(matches!(op.wait().await, Err(Error::Cancelled)));
+    assert!(!f.tmp.path().join("pid").exists());
+    assert_eq!(events.recv().await.unwrap().phase, "cancelled");
+}

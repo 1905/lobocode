@@ -316,10 +316,14 @@ impl Provider for VastProvider {
                         i.detail = detail;
                         return Ok(i);
                     }
-                    return Err(Error::Api(format!(
-                        "vast create offer {}: {e} (not retrying another offer: it may have been rented — check `lobo status`)",
-                        offer.id
-                    )));
+                    return Err(Error::UnresolvedCreate {
+                        provider: "vast".into(),
+                        boot_id: o.boot_id.clone(),
+                        detail: format!(
+                            "vast create offer {}: {e} (not retrying another offer: it may have been rented — check `lobo status`)",
+                            offer.id
+                        ),
+                    });
                 }
             }
         }
