@@ -29,7 +29,7 @@ struct PanelView: View {
         case .noConfig:
             SetupCard(store: store, openSettings: openSettings)
         case .off:
-            StartCard(store: store)
+            StartCard(store: store, openSettings: openSettings)
         case .booting:
             BootLog(store: store)
         case .ready:
@@ -37,7 +37,7 @@ struct PanelView: View {
         case .stopping:
             HStack(spacing: 6) {
                 Text("[ .. ]").foregroundColor(Theme.cyan)
-                Text("deleting pod on \(store.snap?.pod?.provider ?? "provider")").foregroundColor(Theme.text)
+                Text(store.isLocal ? "stopping llama.cpp" : "deleting pod on \(store.snap?.pod?.provider ?? "provider")").foregroundColor(Theme.text)
                 Cursor()
             }.font(Theme.mono(12))
         case .failed(let msg):
@@ -72,12 +72,13 @@ struct Header: View {
 
     private var detail: String {
         guard let p = store.snap?.pod else {
-            if store.phase == .booting { return "renting \(store.provider)" }
-            return store.phase == .off ? "no pod · $0.00/h" : ""
+            if store.phase == .booting { return store.isLocal ? "starting local" : "renting \(store.provider)" }
+            guard store.phase == .off else { return "" }
+            return store.isLocal ? "local · $0" : "no pod · $0.00/h"
         }
         var parts = [p.provider]
         if let d = p.detail, !d.isEmpty { parts.append(d) }
-        parts.append(String(format: "$%.2f/h", p.cost_per_hr))
+        parts.append(p.provider == "local" ? "$0" : String(format: "$%.2f/h", p.cost_per_hr))
         return parts.joined(separator: " · ")
     }
 }
@@ -90,7 +91,8 @@ struct SetupCard: View {
             Text("no usable config yet").font(Theme.mono(12, .bold)).foregroundColor(Theme.amber)
             Text(store.config?.path ?? "~/.config/lobo/config.env").font(Theme.mono(10)).foregroundColor(Theme.dim)
                 .textSelection(.enabled)
-            Text("needs a provider key (RunPod or Vast), domain, tunnel token and bucket URL.")
+            Text(ConfigShow.localSupported ? "needs an api key. cloud also needs a provider key, domain, tunnel token and bucket URL."
+                                           : "needs a provider key (RunPod or Vast), domain, tunnel token and bucket URL.")
                 .font(Theme.mono(10)).foregroundColor(Theme.dim).fixedSize(horizontal: false, vertical: true)
             Button("SETUP", action: openSettings).buttonStyle(BracketButtonStyle(color: Theme.amber, wide: true))
         }
@@ -99,8 +101,29 @@ struct SetupCard: View {
 
 struct StartCard: View {
     @ObservedObject var store: Store
+    var openSettings: () -> Void = {}
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if ConfigShow.localSupported {
+                BracketPicker(label: "target", options: Target.allCases.map(\.rawValue),
+                              value: Binding(get: { store.target.rawValue }, set: { store.choose(Target(rawValue: $0) ?? .cloud) }))
+            }
+            if store.target == .local {
+                LocalStart(store: store)
+            } else {
+                cloud
+            }
+        }
+    }
+
+    @ViewBuilder private var cloud: some View {
+        if !(store.config?.cloudReady ?? false) {
+            row("cloud", "no keys")
+            Button("SETUP", action: openSettings)
+                .buttonStyle(BracketButtonStyle(color: Theme.amber, wide: true))
+                .padding(.top, 4)
+        } else {
             if (store.config?.providers.count ?? 0) > 1 {
                 BracketPicker(label: "provider", options: store.config?.providers ?? [], value: $store.provider)
             } else {
@@ -132,12 +155,57 @@ struct StartCard: View {
     }
 }
 
+/// Local off panel: one selectable row per catalog model, the weights folder, START.
+struct LocalStart: View {
+    @ObservedObject var store: Store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let m = store.models {
+                ForEach(m.models) { modelRow($0) }
+                Text("\(m.weights) · \(Fmt.gb(m.free_bytes)) GB free")
+                    .font(Theme.mono(10)).foregroundColor(Theme.dim).lineLimit(1).truncationMode(.middle)
+            } else {
+                BracketPicker(label: "model", options: ["q8", "q6"], value: $store.model)
+            }
+            Button("START", action: store.start)
+                .buttonStyle(BracketButtonStyle(color: Theme.green, wide: true))
+                .keyboardShortcut(.defaultAction)
+                .padding(.top, 4)
+        }
+    }
+
+    /// `[q6]  22.1 GB  ✓ on disk` / ` q8   28.6 GB  ↓ download` / `partial 43%`
+    private func modelRow(_ m: LocalModel) -> some View {
+        let on = m.id == store.model
+        return Button { store.model = m.id } label: {
+            HStack(spacing: 10) {
+                Text(on ? "[\(m.id)]" : " \(m.id) ").foregroundColor(on ? Theme.green : Theme.dim)
+                Text("\(Fmt.gb(m.size)) GB").foregroundColor(on ? Theme.text : Theme.dim)
+                state(m.state)
+                Spacer()
+            }
+            .font(Theme.mono(12))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private func state(_ s: LocalModel.State) -> some View {
+        switch s {
+        case .onDisk: Text("✓ on disk").foregroundColor(Theme.text)
+        case .partial(let f): Text("partial \(min(99, Int((f * 100).rounded())))%").foregroundColor(Theme.cyan)
+        case .missing: Text("↓ download").foregroundColor(Theme.dim)
+        }
+    }
+}
+
 struct BootLog: View {
     @ObservedObject var store: Store
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            ForEach(Step.allCases) { step in stepRow(step) }
+            ForEach(store.bootSteps) { step in stepRow(step) }
             Text(store.lastDetail)
                 .font(Theme.mono(9)).foregroundColor(Theme.faint).lineLimit(2).truncationMode(.middle)
                 .padding(.top, 2)
@@ -159,7 +227,7 @@ struct BootLog: View {
             HStack(spacing: 8) {
                 Text(done ? "[ OK ]" : current ? "[ >> ]" : "[ .. ]")
                     .foregroundColor(done ? Theme.green : current ? Theme.cyan : Theme.faint)
-                Text(step.rawValue)
+                Text(step.label(local: store.isLocal))
                     .foregroundColor(done || current ? Theme.text : Theme.faint)
                 if current { Cursor() }
                 Spacer(minLength: 0)
@@ -167,8 +235,12 @@ struct BootLog: View {
                     Text(Fmt.duration(t)).foregroundColor(Theme.dim)
                 }
             }
-            if step == .download, current, let d = store.download, d.total > 0 {
-                downloadLine(d)
+            if step == .download, current {
+                if let d = store.download, d.total > 0 {
+                    downloadLine(d)
+                } else if store.upPhase == "verify" || store.snap?.status?.stage == "verify" {
+                    Text("verify").foregroundColor(Theme.text).font(Theme.mono(10)).padding(.leading, 56)
+                }
             }
         }
         .font(Theme.mono(11))
@@ -184,7 +256,8 @@ struct BootLog: View {
                 Text("verify sha256").foregroundColor(Theme.text)
             } else {
                 Text("\(Fmt.gb(d.bytes))/\(Fmt.gb(d.total))G").foregroundColor(Theme.text)
-                Text("\(Int(d.mbps))MB/s").foregroundColor(d.mbps >= 100 ? Theme.green : Theme.amber)
+                // Cloud: below the min MB/s the pod gets re-rented (money). Local has no minimum.
+                Text("\(Int(d.mbps))MB/s").foregroundColor(store.isLocal ? Theme.text : d.mbps >= 100 ? Theme.green : Theme.amber)
                 if eta > 0 { Text(Fmt.duration(eta)).foregroundColor(Theme.dim) }
             }
         }
@@ -207,23 +280,33 @@ struct ReadyCard: View {
                 tile("prompt", store.snap?.status?.llama?.prompt_tps, "tok/s")
             }
             if let g = store.snap?.status?.gpu {
+                // Local: used = llama RSS, total = system RAM, so it is memory, not vram.
                 HStack(spacing: 6) {
-                    Text("vram").foregroundColor(Theme.dim).frame(width: 52, alignment: .leading)
+                    Text(local ? "memory" : "vram").foregroundColor(Theme.dim).frame(width: 52, alignment: .leading)
                     Text(Fmt.bar(Double(g.vram_used_mb) / Double(max(1, g.vram_total_mb)), width: 12)).foregroundStyle(Theme.copper)
                     Text(String(format: "%.1f/%.1f GB", Double(g.vram_used_mb) / 1024, Double(g.vram_total_mb) / 1024)).foregroundColor(Theme.text)
                     Spacer()
-                    Text("gpu \(g.util_pct)%").foregroundColor(g.util_pct > 0 ? Theme.green : Theme.dim)
+                    if !local { Text("gpu \(g.util_pct)%").foregroundColor(g.util_pct > 0 ? Theme.green : Theme.dim) }
                 }.font(Theme.mono(10))
             }
             HStack(spacing: 0) {
-                if let k = killIn { Text("idle-kill ").foregroundColor(Theme.dim); Text(Fmt.duration(k)).foregroundColor(k < 300 ? Theme.amber : Theme.text) }
+                if let k = killIn {
+                    Text(local ? "idle-stop " : "idle-kill ").foregroundColor(Theme.dim)
+                    Text(Fmt.duration(k)).foregroundColor(!local && k < 300 ? Theme.amber : Theme.text)
+                }
                 Text("  ·  T+\(Fmt.duration(uptime))").foregroundColor(Theme.dim)
                 Spacer()
-                if let s = store.spent { Text(String(format: "$%.2f", s)).foregroundColor(Theme.text) }
+                if local {
+                    Text("local · $0").foregroundColor(Theme.dim)
+                } else if let s = store.spent {
+                    Text(String(format: "$%.2f", s)).foregroundColor(Theme.text)
+                }
             }.font(Theme.mono(10))
             Button("STOP", action: store.stop).buttonStyle(BracketButtonStyle(color: Theme.red, wide: true))
         }
     }
+
+    private var local: Bool { store.isLocal }
 
     private var sinceSnap: Double { store.snap?.at.map { store.now.timeIntervalSince($0) } ?? 0 }
 
