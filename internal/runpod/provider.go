@@ -27,7 +27,8 @@ type Provider struct {
 	Domain string
 }
 
-func (Provider) Name() string { return "runpod" }
+func (Provider) Name() string      { return "runpod" }
+func (Provider) Replaceable() bool { return true }
 
 // Rent tries each cloud at every network tier. Default (community): COMMUNITY only, the cheapest
 // ($0.69/h, user rule 2026-09-29). secure: SECURE first, COMMUNITY as fallback. Community hosts sometimes

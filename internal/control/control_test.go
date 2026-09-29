@@ -404,7 +404,8 @@ type fakeProv struct {
 	listErr error
 }
 
-func (f *fakeProv) Name() string { return f.name }
+func (f *fakeProv) Name() string      { return f.name }
+func (f *fakeProv) Replaceable() bool { return true }
 func (f *fakeProv) Rent(_ context.Context, _ provider.CreateOpts, _ func(string)) (provider.Instance, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

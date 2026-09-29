@@ -25,7 +25,8 @@ type Provider struct {
 	tried  map[int64]bool
 }
 
-func (*Provider) Name() string { return "vast" }
+func (*Provider) Name() string      { return "vast" }
+func (*Provider) Replaceable() bool { return true }
 
 // CreateBody is the PUT /asks body. runtype must be "ssh": "args" never runs the onstart.
 func CreateBody(o provider.CreateOpts) map[string]any {

@@ -59,6 +59,9 @@ type CreateOpts struct {
 // Provider rents and removes lobo instances on one GPU cloud.
 type Provider interface {
 	Name() string
+	// Replaceable: a failed or stuck host is deleted and another one rented (cloud). False (this Mac): the
+	// run is stopped and reported instead.
+	Replaceable() bool
 	// Rent picks a host (RunPod: cloud + network tiers; Vast: cheapest offer) and creates the instance.
 	// note gets progress lines for the UI. ErrNoCapacity when nothing matches.
 	Rent(ctx context.Context, o CreateOpts, note func(string)) (Instance, error)

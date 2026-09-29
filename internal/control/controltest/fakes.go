@@ -144,7 +144,8 @@ type Local struct {
 	Deleted []string
 }
 
-func (f *Local) Name() string { return "local" }
+func (f *Local) Name() string      { return "local" }
+func (f *Local) Replaceable() bool { return false }
 func (f *Local) Rent(_ context.Context, o provider.CreateOpts, _ func(string)) (provider.Instance, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
