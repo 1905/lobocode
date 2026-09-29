@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct LobocodeApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var store = Store.shared
 
     init() {
