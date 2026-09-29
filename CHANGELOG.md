@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix Rust CI checkout: track the local process test helper under `src/bin`; ignore only the root build-output directory.
+
 - Rust P3 local provider: checks disk/ports, starts detached CLI or app supervisors, and waits for owned process groups during stop.
 - Eleven real-process tests pass. They cover stuck supervisors, surviving children, changed identities, startup failure and cancellation before state publication. Local model inference remains pending.
 

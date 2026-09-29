@@ -116,3 +116,5 @@ The paused local tests had passed (14 focused tests). Go interop and lint checks
 - Supervisor batch 7226675 passed Rust CI 36577709755; image CI 36577710152 was still running at the next batch.
 - P3 Tasks 48–49 and 51–52 implemented. All 11 real-process local-provider tests pass; clippy passes. Startup cancellation/timeout kills and reaps the owned group even without state. Identity is rechecked only for a living leader, preserving dead-leader child cleanup. Test fixtures now reserve unique port pairs and allow two seconds for the no-state timeout case.
 - LocalHooks now owns its ps closure and explicit child-only environment overrides. This removes global test mutation; contracts and Task 49 record the change. Task 50 control traits and Tasks 53 onward remain pending.
+
+- CI caught a packaging mistake in 40b51e7: the unanchored `bin/` ignore hid `src/bin/testchild.rs`. Local tests passed with the untracked file; CI had no helper. Scope the ignore to `/bin/`, add the source and rerun CI.
