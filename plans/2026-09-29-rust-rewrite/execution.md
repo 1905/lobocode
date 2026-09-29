@@ -67,5 +67,6 @@ Use cleanup on every live exit path. Only task-owned instances and processes may
 ## Progress
 
 - Plan corrections written. Active plan references and cancellation signatures checked. Historical review files retain their original whitespace.
-- Baseline merge and P1 implementation pending.
+- Baseline validation passed: Go build, 361 Go tests across 18 packages, Swift tests and `make mac` (bundle plus renders).
+- Baseline merge and P1 implementation follow. Finder reopen was not manually exercised in this pass.
 - Full P1–P6 acceptance, live tests, final code review and release remain pending.
