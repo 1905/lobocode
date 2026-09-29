@@ -128,11 +128,12 @@ func copyFrom(ctx context.Context, src Source, f io.Writer, h hash.Hash, pw *pro
 }
 
 type progressWriter struct {
-	n, total int64
-	base     int64 // bytes already on disk at start: not counted in MBps
-	start    time.Time
-	last     time.Time
-	fn       func(DownloadProgress)
+	n, total  int64
+	base      int64 // bytes already on disk at start: not counted in MBps
+	start     time.Time
+	last      time.Time
+	fn        func(DownloadProgress)
+	verifying bool // a hash pass over a file on disk, not a download
 }
 
 func (p *progressWriter) Write(b []byte) (int, error) {
@@ -150,7 +151,37 @@ func (p *progressWriter) report(force bool) {
 	if s := time.Since(p.start).Seconds(); s > 0 {
 		mbps = float64(p.n-p.base) / s / 1e6
 	}
-	p.fn(DownloadProgress{Bytes: p.n, Total: p.total, MBps: mbps})
+	p.fn(DownloadProgress{Bytes: p.n, Total: p.total, MBps: mbps, Verifying: p.verifying})
+}
+
+// HashFile sha256s path, reporting Verifying progress at the start, at most every 500 ms, and at the end.
+func HashFile(ctx context.Context, path string, total int64, onProgress func(DownloadProgress)) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	pw := &progressWriter{total: total, start: time.Now(), fn: onProgress, verifying: true}
+	pw.report(true)
+	if _, err := io.CopyBuffer(io.MultiWriter(h, pw), ctxReader{ctx, f}, make([]byte, 4<<20)); err != nil {
+		return "", err
+	}
+	pw.report(true)
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// ctxReader fails the next Read once ctx is done.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(b []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(b)
 }
 
 // stallReset pushes the stall deadline back on every write.
