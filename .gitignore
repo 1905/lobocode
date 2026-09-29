@@ -12,3 +12,4 @@ opencode.lobo.json
 boots.jsonl
 .playwright-cli/
 macos/.build/
+.superpowers/
