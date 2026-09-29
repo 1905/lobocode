@@ -17,9 +17,10 @@ extension Store {
     /// 0…1 while booting: steps done, with the download filling its share.
     var bootProgress: Double {
         guard phase == .booting else { return phase == .ready ? 1 : 0 }
-        let n = Double(Step.allCases.count)
-        guard let cur = currentStep else { return 0 }
-        var p = Double(cur.index) / n
+        let steps = bootSteps
+        let n = Double(steps.count)
+        guard let cur = currentStep, let i = steps.firstIndex(of: cur) else { return 0 }
+        var p = Double(i) / n
         if cur == .download, let d = download, d.total > 0 { p += Double(d.bytes) / Double(d.total) / n }
         return p
     }
@@ -34,7 +35,7 @@ extension Store {
         case .failed: return "FAIL"
         case .booting:
             if currentStep == .download, let d = download, d.total > 0 { return "\(Int(Double(d.bytes) / Double(d.total) * 100))%" }
-            return currentStep?.rawValue ?? "boot"
+            return currentStep?.label(local: isLocal) ?? "boot"
         case .ready:
             let st = snap?.status
             if (st?.llama?.requests_processing ?? 0) > 0, let t = st?.llama?.gen_tps, t > 0 { return "\(Int(t)) t/s" }

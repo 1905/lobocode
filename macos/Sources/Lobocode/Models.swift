@@ -1,6 +1,6 @@
 import Foundation
 
-// Mirrors of the lobo CLI JSON (`status --json`, `up --json`, `config show --json`). Every field the
+// Mirrors of the lobo CLI JSON (`status --json`, `up --json`, `config show --json`, `models --json`). Every field the
 // app does not need is left out; every field the CLI may omit is optional.
 
 struct Pod: Decodable, Equatable {
@@ -107,9 +107,51 @@ struct ConfigShow: Decodable, Equatable {
         return providers.first ?? "runpod"
     }
     var defaultModel: String { values["LOBO_MODEL"] == "q6" ? "q6" : "q8" }
-    /// Same required keys as the CLI's LoadLaptop: without them every lobo command fails.
-    var ready: Bool {
+    /// Every key `lobo up` on runpod/vast needs (the CLI's RequireCloud + LOBO_API_KEY).
+    var cloudReady: Bool {
         exists && !providers.isEmpty && ["LOBO_DOMAIN", "LOBO_API_KEY", "CF_TUNNEL_TOKEN", "LOBO_BUCKET_URL"].allSatisfy(has)
+    }
+    /// Usable at all: the cloud keys, or on Apple Silicon just LOBO_API_KEY (local needs no cloud key).
+    var ready: Bool { cloudReady || (ConfigShow.localSupported && exists && has("LOBO_API_KEY")) }
+
+    /// llama.cpp local mode runs on Apple Silicon only (the CLI's local.Supported).
+    static var localSupported: Bool {
+        #if arch(arm64)
+        return true
+        #else
+        return false
+        #endif
+    }
+}
+
+/// `lobo models --json`: catalog models in the local weights folder.
+struct ModelsInfo: Decodable, Equatable {
+    var weights: String
+    var free_bytes: Int64
+    var models: [LocalModel]
+    var runtime: Runtime?
+
+    struct Runtime: Decodable, Equatable {
+        var version: String
+        var present: Bool
+    }
+
+    func model(_ id: String) -> LocalModel? { models.first { $0.id == id } }
+}
+
+struct LocalModel: Decodable, Equatable, Identifiable {
+    var id: String
+    var file: String
+    var size: Int64
+    var on_disk: Int64
+    var verified: Bool
+
+    enum State: Equatable { case onDisk, partial(Double), missing }
+
+    var state: State {
+        if size > 0, on_disk >= size { return .onDisk }
+        if on_disk > 0, size > 0 { return .partial(Double(on_disk) / Double(size)) }
+        return .missing
     }
 }
 
