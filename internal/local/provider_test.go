@@ -29,6 +29,7 @@ func TestMain(m *testing.M) {
 }
 
 // helperChild: "ok" writes the state file and sleeps; "stubborn" also ignores SIGTERM; "fail" logs and exits 1.
+// A "-child" suffix ("ok-child", "stubborn-child") first starts `sleep 60` in its process group, like llama-server.
 func helperChild(mode string) {
 	_ = os.WriteFile(filepath.Join(filepath.Dir(StatePath()), "args"), []byte(strings.Join(os.Args[1:], " ")), 0o600)
 	if mode == "fail" {
@@ -38,8 +39,15 @@ func helperChild(mode string) {
 		fmt.Fprintln(os.Stderr, "boom: weights gone")
 		os.Exit(1)
 	}
-	if mode == "stubborn" {
+	if mode == "stubborn" || mode == "stubborn-child" {
 		signal.Ignore(syscall.SIGTERM)
+	}
+	if strings.HasSuffix(mode, "-child") { // a stand-in for llama-server, in the supervisor's process group
+		c := exec.Command("sleep", "60")
+		if err := c.Start(); err != nil {
+			os.Exit(4)
+		}
+		_ = os.WriteFile(filepath.Join(filepath.Dir(StatePath()), "child"), []byte(strconv.Itoa(c.Process.Pid)), 0o600)
 	}
 	flag := map[string]string{}
 	for i, a := range os.Args {
@@ -169,6 +177,39 @@ func TestProviderDeleteKills(t *testing.T) {
 	}
 	if alive(pid) || time.Since(start) < stopWait {
 		t.Fatalf("alive %v after %s", alive(pid), time.Since(start))
+	}
+}
+
+// The supervisor's child (llama-server) is gone before the state is removed: a supervisor that exits on SIGTERM
+// but leaves the child, and one that ignores SIGTERM, both end with the whole group SIGKILLed.
+func TestProviderDeleteKillsGroup(t *testing.T) {
+	for _, mode := range []string{"ok-child", "stubborn-child"} {
+		t.Run(mode, func(t *testing.T) {
+			p, _ := testProvider(t, mode)
+			in, err := p.Rent(context.Background(), opts, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pid, _ := strconv.Atoi(in.ID)
+			t.Cleanup(func() { _ = syscall.Kill(-pid, syscall.SIGKILL) })
+			b, err := os.ReadFile(filepath.Join(filepath.Dir(StatePath()), "child"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			child, _ := strconv.Atoi(string(b))
+			if pg, err := syscall.Getpgid(child); err != nil || pg != pid {
+				t.Fatalf("child %d pgid %d (%v), want %d", child, pg, err, pid)
+			}
+			if err := p.Delete(context.Background(), in.ID); err != nil {
+				t.Fatal(err)
+			}
+			if !errors.Is(syscall.Kill(-pid, 0), syscall.ESRCH) {
+				t.Fatal("process group still has members")
+			}
+			if _, err := os.Stat(StatePath()); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("state left: %v", err)
+			}
+		})
 	}
 }
 
