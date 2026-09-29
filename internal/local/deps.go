@@ -87,7 +87,11 @@ func (d *macDeps) checkGPU(ctx context.Context) error {
 	out, _ := cmd.CombinedOutput()
 	_, _ = fmt.Fprintf(d.logs, "[gpu-check] %s\n", strings.TrimSpace(string(out)))
 	if !strings.Contains(string(out), "MTL0") {
-		return fmt.Errorf("llama-server sees no Metal device: %s", lastLine(string(out)))
+		detail := "no output"
+		if strings.TrimSpace(string(out)) != "" {
+			detail = agent.LastLine(string(out))
+		}
+		return fmt.Errorf("llama-server sees no Metal device: %s", detail)
 	}
 	usable, err := d.usableMiB()
 	if err != nil {
@@ -97,14 +101,6 @@ func (d *macDeps) checkGPU(ctx context.Context) error {
 		return fmt.Errorf("%s needs %.1f GB, this Mac allows ~%.0f GB to the GPU", d.cfg.Model.ID, float64(need)/1024, float64(usable)/1024)
 	}
 	return nil
-}
-
-func lastLine(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return "no output"
-	}
-	return s[strings.LastIndexByte(s, '\n')+1:]
 }
 
 // download makes <weights>/<file> complete and verified. Full size + valid marker (markerValid): done. Full

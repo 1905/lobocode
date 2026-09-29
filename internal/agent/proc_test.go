@@ -19,3 +19,15 @@ func TestStartProcess(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestLastLine(t *testing.T) {
+	for in, want := range map[string]string{
+		"Available devices:\n  ggml_metal_init: error: failed\n  done\n": "ggml_metal_init: error: failed",
+		"a\n b \n": "b",
+		"one line": "one line",
+	} {
+		if got := LastLine(in); got != want {
+			t.Fatalf("LastLine(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
