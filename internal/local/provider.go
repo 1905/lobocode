@@ -30,7 +30,7 @@ type Provider struct {
 var (
 	supported     = Supported
 	ensureRuntime = EnsureRuntime
-	listModels    = List
+	freeBytes     = freeSpace
 	psCommand     = commandOf
 	stateWait     = 15 * time.Second // child must write its state file within this
 	stopWait      = 10 * time.Second // SIGTERM grace before SIGKILL
@@ -100,18 +100,16 @@ func writable(dir string) error {
 // checkSpace: the bytes still missing for m must fit in the free space. An oversize file is refetched after
 // truncation, which frees more than it needs, so it counts as 0.
 func (p Provider) checkSpace(m model.Model) error {
-	l, err := listModels(p.Weights)
+	free, err := freeBytes(p.Weights)
 	if err != nil {
 		return err
 	}
-	var need int64
-	for _, s := range l.Models {
-		if s.ID == m.ID && s.OnDisk < s.Size {
-			need = s.Size - s.OnDisk
-		}
+	need := m.Size
+	if fi, err := os.Stat(filepath.Join(p.Weights, m.File)); err == nil {
+		need -= fi.Size()
 	}
-	if need > 0 && uint64(need) > l.FreeBytes {
-		return fmt.Errorf("not enough space in %s for %s: need %d bytes, %d free", p.Weights, m.ID, need, l.FreeBytes)
+	if need > 0 && uint64(need) > free {
+		return fmt.Errorf("not enough space in %s for %s: need %d bytes, %d free", p.Weights, m.ID, need, free)
 	}
 	return nil
 }

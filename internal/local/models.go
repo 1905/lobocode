@@ -43,11 +43,11 @@ func markerLine(sha string, fi os.FileInfo) string {
 	return fmt.Sprintf("%s %d %d\n", sha, fi.Size(), fi.ModTime().UnixNano())
 }
 
-// markerValid: <weights>/<m.File> has the catalog size and its marker names the catalog sha256 and the file's
-// current size and mtime. Anything else (no marker, the old `<sha>` format, a changed file) means hash again.
-func markerValid(weights string, m model.Model) bool {
-	fi, err := os.Stat(filepath.Join(weights, m.File))
-	if err != nil || fi.Size() != m.Size {
+// markerValid: <weights>/<m.File>, as fi (nil = missing) describes it, has the catalog size and its marker names
+// the catalog sha256 and the file's current size and mtime. Anything else (no marker, the old `<sha>` format, a
+// changed file) means hash again.
+func markerValid(weights string, m model.Model, fi os.FileInfo) bool {
+	if fi == nil || fi.Size() != m.Size {
 		return false
 	}
 	b, err := os.ReadFile(MarkerPath(weights, m.File))
@@ -82,21 +82,33 @@ func writeMarker(weights string, m model.Model) error {
 func List(weights string) (Listing, error) {
 	l := Listing{Weights: weights, Models: []ModelState{}}
 	l.Runtime.Version = RuntimeVersion
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(weights, &st); err == nil {
-		l.FreeBytes = st.Bavail * uint64(st.Bsize)
-	} else if !errors.Is(err, os.ErrNotExist) {
+	free, err := freeSpace(weights)
+	if err != nil {
 		return Listing{}, err
 	}
+	l.FreeBytes = free
 	for _, m := range model.All() {
 		s := ModelState{ID: m.ID, File: m.File, Size: m.Size}
-		if fi, err := os.Stat(filepath.Join(weights, m.File)); err == nil {
+		fi, err := os.Stat(filepath.Join(weights, m.File))
+		if err == nil {
 			s.OnDisk = fi.Size()
 		}
-		s.Verified = s.OnDisk == m.Size && markerValid(weights, m)
+		s.Verified = s.OnDisk == m.Size && markerValid(weights, m, fi)
 		l.Models = append(l.Models, s)
 	}
-	_, err := findServer(RuntimeDir(weights))
+	_, err = findServer(RuntimeDir(weights))
 	l.Runtime.Present = err == nil
 	return l, nil
+}
+
+// freeSpace is the bytes available in dir's filesystem; a missing dir has 0.
+func freeSpace(dir string) (uint64, error) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(dir, &st); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return st.Bavail * uint64(st.Bsize), nil
 }

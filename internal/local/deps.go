@@ -129,7 +129,7 @@ func (d *macDeps) download(ctx context.Context, onProgress func(agent.DownloadPr
 	dst, marker := filepath.Join(w, m.File), MarkerPath(w, m.File)
 	fi, err := os.Stat(dst)
 	if err == nil && fi.Size() == m.Size {
-		if markerValid(w, m) {
+		if markerValid(w, m, fi) {
 			return nil
 		}
 		got, err := agent.HashFile(ctx, dst, m.Size, onProgress)

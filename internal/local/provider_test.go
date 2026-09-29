@@ -80,9 +80,7 @@ func testProvider(t *testing.T, mode string) (Provider, *bool) {
 		ran = true
 		return "/fake/llama-server", nil
 	})
-	swap(t, &listModels, func(w string) (Listing, error) { // real free space must not decide the test
-		return Listing{Weights: w, FreeBytes: 1 << 50, Models: []ModelState{}}, nil
-	})
+	swap(t, &freeBytes, func(string) (uint64, error) { return 1 << 50, nil }) // real free space must not decide the test
 	swap(t, &stateWait, 5*time.Second)
 	swap(t, &stopWait, 500*time.Millisecond)
 	return Provider{Exe: os.Args[0], ConfigPath: "/cfg/lobo.env", Weights: filepath.Join(t.TempDir(), "w"), Port: freePair(t)}, &ran
@@ -342,11 +340,14 @@ func TestProviderPrechecks(t *testing.T) {
 			t.Cleanup(func() { _ = os.Chmod(ro, 0o700) })
 			p.Weights = ro
 		}, wantErr: "is not writable"},
-		{name: "no space", setup: func(t *testing.T, _ *Provider) {
-			swap(t, &listModels, func(w string) (Listing, error) {
-				m, _ := model.Get("q6")
-				return Listing{Weights: w, FreeBytes: 1000, Models: []ModelState{{ID: "q6", Size: m.Size, OnDisk: 400}}}, nil
-			})
+		{name: "no space", setup: func(t *testing.T, p *Provider) {
+			swap(t, &freeBytes, func(string) (uint64, error) { return 1000, nil })
+			if err := os.MkdirAll(p.Weights, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(p.Weights, mustModel("q6").File), make([]byte, 400), 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}, wantErr: fmt.Sprintf("need %d bytes, 1000 free", mustModel("q6").Size-400)},
 		{name: "llama port busy", setup: func(t *testing.T, p *Provider) { hold(t, p.Port) }, wantErr: "LOBO_LOCAL_PORT"},
 		{name: "api port busy", setup: func(t *testing.T, p *Provider) { hold(t, p.Port+1) }, wantErr: "LOBO_LOCAL_PORT+1"},
