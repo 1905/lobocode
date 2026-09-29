@@ -354,10 +354,14 @@ final class Store: ObservableObject {
         return "https://\(d)/v1"
     }
 
-    /// LOBO_LOCAL_PORT, or 8931 when empty, 0 or bad (the CLI's Port()).
+    /// The CLI's local port rules: default 8931; the agent API listens on port+1, so 65535 is out.
+    static let defaultLocalPort = 8931
+    static let localPortRange = 1024...65534
+
+    /// LOBO_LOCAL_PORT, or the default when empty, 0 or bad (the CLI's Port()).
     var localPort: Int {
-        if let p = Int(config?.values["LOBO_LOCAL_PORT"] ?? ""), (1024...65534).contains(p) { return p }
-        return 8931
+        if let p = Int(config?.values["LOBO_LOCAL_PORT"] ?? ""), Store.localPortRange.contains(p) { return p }
+        return Store.defaultLocalPort
     }
 
     /// $ spent on the current pod so far.
