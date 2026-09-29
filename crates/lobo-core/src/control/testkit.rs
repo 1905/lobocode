@@ -1,0 +1,339 @@
+//! Deterministic providers and agent scripts shared with CLI tests.
+use super::*;
+use crate::provider::{
+    CreateOpts,
+    runpod::{Pod, RunPodApi, RunPodProvider},
+};
+use lobo_proto::{DownloadProgress, Stage};
+use std::{collections::BTreeSet, sync::Mutex};
+use tokio_util::sync::CancellationToken;
+#[derive(Debug, Clone)]
+pub struct Created {
+    pub opts: CreateOpts,
+    pub cloud_type: String,
+    pub min_download_mbps: f64,
+}
+#[derive(Default)]
+pub struct RunPodState {
+    pub pods: Vec<Pod>,
+    pub no_cap: BTreeSet<String>,
+    pub max_mbps: f64,
+    pub created: Vec<Created>,
+    pub deleted: Vec<String>,
+    pub create_err: Option<String>,
+}
+#[derive(Default)]
+pub struct FakeRunPod {
+    pub state: Mutex<RunPodState>,
+}
+#[async_trait]
+impl RunPodApi for FakeRunPod {
+    async fn create(&self, o: &CreateOpts, cloud: &str, mbps: f64) -> Result<Pod> {
+        let mut s = self.state.lock().unwrap();
+        s.created.push(Created {
+            opts: o.clone(),
+            cloud_type: cloud.into(),
+            min_download_mbps: mbps,
+        });
+        if s.no_cap.contains(cloud) || (s.max_mbps > 0.0 && mbps > s.max_mbps) {
+            return Err(Error::NoCapacity(String::new()));
+        }
+        if let Some(e) = &s.create_err {
+            return Err(Error::Other(e.clone()));
+        }
+        let pod = Pod {
+            id: "pod1".into(),
+            name: "lobo".into(),
+            cost_per_hr: 0.69,
+            desired_status: "RUNNING".into(),
+            ..Default::default()
+        };
+        s.pods.push(pod.clone());
+        Ok(pod)
+    }
+    async fn list(&self) -> Result<Vec<Pod>> {
+        Ok(self.state.lock().unwrap().pods.clone())
+    }
+    async fn get(&self, id: &str) -> Result<Pod> {
+        self.state
+            .lock()
+            .unwrap()
+            .pods
+            .iter()
+            .find(|p| p.id == id)
+            .cloned()
+            .ok_or(Error::NotFound)
+    }
+    async fn delete(&self, id: &str) -> Result<()> {
+        let mut s = self.state.lock().unwrap();
+        s.deleted.push(id.into());
+        s.pods.retain(|p| p.id != id);
+        Ok(())
+    }
+}
+pub struct FakeReleases(pub Resolved);
+#[async_trait]
+impl ReleaseResolver for FakeReleases {
+    async fn resolve(&self, version: &str) -> Result<Resolved> {
+        if version == "missing" {
+            Err(Error::Release("release missing: HTTP 404".into()))
+        } else {
+            Ok(self.0.clone())
+        }
+    }
+}
+#[derive(Default)]
+pub struct AgentState {
+    pub script: Vec<Option<Status>>,
+    pub index: usize,
+    pub calls: usize,
+}
+#[derive(Default)]
+pub struct FakeAgent {
+    pub state: Mutex<AgentState>,
+}
+impl FakeAgent {
+    pub fn new(script: Vec<Option<Status>>) -> Self {
+        Self {
+            state: Mutex::new(AgentState {
+                script,
+                ..Default::default()
+            }),
+        }
+    }
+    pub fn calls(&self) -> usize {
+        self.state.lock().unwrap().calls
+    }
+}
+#[async_trait]
+impl AgentApi for FakeAgent {
+    async fn status(&self) -> Result<Status> {
+        let mut s = self.state.lock().unwrap();
+        s.calls += 1;
+        let value = s.script.get(s.index).cloned().flatten();
+        if s.index + 1 < s.script.len() {
+            s.index += 1;
+        }
+        value.ok_or_else(|| Error::Other("530".into()))
+    }
+    async fn version(&self) -> Result<Manifest> {
+        self.state.lock().unwrap().calls += 1;
+        Ok(Manifest {
+            version: "2026.09.23-1".into(),
+            git_sha: "abc1234".into(),
+            ..Default::default()
+        })
+    }
+    async fn logs(&self, _: usize) -> Result<String> {
+        self.state.lock().unwrap().calls += 1;
+        Ok("last log line".into())
+    }
+}
+pub const LOCAL_API_URL: &str = "http://127.0.0.1:8931/v1";
+pub const LOCAL_AGENT_URL: &str = "http://127.0.0.1:8932";
+#[derive(Default)]
+pub struct LocalState {
+    pub running: Vec<Instance>,
+    pub created: Vec<CreateOpts>,
+    pub deleted: Vec<String>,
+}
+#[derive(Default)]
+pub struct FakeLocal {
+    pub state: Mutex<LocalState>,
+}
+fn local_urls(mut i: Instance) -> Instance {
+    i.api_url = LOCAL_API_URL.into();
+    i.agent_url = LOCAL_AGENT_URL.into();
+    i
+}
+#[async_trait]
+impl Provider for FakeLocal {
+    fn name(&self) -> &'static str {
+        "local"
+    }
+    fn replaceable(&self) -> bool {
+        false
+    }
+    async fn rent(
+        &self,
+        o: &CreateOpts,
+        c: CancellationToken,
+        _: &(dyn Fn(String) + Sync),
+    ) -> Result<Instance> {
+        if c.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        let mut s = self.state.lock().unwrap();
+        s.created.push(o.clone());
+        let i = local_urls(Instance {
+            provider: "local".into(),
+            id: "4242".into(),
+            status: "running".into(),
+            detail: format!("this Mac, {}", o.model),
+            ..Default::default()
+        });
+        s.running.push(i.clone());
+        Ok(i)
+    }
+    async fn list(&self) -> Result<Vec<Instance>> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .running
+            .iter()
+            .cloned()
+            .map(local_urls)
+            .collect())
+    }
+    async fn get(&self, id: &str) -> Result<Instance> {
+        self.state
+            .lock()
+            .unwrap()
+            .running
+            .iter()
+            .find(|i| i.id == id)
+            .cloned()
+            .map(local_urls)
+            .ok_or(Error::NotFound)
+    }
+    async fn delete(&self, id: &str) -> Result<()> {
+        let mut s = self.state.lock().unwrap();
+        s.deleted.push(id.into());
+        s.running.retain(|i| i.id != id);
+        Ok(())
+    }
+}
+pub fn release() -> Resolved {
+    Resolved {
+        manifest: Manifest {
+            version: "2026.09.23-1".into(),
+            llama_image: "img:b1".into(),
+            model: crate::release::ModelRef {
+                id: "q8".into(),
+                ..Default::default()
+            },
+            defaults: crate::release::Defaults {
+                ctx: 8192,
+                idle_min: 30,
+                max_hours: 12,
+            },
+            ..Default::default()
+        },
+        zip_key: "releases/lobo-2026.09.23-1.zip".into(),
+        zip_sha256: "zipsha".into(),
+        ..Default::default()
+    }
+}
+pub fn deps(rp: Arc<FakeRunPod>, ag: Arc<FakeAgent>, clock: Arc<dyn Clock>) -> Deps {
+    Deps {
+        providers: [(
+            "runpod".into(),
+            Arc::new(RunPodProvider {
+                api: rp,
+                domain: "lobo.example.com".into(),
+            }) as Arc<dyn Provider>,
+        )]
+        .into(),
+        releases: Arc::new(FakeReleases(release())),
+        presign: None,
+        new_agent: Arc::new(move |_| ag.clone()),
+        clock,
+        poll: Duration::from_millis(1),
+        cfg: Laptop {
+            domain: "lobo.example.com".into(),
+            bucket_url: "https://pub-x.r2.dev".into(),
+            lobo_api_key: "sk".into(),
+            cf_tunnel_token: "tok".into(),
+            ..Default::default()
+        },
+    }
+}
+pub fn boot_script() -> Vec<Option<Status>> {
+    vec![
+        None,
+        None,
+        Some(Status {
+            stage: Stage::Tunnel,
+            ..Default::default()
+        }),
+        Some(Status {
+            stage: Stage::Download,
+            download: DownloadProgress {
+                bytes: 12357400000,
+                total: 28595762272,
+                mbps: 51.3,
+                ..Default::default()
+            },
+            ..Default::default()
+        }),
+        Some(Status {
+            stage: Stage::Load,
+            ..Default::default()
+        }),
+        Some(Status {
+            stage: Stage::Ready,
+            ..Default::default()
+        }),
+    ]
+}
+pub fn local_boot_script() -> Vec<Option<Status>> {
+    vec![
+        Some(Status {
+            stage: Stage::Gpu,
+            ..Default::default()
+        }),
+        Some(Status {
+            stage: Stage::Download,
+            download: DownloadProgress {
+                bytes: 1 << 30,
+                total: 22082528352,
+                mbps: 12.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        }),
+        Some(Status {
+            stage: Stage::Load,
+            ..Default::default()
+        }),
+        Some(Status {
+            stage: Stage::Ready,
+            ..Default::default()
+        }),
+    ]
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn fake_agent_script_sticks_on_last() {
+        let f = FakeAgent::new(boot_script());
+        for _ in 0..2 {
+            assert!(f.status().await.is_err());
+        }
+        assert_eq!(f.status().await.unwrap().stage, Stage::Tunnel);
+        for _ in 0..10 {
+            let _ = f.status().await;
+        }
+        assert_eq!(f.status().await.unwrap().stage, Stage::Ready);
+        assert_eq!(f.calls(), 14);
+    }
+    #[tokio::test]
+    async fn fake_runpod_no_cap() {
+        let f = FakeRunPod::default();
+        f.state.lock().unwrap().no_cap.insert("SECURE".into());
+        assert!(matches!(
+            f.create(&CreateOpts::default(), "SECURE", 10000.0).await,
+            Err(Error::NoCapacity(_))
+        ));
+        let pod = f
+            .create(&CreateOpts::default(), "COMMUNITY", 10000.0)
+            .await
+            .unwrap();
+        assert_eq!(f.list().await.unwrap().len(), 1);
+        f.delete(&pod.id).await.unwrap();
+        assert!(f.list().await.unwrap().is_empty());
+        assert_eq!(f.state.lock().unwrap().created.len(), 2);
+    }
+}

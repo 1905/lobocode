@@ -118,3 +118,5 @@ The paused local tests had passed (14 focused tests). Go interop and lint checks
 - LocalHooks now owns its ps closure and explicit child-only environment overrides. This removes global test mutation; contracts and Task 49 record the change. Task 50 control traits and Tasks 53 onward remain pending.
 
 - CI caught a packaging mistake in 40b51e7: the unanchored `bin/` ignore hid `src/bin/testchild.rs`. Local tests passed with the untracked file; CI had no helper. Scope the ignore to `/bin/`, add the source and rerun CI.
+
+- P3 Task 50, Task 53, Task 54 fakes (events helper pending up), and Tasks 60–63 implemented. Seventeen control tests pass, including defaults precedence, provider errors during down, stale listings, local URLs and config-path forwarding. UpOperation and its cancellation/reconciliation tests remain pending.
