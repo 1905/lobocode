@@ -57,6 +57,15 @@ make install-mac    # optional: the menu bar app → ~/Applications/lobocode.app
 
 Useful flags for `lobo up`: `--provider vast`, `--q6`, `--ctx 16384`, `--idle-min 10`, `--max-life 4h`.
 
+## Run on this Mac
+
+Apple Silicon only. Same llama.cpp build and flags as the pod, Metal instead of CUDA, no rent.
+
+- Set `LOBO_WEIGHTS_DIR` to a folder with room for the GGUF (Q6 22 GB, Q8 29 GB). `lobo models` shows what is there.
+- `lobo up --provider local` downloads llama.cpp and the model from Hugging Face (resumable, sha256-checked), then serves `http://127.0.0.1:8931/v1` with your `LOBO_API_KEY`.
+- It stops after `LOBO_IDLE_MIN` (30) minutes without requests. `lobo status`, `test`, `logs` and `down` work as in the cloud.
+- A local-only config needs just `LOBO_API_KEY`. `LOBO_PROVIDER=local` makes it the default.
+
 ## Menu bar app (macOS)
 
 <img src="docs/img/menubar_ready.png" height="28" alt="menu bar: green, 45 t/s">
@@ -69,7 +78,7 @@ Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. It 
 
 ## OpenCode
 
-`lobo gen-api-key` writes `opencode.lobo.json` with the `lobo` provider and agent. Merge its `provider.lobo` and `agent.lobo` blocks into `~/.config/opencode/opencode.json`, then pick the `lobo` agent (Tab). The agent turns off MCP tools and skills for this model: the first request drops from 43K to 15K tokens.
+`lobo gen-api-key` writes `opencode.lobo.json` with the `lobo` provider (your domain), the `lobo-local` provider (this Mac) and the agent. Merge its `provider.lobo` and `agent.lobo` blocks into `~/.config/opencode/opencode.json`, then pick the `lobo` agent (Tab). The agent turns off MCP tools and skills for this model: the first request drops from 43K to 15K tokens.
 
 ## Pod image
 
@@ -88,7 +97,7 @@ Without it, the pod starts from the plain llama.cpp image and downloads the agen
 
 | Key | Flag | Default |
 |---|---|---|
-| `LOBO_PROVIDER` | `--provider` | runpod |
+| `LOBO_PROVIDER` (runpod, vast, local) | `--provider` | runpod |
 | `LOBO_MODEL` (q8, q6) | `--q6` | q8 |
 | `LOBO_CTX` | `--ctx` | 65536 |
 | `LOBO_IDLE_MIN` | `--idle-min` | 30 |
@@ -97,6 +106,8 @@ Without it, the pod starts from the plain llama.cpp image and downloads the agen
 | `LOBO_MIN_MBPS` | `--min-mbps` | 100 |
 | `LOBO_POD_IMAGE` | `--image` | none |
 | `LOBO_VAST_MAX_DPH` | | 1.20 |
+| `LOBO_WEIGHTS_DIR` | | `~/Library/Application Support/lobo/weights` |
+| `LOBO_LOCAL_PORT` (API on port + 1) | | 8931 |
 
 ## Safety
 
