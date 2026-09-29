@@ -106,3 +106,5 @@ The user said "great, continue". Resume the authorized full-auto workflow.
 The paused local tests had passed (14 focused tests). Go interop and lint checks are now running.
 
 - P3 Tasks 36–38 plus identity/state-URL helpers from Task 47 are implemented. 14 focused local tests and 3 real Go/Rust interop tests pass. CI now runs interop explicitly; P6 removes this Go dependency. Runtime/model/supervisor/control work remains pending.
+
+- P3 Tasks 39–41 implemented. 29 focused local tests and clippy pass. Extraction owns staging files through cancellation, defers symlinks and rejects targets outside the staged tree. An explicit ignored test verifies the actual pinned archive; not run yet.

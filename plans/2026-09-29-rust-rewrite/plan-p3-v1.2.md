@@ -750,7 +750,7 @@ mtime nanos = `modified()` since UNIX_EPOCH as i128 nanos, formatted as decimal 
 
 **Files:** `src/local/runtime.rs`.
 
-Locked interface: `pub(crate) fn untar(src: &Path, dst: &Path) -> Result<()>` (`runtime.go:102-168`: local paths only, relative symlinks inside, dirs `mode|0700`, files `O_EXCL` then exact mode, global headers skipped, other types refused with `unsupported tar entry`); `pub(crate) fn find_server(dir: &Path) -> Result<PathBuf>` (walk without following symlinks, regular file `llama-server` with any exec bit; else `no llama-server in <dir>`).
+Locked interface: `pub(crate) fn untar(src: &Path, dst: &Path) -> Result<()>` (`runtime.go:102-168`: local paths only, relative symlinks inside, dirs `mode|0700`, files `O_EXCL` then exact mode, global headers skipped, other types refused with `unsupported tar entry`; stage symlinks after regular files, refuse extraction through symlink parents, and require each installed symlink to resolve inside the staged tree. This deliberately rejects dangling runtime symlinks. The pinned runtime must pass the final local acceptance check); `pub(crate) fn find_server(dir: &Path) -> Result<PathBuf>` (walk without following symlinks, regular file `llama-server` with any exec bit; else `no llama-server in <dir>`).
 - [ ] Failing tests (tar built in-test with the `tar` crate, same entries as `runtime_test.go:78-84`): `untar_keeps_modes_and_symlinks`; `untar_refuses_unsafe_paths` (traversal, absolute, symlink out, symlink abs); `find_server_needs_exec_bit`.
 - [ ] Implement. `cargo test -p lobo-core local::runtime` → pass (3).
 - [ ] Commit: `lobo-core: safe untar for the llama.cpp runtime`.
@@ -1354,4 +1354,4 @@ Contract alignment (contracts v1.1):
 Tasks 0–13 implemented as one foundation/config batch. 36 core tests and clippy pass.
 The Go generator produces 77 deterministic fixtures. CI checks fixture drift.
 The task checklists above describe the original sequence; separate red-first commits were not recorded.
-Tasks 14–26 implemented in the provider batch. 80 core tests pass, including cancellation during create and delayed Vast reconciliation. Tasks 27–35 implemented in the release/checks batch. 105 core tests and clippy pass. Tasks 36–38 and Task 47 identity/instance helpers are implemented. 14 focused local tests and 3 Go/Rust interop tests pass. Task 39 onward (including the remaining Task 47 spawner) remains pending.
+Tasks 14–26 implemented in the provider batch. 80 core tests pass, including cancellation during create and delayed Vast reconciliation. Tasks 27–35 implemented in the release/checks batch. 105 core tests and clippy pass. Tasks 36–38 and Task 47 identity/instance helpers are implemented. 14 focused local tests and 3 Go/Rust interop tests pass. Tasks 39–41 implemented. 29 focused local tests and clippy pass. Task 42 onward (including the remaining Task 47 spawner) remains pending. The pinned archive network test is explicit/ignored by default.
