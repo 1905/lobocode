@@ -36,7 +36,8 @@ var (
 	stopWait      = 10 * time.Second // SIGTERM grace before SIGKILL
 )
 
-func (Provider) Name() string { return "local" }
+func (Provider) Name() string      { return "local" }
+func (Provider) Replaceable() bool { return false } // one Mac: nothing to replace it with
 
 // LogPath is the supervisor's stdout+stderr, next to the state file.
 func LogPath() string { return filepath.Join(filepath.Dir(StatePath()), "local.log") }

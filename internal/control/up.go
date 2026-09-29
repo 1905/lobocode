@@ -233,7 +233,7 @@ func retriable(detail string) bool {
 // boot rents one instance and follows it. retry=true means the host was bad and the instance was deleted.
 func boot(ctx context.Context, d Deps, p provider.Provider, o UpOpts, co provider.CreateOpts, attempt int, relVersion, modelID string, start time.Time, ch chan<- Event) (retry bool, _ error) {
 	co.BootID = newBootID()
-	isLocal := p.Name() == "local" // one Mac: a bad "host" is not replaced, the run is stopped and reported
+	isLocal := !p.Replaceable() // one Mac: a bad "host" is not replaced, the run is stopped and reported
 	pod, err := p.Rent(ctx, co, func(s string) { ch <- Event{Phase: "create", Detail: s} })
 	if err != nil {
 		return false, fmt.Errorf("rent on %s: %w", p.Name(), err)
