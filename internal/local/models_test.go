@@ -160,7 +160,8 @@ func TestMarkerValid(t *testing.T) {
 			if tt.change != nil {
 				tt.change(t, path)
 			}
-			if got := markerValid(w, m); got != tt.want {
+			fi, _ := os.Stat(path)
+			if got := markerValid(w, m, fi); got != tt.want {
 				b, _ := os.ReadFile(MarkerPath(w, m.File))
 				t.Fatalf("markerValid = %v, want %v; marker %q", got, tt.want, b)
 			}

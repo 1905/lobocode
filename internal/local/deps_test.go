@@ -144,7 +144,8 @@ func TestDownload(t *testing.T) {
 			if hits.Load() != tt.wantHits {
 				t.Fatalf("hits %d, want %d", hits.Load(), tt.wantHits)
 			}
-			if markerValid(w, tt.m) != tt.wantMark {
+			fi, _ := os.Stat(filepath.Join(w, tt.m.File))
+			if markerValid(w, tt.m, fi) != tt.wantMark {
 				b, _ := os.ReadFile(MarkerPath(w, tt.m.File))
 				t.Fatalf("marker valid %v, want %v: %q", !tt.wantMark, tt.wantMark, b)
 			}
