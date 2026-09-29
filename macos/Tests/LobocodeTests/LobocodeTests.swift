@@ -176,6 +176,20 @@ final class LobocodeTests: XCTestCase {
         XCTAssertNil(SettingsView.validate(["LOBO_CTX": "0"]))
     }
 
+    func testSettingsLocal() {
+        XCTAssertNil(SettingsView.validate(["LOBO_LOCAL_PORT": ""]))
+        XCTAssertNil(SettingsView.validate(["LOBO_LOCAL_PORT": "1024"]))
+        XCTAssertNil(SettingsView.validate(["LOBO_LOCAL_PORT": "8931"]))
+        XCTAssertNil(SettingsView.validate(["LOBO_LOCAL_PORT": "65534"]))
+        for bad in ["1023", "65535", "0", "-1", "89.31", "port", " 8931"] {
+            XCTAssertNotNil(SettingsView.validate(["LOBO_LOCAL_PORT": bad]), bad)
+        }
+        var f = SettingsView.Fields()
+        f.plain = ["LOBO_WEIGHTS_DIR": " /Volumes/Extreme/_lobocode ", "LOBO_LOCAL_PORT": "8931"]
+        XCTAssertEqual(SettingsView.changes(f, current: ["LOBO_LOCAL_PORT": "8931"]), ["LOBO_WEIGHTS_DIR": "/Volumes/Extreme/_lobocode"])
+        XCTAssertNotNil(SettingsView.freeBytes("/tmp/lobocode-no-such-dir/weights")) // measured on the nearest existing parent
+    }
+
     func testReadyNeedsAPIKey() {
         let keys = ["RUNPOD_API_KEY", "LOBO_DOMAIN", "CF_TUNNEL_TOKEN", "LOBO_BUCKET_URL"]
         var set = Dictionary(uniqueKeysWithValues: keys.map { ($0, true) })
