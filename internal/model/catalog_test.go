@@ -42,3 +42,10 @@ func TestChunkSHA(t *testing.T) {
 		}
 	}
 }
+
+func TestAll(t *testing.T) {
+	all := All()
+	if len(all) != 2 || all[0].ID != "q6" || all[1].ID != "q8" {
+		t.Fatalf("%+v", all)
+	}
+}

@@ -57,3 +57,13 @@ func Get(id string) (Model, error) {
 func (m Model) URL(bucketURL string) string {
 	return strings.TrimRight(bucketURL, "/") + "/models/" + m.File
 }
+
+// All returns the catalog sorted by ID.
+func All() []Model {
+	out := make([]Model, 0, len(catalog))
+	for _, m := range catalog {
+		out = append(out, m)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
