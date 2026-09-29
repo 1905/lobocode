@@ -46,11 +46,15 @@ func TestLoadLaptop(t *testing.T) {
 	}
 }
 
+// No provider key loads (local needs none); the cloud path then fails. The OS env is never read.
 func TestLoadLaptopMissing(t *testing.T) {
 	t.Setenv("RUNPOD_API_KEY", "from-os")
 	noRP := strings.Replace(fullEnv, "RUNPOD_API_KEY=rp\n", "", 1)
-	_, err := LoadLaptop(writeEnv(t, noRP))
-	if err == nil || !strings.Contains(err.Error(), "RUNPOD_API_KEY") {
+	l, err := LoadLaptop(writeEnv(t, noRP))
+	if err != nil || l.RunPodAPIKey != "" {
+		t.Fatalf("%+v %v", l, err)
+	}
+	if err := l.RequireCloud(); err == nil || !strings.Contains(err.Error(), "RUNPOD_API_KEY") {
 		t.Fatalf("want RUNPOD_API_KEY error (OS env must be ignored), got %v", err)
 	}
 }
@@ -221,6 +225,8 @@ func TestDefaultProvider(t *testing.T) {
 		{Laptop{RunPodAPIKey: "r", VastAPIKey: "v"}, "runpod"},
 		{Laptop{RunPodAPIKey: "r", VastAPIKey: "v", Provider: "vast"}, "vast"},
 		{Laptop{RunPodAPIKey: "r", Provider: "vast"}, "runpod"}, // no Vast key: fall back
+		{Laptop{RunPodAPIKey: "r", VastAPIKey: "v", Provider: "local"}, "local"},
+		{Laptop{Provider: "local"}, "local"},
 	} {
 		if got := c.l.DefaultProvider(); got != c.want {
 			t.Fatalf("%+v: got %s want %s", c.l, got, c.want)
@@ -274,8 +280,9 @@ func TestLoadLaptopLocalOnly(t *testing.T) {
 			t.Fatalf("want %s in %v", k, err)
 		}
 	}
-	if _, err := LoadLaptop(writeEnv(t, "LOBO_API_KEY=sk-x\n")); err == nil || !strings.Contains(err.Error(), "RUNPOD_API_KEY") {
-		t.Fatalf("no provider key and not local: got %v", err)
+	// Only the key, no LOBO_PROVIDER: `up --provider local` and the `local run` child must still load it.
+	if _, err := LoadLaptop(writeEnv(t, "LOBO_API_KEY=sk-x\nLOBO_WEIGHTS_DIR=/w\n")); err != nil {
+		t.Fatalf("key only: %v", err)
 	}
 	if _, err := LoadLaptop(writeEnv(t, "LOBO_PROVIDER=local\n")); err == nil || !strings.Contains(err.Error(), "LOBO_API_KEY") {
 		t.Fatalf("got %v", err)

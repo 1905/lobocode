@@ -168,8 +168,11 @@ func (l Laptop) Providers() []string {
 	return out
 }
 
-// DefaultProvider is LOBO_PROVIDER when that provider has a key, else runpod if keyed, else vast.
+// DefaultProvider is LOBO_PROVIDER=local, or LOBO_PROVIDER when that provider has a key, else runpod if keyed, else vast.
 func (l Laptop) DefaultProvider() string {
+	if l.Provider == "local" { // needs no key: wins even when cloud keys are set
+		return "local"
+	}
 	keyed := l.Providers()
 	for _, p := range keyed {
 		if p == l.Provider {
