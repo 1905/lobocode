@@ -82,3 +82,7 @@ mod tests {
         assert_eq!(i.agent_url, "https://lobo.example.com");
     }
 }
+
+pub mod local {
+    pub use crate::local::provider::*;
+}

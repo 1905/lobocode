@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rust P3 local provider: checks disk/ports, starts detached CLI or app supervisors, and waits for owned process groups during stop.
+- Eleven real-process tests pass. They cover stuck supervisors, surviving children, changed identities, startup failure and cancellation before state publication. Local model inference remains pending.
+
 - Rust P3 Mac runner and supervisor: shared agent lifecycle, loopback API, config forwarding, scoped logs and cancellation cleanup. CLI/app entry points remain pending.
 - Focused checks cover process exit, child environment filtering, API responses, occupied ports and duplicate supervisors. The actual pinned runtime archive passed download/hash/extraction validation; full local inference remains pending.
 

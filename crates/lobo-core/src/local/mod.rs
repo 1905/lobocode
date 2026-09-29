@@ -9,4 +9,5 @@ pub use state::{StateFile, claim_state, read_state, remove_state_if, state_path}
 
 pub mod supervise;
 pub use provider::Spawner;
+pub use provider::{EnsureRuntime, LocalHooks, LocalProvider};
 pub use supervise::{RunConfig, SUPERVISOR_ARG, supervise};
