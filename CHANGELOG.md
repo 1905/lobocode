@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rust P3 providers: Go-compatible pod bootstrap, RunPod tier selection and Vast offer recovery. Cancellation prevents later creates and preserves in-flight results for cleanup.
+- P3 provider checks: 80 core tests pass, including real Bash failure cleanup and cancelled Vast reconciliation. Final GPU E2E remains pending.
+
 - Rust P3 foundation: shared file-only config loading, masked display, atomic config writes, errors and clock.
 - P3 checks: 36 core tests pass; 77 Go fixture files reproduce exactly. Providers and lifecycle remain unfinished.
 

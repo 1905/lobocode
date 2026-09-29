@@ -3,4 +3,6 @@ pub mod clock;
 pub mod error;
 pub mod http;
 pub use error::{Error, Result};
+pub mod bootstrap;
 pub mod config;
+pub mod provider;
