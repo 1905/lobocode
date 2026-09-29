@@ -142,19 +142,9 @@ struct AppIconView: View {
         ZStack {
             RoundedRectangle(cornerRadius: 185, style: .continuous).fill(Theme.bg)
             RoundedRectangle(cornerRadius: 185, style: .continuous).stroke(Theme.line, lineWidth: 10)
-            Scanlines().clipShape(RoundedRectangle(cornerRadius: 185, style: .continuous)).opacity(2)
-            VStack(spacing: 36) {
-                Text(Logo.art)
-                    .font(.system(size: 23, weight: .bold, design: .monospaced))
-                    .lineSpacing(-3)
-                    .foregroundStyle(Theme.copper)
-                    .fixedSize()
-                Rectangle().fill(Theme.copper).frame(width: 460, height: 8).opacity(0.8)
-                HStack(spacing: 18) {
-                    RoundedRectangle(cornerRadius: 8).fill(Theme.green).frame(width: 46, height: 46)
-                        .shadow(color: Theme.green.opacity(0.7), radius: 20)
-                    Text("RUN").font(.system(size: 52, weight: .bold, design: .monospaced)).foregroundColor(Theme.green)
-                }
+            HStack(spacing: 40) { // LC monogram: one big glyph pair, readable down to 32 px
+                PixelGlyph(rows: Glyphs.L, cell: 52, fill: AnyShapeStyle(Theme.cyan))
+                PixelGlyph(rows: Glyphs.C, cell: 52, fill: AnyShapeStyle(Theme.magenta))
             }
         }
         .frame(width: 824, height: 824)
