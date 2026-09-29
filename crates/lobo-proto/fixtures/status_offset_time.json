@@ -1,0 +1,55 @@
+{
+  "boot_id": "sample",
+  "stage": "ready",
+  "stage_detail": "sample",
+  "download": {
+    "bytes": 42,
+    "total": 42,
+    "mbps": 1.25,
+    "verifying": true,
+    "source": "sample"
+  },
+  "uptime_s": 42,
+  "idle_s": 42,
+  "kill_in_s": 42,
+  "kill_reason": "sample",
+  "expires_at": "2026-09-29T10:00:00.123456789+03:00",
+  "gpu": {
+    "name": "sample",
+    "vram_used_mb": 42,
+    "vram_total_mb": 42,
+    "util_pct": 42
+  },
+  "host": {
+    "load1": 1.25,
+    "load5": 1.25,
+    "load15": 1.25,
+    "mem_used_mb": 42,
+    "mem_total_mb": 42
+  },
+  "llama": {
+    "requests_processing": 42,
+    "requests_deferred": 42,
+    "prompt_tokens_total": 42,
+    "gen_tokens_total": 42,
+    "prompt_tps": 1.25,
+    "gen_tps": 1.25
+  },
+  "metrics_failures": 42,
+  "model": "q8",
+  "ctx": 42,
+  "timings": {
+    "container_started_at": "2026-09-29T10:00:00.5Z",
+    "bootstrap_apt_s": 1.25,
+    "bootstrap_zip_s": 1.25,
+    "tunnel_s": 1.25,
+    "gpu_check_s": 1.25,
+    "download_s": 1.25,
+    "download_mbps": 1.25,
+    "download_source": "https://models.example.com/q8.gguf",
+    "download_conns": 42,
+    "verify_s": 1.25,
+    "load_s": 1.25,
+    "ready_at": "2026-09-29T10:00:00.5Z"
+  }
+}

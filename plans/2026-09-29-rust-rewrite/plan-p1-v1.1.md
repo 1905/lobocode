@@ -1,7 +1,7 @@
 # Rust rewrite P1 — workspace + `lobo-proto` Implementation Plan v1.1
 
 **Date:** 2026-09-29
-**Status:** approved for implementation after plan correction (user: full auto, 2026-09-29). Earlier review covered v1.0 only.
+**Status:** implemented locally; CI and phase close pending.
 **Spec:** ./spec.md (full-auto implementation authorized, 2026-09-29)
 **Phase:** P1 of 6. Active P2–P6 files are listed in execution.md.
 
@@ -68,7 +68,7 @@
 
 ## Pinned versions
 
-_(Task 1 fills this line from `Cargo.lock`: serde, serde_json, chrono, ts-rs, thiserror.)_
+From Cargo.lock: serde 1.0.229; serde_json 1.0.151; chrono 0.4.45; ts-rs 12.0.1; thiserror 2.0.21. Toolchain 1.98.1.
 
 ---
 
@@ -284,3 +284,14 @@ Total 5,860 lines (measured `wc -l`, 2026-09-29). The spec's "~6.1k" was an esti
 - **P4** `lobo-cli`: clap, ratatui, inquire wizard, `--json`, brew (goreleaser rust builder tried first, cargo-dist fallback).
 - **P5** Tauri app + Svelte UI on the P1 TS types; render review.
 - **P6** live cutover checks, e2e, the one `/rival-codex review` of the whole branch + `/simplify`, merge, Go/Swift removed.
+
+## As-built P1 (2026-09-29)
+
+- Fork point: master 3117f9b5a64beb466c5b78d5f69bed5bdbb115e0, including fix/app-silent. Baseline image CI 36556262206 passed.
+- Go baseline: 361 passing tests in 18 packages. Swift tests, Go build and make mac passed.
+- Shared types and Go fixture generator implemented. Fifteen fixtures (14 generated, one redacted legacy record) plus catalog.json.
+- 35 Rust tests pass, including 22 generated type exports. The schema test explicitly exports into its own directory.
+- Integer comparisons retain 64-bit precision. GoTime preserves fractional seconds and offsets. Optional wire fields and private instance URLs checked.
+- Tests are grouped in src/tests.rs and src/testutil.rs instead of repeated per-module test blocks. No failing-before-fix run is claimed.
+- GitHub HTTPS rejected workflow writes. The configured key at ~/ssh/github-kass authenticated as 1905. Push with explicit core.sshCommand and git@github.com:1905/lobocode.git; no stale account alias.
+- CI verification, notification and broader post-delivery Go checks remain pending.

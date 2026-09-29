@@ -1,0 +1,14 @@
+{
+  "path": "/config.env",
+  "exists": true,
+  "values": {
+    "A": "first",
+    "M": "middle",
+    "Z": "last"
+  },
+  "set": {
+    "A": false,
+    "M": true,
+    "Z": true
+  }
+}

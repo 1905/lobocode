@@ -75,3 +75,20 @@ install-mac: mac
 	if [ -d $(APP_DIR)/lobocode.app ]; then mkdir -p /tmp/trash && mv $(APP_DIR)/lobocode.app /tmp/trash/lobocode.app.installed.$$(date +%s); fi
 	cp -R $(MAC_APP) $(APP_DIR)/lobocode.app
 	@echo "installed $(APP_DIR)/lobocode.app: open it once, it lives in the menu bar"
+
+.PHONY: rust-build rust-test rust-lint proto-fixtures proto-ts
+rust-build:
+	cargo build --workspace --locked
+
+rust-test:
+	cargo test --workspace --locked
+
+rust-lint:
+	cargo fmt --all --check
+	cargo clippy --workspace --all-targets --locked -- -D warnings
+
+proto-fixtures:
+	go run ./tools/protofixtures crates/lobo-proto/fixtures crates/lobo-proto/catalog.json
+
+proto-ts:
+	cargo test --locked -p lobo-proto export_bindings
