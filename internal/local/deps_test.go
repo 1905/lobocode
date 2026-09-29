@@ -217,6 +217,12 @@ func TestStartLlama(t *testing.T) {
 	if d.pid.Load() <= 0 {
 		t.Fatal("pid not recorded")
 	}
+	if !d.waitLlama(5 * time.Second) {
+		t.Fatal("waitLlama: llama-server exited, want true")
+	}
+	if !newDeps(RunConfig{}, logs).waitLlama(0) {
+		t.Fatal("waitLlama: never started, want true")
+	}
 }
 
 func TestGPUMetrics(t *testing.T) {
@@ -263,7 +269,7 @@ func TestWaitHealthy(t *testing.T) {
 
 func TestNewDepsWiring(t *testing.T) {
 	var stopped bool
-	deps := NewDeps(RunConfig{Port: 8931}, &syncBuf{}, func() { stopped = true })
+	deps, _ := NewDeps(RunConfig{Port: 8931}, &syncBuf{}, func() { stopped = true })
 	exited, err := deps.StartTunnel(context.Background(), context.Background())
 	if err != nil {
 		t.Fatal(err)

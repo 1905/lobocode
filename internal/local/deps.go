@@ -26,7 +26,8 @@ type RunConfig struct {
 }
 
 // NewDeps are the agent.Runner hooks for the Mac. stop is the Killer: the supervisor's own shutdown.
-func NewDeps(cfg RunConfig, logs io.Writer, stop func()) agent.Deps {
+// waitLlama is true once llama-server has exited or never started, false after timeout.
+func NewDeps(cfg RunConfig, logs io.Writer, stop func()) (deps agent.Deps, waitLlama func(timeout time.Duration) bool) {
 	d := newDeps(cfg, logs)
 	coll := metrics.Collector{LlamaURL: d.llamaURL, APIKey: cfg.APIKey}
 	return agent.Deps{
@@ -42,7 +43,7 @@ func NewDeps(cfg RunConfig, logs io.Writer, stop func()) agent.Deps {
 			return metrics.Host{}, errors.New("host metrics: not collected on macOS")
 		},
 		Killer: stopKiller(stop),
-	}
+	}, d.waitLlama
 }
 
 // macDeps holds the hooks; the func fields are swapped in tests.
@@ -58,12 +59,14 @@ type macDeps struct {
 	memBytes  func() (uint64, error)
 	ps        func(ctx context.Context, pid int) (string, error) // `ps -o rss= -p PID` output, KiB
 
-	pid atomic.Int64 // llama-server, 0 until started
+	pid          atomic.Int64  // llama-server, 0 until started
+	llamaStarted atomic.Bool   // set before the start: a shutdown racing it still waits
+	llamaDone    chan struct{} // closed when llama-server exits or fails to start
 }
 
 func newDeps(cfg RunConfig, logs io.Writer) *macDeps {
 	return &macDeps{
-		cfg: cfg, logs: logs, hfBase: HFBase, poll: 2 * time.Second,
+		cfg: cfg, logs: logs, hfBase: HFBase, poll: 2 * time.Second, llamaDone: make(chan struct{}),
 		llamaURL:  "http://127.0.0.1:" + strconv.Itoa(cfg.Port),
 		usableMiB: UsableMiB, sysctl: sysctlString, memBytes: memBytes,
 		ps: func(ctx context.Context, pid int) (string, error) {
@@ -149,15 +152,35 @@ func (d *macDeps) quarantine(src string, cause error) error {
 }
 
 func (d *macDeps) startLlama(ctx context.Context) (<-chan error, error) {
+	d.llamaStarted.Store(true)
 	args := append([]string{"-m", filepath.Join(d.cfg.Weights, d.cfg.Model.File)},
 		agent.LlamaArgs(d.cfg.Model, "127.0.0.1", strconv.Itoa(d.cfg.Port), d.cfg.Ctx)...)
 	env := append(agent.CleanEnv(os.Environ()), "LLAMA_API_KEY="+d.cfg.APIKey)
 	pid, exited, err := agent.StartProcessPID(ctx, d.cfg.LlamaServer, args, env, d.logs)
 	if err != nil {
+		close(d.llamaDone)
 		return nil, err
 	}
 	d.pid.Store(int64(pid))
-	return exited, nil
+	out := make(chan error, 1)
+	go func() {
+		e := <-exited
+		close(d.llamaDone)
+		out <- e
+	}()
+	return out, nil
+}
+
+func (d *macDeps) waitLlama(timeout time.Duration) bool {
+	if !d.llamaStarted.Load() {
+		return true
+	}
+	select {
+	case <-d.llamaDone:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 func (d *macDeps) waitHealthy(ctx context.Context) error {
