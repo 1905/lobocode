@@ -77,26 +77,12 @@ type stopKiller func()
 
 func (s stopKiller) KillSelf(context.Context) error { s(); return nil }
 
-// childEnv drops LLAMA_ARG_* (they override flags) and lobo/cloud secrets from the llama-server env.
-func childEnv(env []string) []string {
-	var out []string
-	for _, kv := range env {
-		k, _, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(k, "LLAMA_ARG_") || strings.HasPrefix(k, "LOBO_") || k == "LLAMA_API_KEY" ||
-			strings.HasSuffix(k, "_API_KEY") || strings.HasSuffix(k, "_TOKEN") {
-			continue
-		}
-		out = append(out, kv)
-	}
-	return out
-}
-
 // checkGPU: llama-server must list a Metal device, and the model must fit in what Metal can wire.
 func (d *macDeps) checkGPU(ctx context.Context) error {
 	cctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, d.cfg.LlamaServer, "--list-devices")
-	cmd.Env = childEnv(os.Environ())
+	cmd.Env = agent.CleanEnv(os.Environ())
 	cmd.WaitDelay = 5 * time.Second
 	out, _ := cmd.CombinedOutput()
 	_, _ = fmt.Fprintf(d.logs, "[gpu-check] %s\n", strings.TrimSpace(string(out)))
@@ -169,7 +155,7 @@ func (d *macDeps) quarantine(src string, cause error) error {
 func (d *macDeps) startLlama(ctx context.Context) (<-chan error, error) {
 	args := append([]string{"-m", filepath.Join(d.cfg.Weights, d.cfg.Model.File)},
 		agent.LlamaArgs(d.cfg.Model, "127.0.0.1", strconv.Itoa(d.cfg.Port), d.cfg.Ctx)...)
-	env := append(childEnv(os.Environ()), "LLAMA_API_KEY="+d.cfg.APIKey)
+	env := append(agent.CleanEnv(os.Environ()), "LLAMA_API_KEY="+d.cfg.APIKey)
 	pid, exited, err := agent.StartProcessPID(ctx, d.cfg.LlamaServer, args, env, d.logs)
 	if err != nil {
 		return nil, err
