@@ -201,29 +201,9 @@ func fetch(ctx context.Context, url, dst string) error {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute) // a stuck GitHub download must not eat the boot timeout
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("fetch %s: HTTP %d", url, resp.StatusCode)
-	}
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		f.Close()
-		return err
-	}
-	return f.Close()
+	return agent.FetchFile(ctx, url, func() (*os.File, error) {
+		return os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	}, -1, "")
 }
 
 // prefix tags each child output line with its source for /api/logs.

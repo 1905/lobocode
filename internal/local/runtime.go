@@ -4,16 +4,14 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
-	"net/http"
 	"os"
 	"path/filepath"
-	"time"
+
+	"github.com/1905/lobocode/internal/agent"
 )
 
 // Pinned llama.cpp macOS arm64 build (Metal). Bump all four together.
@@ -88,42 +86,21 @@ func EnsureRuntime(ctx context.Context, weights string, note func(string)) (stri
 
 // fetchRuntime downloads RuntimeURL into a temp file under dir and checks size + sha256.
 func fetchRuntime(ctx context.Context, dir string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute) // a stuck GitHub download must not hang `up`
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, RuntimeURL, nil)
+	var name string
+	err := agent.FetchFile(ctx, RuntimeURL, func() (*os.File, error) {
+		f, err := os.CreateTemp(dir, ".llama-*.tar.gz")
+		if err == nil {
+			name = f.Name()
+		}
+		return f, err
+	}, runtimeSize, runtimeSHA)
 	if err != nil {
+		if name != "" {
+			_ = os.Remove(name)
+		}
 		return "", err
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("fetch %s: HTTP %d", RuntimeURL, resp.StatusCode)
-	}
-	f, err := os.CreateTemp(dir, ".llama-*.tar.gz")
-	if err != nil {
-		return "", err
-	}
-	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, runtimeSize+1))
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	switch got := hex.EncodeToString(h.Sum(nil)); {
-	case err != nil:
-		err = fmt.Errorf("fetch %s: %w", RuntimeURL, err)
-	case n != runtimeSize:
-		err = fmt.Errorf("fetch %s: size %d, want %d", RuntimeURL, n, runtimeSize)
-	case got != runtimeSHA:
-		err = fmt.Errorf("fetch %s: sha256 %s, want %s", RuntimeURL, got, runtimeSHA)
-	}
-	if err != nil {
-		_ = os.Remove(f.Name())
-		return "", err
-	}
-	return f.Name(), nil
+	return name, nil
 }
 
 // untar unpacks a .tar.gz into dst. Paths must stay inside dst; symlinks must be relative and
