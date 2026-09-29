@@ -193,3 +193,32 @@ func TestStateCorrupt(t *testing.T) {
 		t.Fatalf("corrupt: ok=%v err=%v", ok, err)
 	}
 }
+
+func TestActiveEndpoints(t *testing.T) {
+	tests := []struct {
+		name      string
+		state     *State
+		wantLlama int
+		wantAPI   int
+	}{
+		{name: "no state: config", wantLlama: 9000, wantAPI: 9001},
+		{name: "running: saved ports", state: &State{PID: os.Getpid(), Port: 8931, APIPort: 8940, BootID: "b1"}, wantLlama: 8931, wantAPI: 8940},
+		{name: "dead run: config", state: &State{PID: -1, Port: 8931, APIPort: 8940, BootID: "b1"}, wantLlama: 9000, wantAPI: 9001},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			if tt.state != nil {
+				if tt.state.PID < 0 {
+					tt.state.PID = deadPID(t)
+				}
+				if err := ClaimState(*tt.state); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if l, a := ActiveEndpoints(9000); l != tt.wantLlama || a != tt.wantAPI {
+				t.Fatalf("got %d %d, want %d %d", l, a, tt.wantLlama, tt.wantAPI)
+			}
+		})
+	}
+}

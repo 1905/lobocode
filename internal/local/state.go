@@ -146,6 +146,15 @@ func withStateLock(fn func() error) error {
 	return fn()
 }
 
+// ActiveEndpoints is the llama-server and agent API ports to talk to: a running instance's saved ports, else
+// cfgPort and cfgPort+1. The configured port only applies to the next run. A state read error counts as none.
+func ActiveEndpoints(cfgPort int) (llamaPort, apiPort int) {
+	if s, ok, err := ReadState(); err == nil && ok {
+		return s.Port, s.APIPort
+	}
+	return cfgPort, cfgPort + 1
+}
+
 // alive: signal 0 checks the pid exists. EPERM = exists but not ours, still alive.
 func alive(pid int) bool {
 	if pid <= 0 {
