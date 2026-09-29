@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rust P3 shared control: agent HTTP client, status/stop/target operations, launch defaults and config-to-provider wiring for CLI and app.
+- Seventeen focused control tests pass. Stop continues across provider errors; local endpoints use running state. The owned start operation remains unfinished.
+
 - Fix Rust CI checkout: track the local process test helper under `src/bin`; ignore only the root build-output directory.
 
 - Rust P3 local provider: checks disk/ports, starts detached CLI or app supervisors, and waits for owned process groups during stop.

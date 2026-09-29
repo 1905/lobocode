@@ -6,6 +6,7 @@ pub use error::{Error, Result};
 pub mod bootstrap;
 pub mod checks;
 pub mod config;
+pub mod control;
 pub mod genkey;
 pub mod local;
 pub mod provider;
