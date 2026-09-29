@@ -41,13 +41,16 @@ func helperChild(mode string) {
 	if mode == "stubborn" {
 		signal.Ignore(syscall.SIGTERM)
 	}
-	model := ""
+	flag := map[string]string{}
 	for i, a := range os.Args {
-		if a == "--model" && i+1 < len(os.Args) {
-			model = os.Args[i+1]
+		if strings.HasPrefix(a, "--") && i+1 < len(os.Args) {
+			flag[a] = os.Args[i+1]
 		}
 	}
-	if err := WriteState(State{PID: os.Getpid(), Model: model, StartedAt: time.Now().UTC()}); err != nil {
+	port, _ := strconv.Atoi(flag["--port"])
+	apiPort, _ := strconv.Atoi(flag["--api-port"])
+	if err := WriteState(State{PID: os.Getpid(), Port: port, APIPort: apiPort, Model: flag["--model"],
+		StartedAt: time.Now().UTC(), BootID: flag["--boot-id"]}); err != nil {
 		os.Exit(2)
 	}
 	time.Sleep(time.Minute)
@@ -169,6 +172,62 @@ func TestProviderDeleteKills(t *testing.T) {
 	}
 }
 
+// A stubborn supervisor whose pid stops passing isSupervisor during the SIGTERM wait is not SIGKILLed.
+func TestProviderDeleteReverifies(t *testing.T) {
+	p, _ := testProvider(t, "stubborn")
+	in, err := p.Rent(context.Background(), opts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, _ := strconv.Atoi(in.ID)
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	calls := 0
+	swap(t, &psCommand, func(pid int) (string, error) {
+		if calls++; calls == 1 {
+			return commandOf(pid)
+		}
+		return "/usr/bin/vim notes.txt", nil
+	})
+	if err := p.Delete(context.Background(), in.ID); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || !alive(pid) {
+		t.Fatalf("ps calls %d, alive %v: want 2 and alive (never SIGKILLed)", calls, alive(pid))
+	}
+	if _, err := os.Stat(StatePath()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("state left: %v", err)
+	}
+}
+
+func TestIsSupervisor(t *testing.T) {
+	tests := []struct {
+		name   string
+		cmd    string
+		psErr  error
+		bootID string
+		want   bool
+	}{
+		{name: "ours", cmd: "/usr/local/bin/lobo --config /c local run --model q6 --boot-id b1 --port 8931", bootID: "b1", want: true},
+		{name: "boot id last", cmd: "lobo local run --boot-id b1", bootID: "b1", want: true},
+		{name: "other boot id", cmd: "lobo local run --boot-id b2", bootID: "b1"},
+		{name: "boot id prefix", cmd: "lobo local run --boot-id b1x", bootID: "b1"},
+		{name: "boot id in another arg", cmd: "lobo local run --model b1", bootID: "b1"},
+		{name: "no boot id", cmd: "lobo local run", bootID: "b1"},
+		{name: "no local run", cmd: "lobo up --boot-id b1", bootID: "b1"},
+		{name: "local run in a file name", cmd: "/usr/bin/vim /tmp/local run.txt --boot-id b1", bootID: "b1"},
+		{name: "empty state boot id", cmd: "lobo local run --boot-id", bootID: ""},
+		{name: "ps fails", psErr: errors.New("exit status 1"), bootID: "b1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			swap(t, &psCommand, func(int) (string, error) { return tt.cmd, tt.psErr })
+			if got := isSupervisor(4242, tt.bootID); got != tt.want {
+				t.Fatalf("isSupervisor(%q, %q) = %v", tt.cmd, tt.bootID, got)
+			}
+		})
+	}
+}
+
 // A state file whose pid is alive but is not our supervisor: never signalled, state removed, nil.
 func TestProviderDeleteStranger(t *testing.T) {
 	tests := []struct {
@@ -177,6 +236,8 @@ func TestProviderDeleteStranger(t *testing.T) {
 	}{
 		{name: "real ps sees sleep", ps: commandOf},
 		{name: "other command", ps: func(int) (string, error) { return "/usr/bin/vim notes.txt", nil }},
+		{name: "local run in a file name", ps: func(int) (string, error) { return "/usr/bin/vim /tmp/local run.txt", nil }},
+		{name: "supervisor of another boot", ps: func(int) (string, error) { return "lobo local run --boot-id b2", nil }},
 		{name: "ps fails", ps: func(int) (string, error) { return "", errors.New("exit status 1") }},
 	}
 	for _, tt := range tests {
@@ -189,7 +250,7 @@ func TestProviderDeleteStranger(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = stranger.Process.Kill(); _ = stranger.Wait() })
 			pid := stranger.Process.Pid
-			if err := WriteState(State{PID: pid, Model: "q6"}); err != nil {
+			if err := WriteState(State{PID: pid, Model: "q6", BootID: "b1"}); err != nil {
 				t.Fatal(err)
 			}
 			if err := p.Delete(context.Background(), strconv.Itoa(pid)); err != nil {

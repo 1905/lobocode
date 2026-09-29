@@ -199,35 +199,47 @@ func (p Provider) List(ctx context.Context) ([]provider.Instance, error) {
 
 // Get: ErrNotFound unless the running supervisor has this pid.
 func (p Provider) Get(_ context.Context, id string) (provider.Instance, error) {
-	s, ok, err := ReadState()
+	s, err := stateFor(id)
 	if err != nil {
 		return provider.Instance{}, err
-	}
-	if !ok || strconv.Itoa(s.PID) != id {
-		return provider.Instance{}, provider.ErrNotFound
 	}
 	return instance(s), nil
 }
 
+// stateFor is the live state whose pid is id, else ErrNotFound.
+func stateFor(id string) (State, error) {
+	s, ok, err := ReadState()
+	if err != nil {
+		return State{}, err
+	}
+	if !ok || strconv.Itoa(s.PID) != id {
+		return State{}, provider.ErrNotFound
+	}
+	return s, nil
+}
+
 // Delete stops the supervisor: SIGTERM, stopWait, then SIGKILL. The state file is removed either way.
-// Already gone = nil (provider contract). A live pid that is not our supervisor (reused after a crash)
-// is never signalled: the state is stale, so it is removed and Delete returns nil.
-func (p Provider) Delete(ctx context.Context, id string) error {
-	s, err := p.Get(ctx, id)
+// Already gone = nil (provider contract). A pid that fails isSupervisor (reused after a crash) is never
+// signalled: the state is stale, so it is removed and Delete returns nil. Identity is checked again before SIGKILL.
+func (p Provider) Delete(_ context.Context, id string) error {
+	st, err := stateFor(id)
 	if errors.Is(err, provider.ErrNotFound) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	pid, _ := strconv.Atoi(s.ID)
-	if cmd, err := psCommand(pid); err != nil || !strings.Contains(cmd, "local run") {
+	pid := st.PID
+	if !isSupervisor(pid, st.BootID) {
 		return RemoveState()
 	}
 	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return fmt.Errorf("stop local pid %d: %w", pid, err)
 	}
 	if !waitGone(pid, stopWait) {
+		if !isSupervisor(pid, st.BootID) { // gone or reused while we waited: never signal a stranger
+			return RemoveState()
+		}
 		_ = syscall.Kill(pid, syscall.SIGKILL)
 		if !waitGone(pid, 2*time.Second) {
 			return fmt.Errorf("local pid %d survived SIGKILL", pid)
@@ -236,10 +248,30 @@ func (p Provider) Delete(ctx context.Context, id string) error {
 	return RemoveState()
 }
 
-// commandOf is the full command line of pid (`ps -o command=`); an error means no such process.
+// commandOf is the full command line of pid (`ps -ww -o command=`, -ww = never cut to a width); an error
+// means no such process.
 func commandOf(pid int) (string, error) {
-	out, err := exec.Command("ps", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
+	out, err := exec.Command("ps", "-ww", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
 	return strings.TrimSpace(string(out)), err
+}
+
+// isSupervisor: pid runs `… local run …` with `--boot-id bootID`, both matched as whole args. An empty bootID
+// or a failed ps is never a match. A reused pid, or a stranger with "local run" in a file name, fails this.
+func isSupervisor(pid int, bootID string) bool {
+	if pid <= 0 || bootID == "" {
+		return false
+	}
+	cmd, err := psCommand(pid)
+	if err != nil {
+		return false
+	}
+	f := strings.Fields(cmd)
+	run, boot := false, false
+	for i := 0; i+1 < len(f); i++ {
+		run = run || f[i] == "local" && f[i+1] == "run"
+		boot = boot || f[i] == "--boot-id" && f[i+1] == bootID
+	}
+	return run && boot
 }
 
 func waitGone(pid int, d time.Duration) bool {
