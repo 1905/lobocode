@@ -880,7 +880,7 @@ Port of `provider_test.go:22-64`. Reads mode from env `LOBO_LOCAL_HELPER` (`ok`,
 Locked interface:
 ```rust
 pub struct LocalHooks { pub supported: fn() -> Result<()>, pub ensure_runtime: Arc<dyn EnsureRuntime>, pub free_bytes: fn(&Path) -> Result<u64>,
-                        pub ps: fn(i32) -> Result<String>, pub state_wait: Duration /*15 s*/, pub stop_wait: Duration /*10 s*/ }
+                        pub ps: Arc<dyn Fn(i32) -> Result<String> + Send + Sync>, pub child_env: Vec<(String, String)>, pub state_wait: Duration /*15 s*/, pub stop_wait: Duration /*10 s*/ }
 impl Default for LocalHooks { .. }   // real functions
 #[async_trait] pub trait EnsureRuntime: Send + Sync { async fn ensure(&self, weights: &Path, cancel: CancellationToken, note: &(dyn Fn(String) + Sync)) -> Result<PathBuf>; }
 pub struct LocalProvider { pub spawner: Spawner, pub config_path: Option<PathBuf>, pub weights: PathBuf, pub port: u16,
@@ -888,6 +888,8 @@ pub struct LocalProvider { pub spawner: Spawner, pub config_path: Option<PathBuf
 impl Provider for LocalProvider { .. }   // name "local", replaceable false
 ```
 Rent order (`provider.go:47-85`): supported → model known → no live state (`lobo already running: local pid N`) → weights writable (`weights folder <d> is not writable: …`) → space (`not enough space in <d> for <id>: need <n> bytes, <f> free`) → ports `port` and `port+1` free (`port <p> in use (LOBO_LOCAL_PORT)` / `(agent API = LOBO_LOCAL_PORT+1)`) → `ensure_runtime` → spawn.
+
+Implementation detail: `ps` is an owned closure so tests can count rechecks without global mutation. `child_env` defaults empty and supplies test-only overrides through `Command::envs`.
 
 Test setup helper `test_provider(mode)`: temp state path, temp weights, free port pair, spawner = `Spawner::cli(env!("CARGO_BIN_EXE_lobo-core-testchild"))`, hooks with `supported` ok, fake ensure (records a call), free bytes 1<<50, `state_wait` 5 s, `stop_wait` 500 ms; env for the child passed through `Command::env` (never `set_var`).
 - [ ] Failing test `prechecks_before_runtime` (TestProviderPrechecks, 6 rows: runtime not fetched, no state file).
@@ -1354,4 +1356,4 @@ Contract alignment (contracts v1.1):
 Tasks 0–13 implemented as one foundation/config batch. 36 core tests and clippy pass.
 The Go generator produces 77 deterministic fixtures. CI checks fixture drift.
 The task checklists above describe the original sequence; separate red-first commits were not recorded.
-Tasks 14–26 implemented in the provider batch. 80 core tests pass, including cancellation during create and delayed Vast reconciliation. Tasks 27–35 implemented in the release/checks batch. 105 core tests and clippy pass. Tasks 36–38 and Task 47 identity/instance helpers are implemented. 14 focused local tests and 3 Go/Rust interop tests pass. Tasks 39–41 implemented. 29 focused local tests and clippy pass. Tasks 42–47 are implemented. Mac deps and supervisor focused tests pass (7 each). Task 48 onward remains pending. The pinned archive network test is explicit/ignored by default and passed against the actual archive.
+Tasks 14–26 implemented in the provider batch. 80 core tests pass, including cancellation during create and delayed Vast reconciliation. Tasks 27–35 implemented in the release/checks batch. 105 core tests and clippy pass. Tasks 36–38 and Task 47 identity/instance helpers are implemented. 14 focused local tests and 3 Go/Rust interop tests pass. Tasks 39–41 implemented. 29 focused local tests and clippy pass. Tasks 42–47 are implemented. Mac deps and supervisor focused tests pass (7 each). Tasks 48–49 and 51–52 implemented; 11 local-provider process tests and clippy pass. Task 50 and Tasks 53 onward remain pending. The pinned archive network test is explicit/ignored by default and passed against the actual archive.

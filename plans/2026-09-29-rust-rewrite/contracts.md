@@ -473,3 +473,7 @@ No public API. `#[ignore]` live suite. Config path: `LOBO_E2E_CONFIG` (a path) o
 ## Alignment record
 
 Original name alignment applied 2026-09-29 (plan-p2-v1.1, p3-v1.1, p4-v1.1, p5-v1.1, p6-v1.1, spec.md).
+
+### P3 local test seams (implementation clarification)
+
+`LocalHooks.ps` is `Arc<dyn Fn(i32) -> Result<String> + Send + Sync>` so identity recheck tests own their counters. `LocalHooks.child_env: Vec<(String, String)>` defaults empty and passes fixture settings directly to the child. Neither seam mutates the parent's process environment. Public Spawner fields and CLI/app argv remain unchanged.

@@ -44,3 +44,7 @@ zip.workspace = true
 [dev-dependencies]
 wiremock.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+
+[[bin]]
+name = "lobo-core-testchild"
+path = "src/bin/testchild.rs"
