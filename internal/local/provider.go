@@ -31,6 +31,7 @@ var (
 	supported     = Supported
 	ensureRuntime = EnsureRuntime
 	listModels    = List
+	psCommand     = commandOf
 	stateWait     = 15 * time.Second // child must write its state file within this
 	stopWait      = 10 * time.Second // SIGTERM grace before SIGKILL
 )
@@ -209,13 +210,20 @@ func (p Provider) Get(_ context.Context, id string) (provider.Instance, error) {
 }
 
 // Delete stops the supervisor: SIGTERM, stopWait, then SIGKILL. The state file is removed either way.
-// A missing instance is provider.ErrNotFound (orchestrator ruling; the cloud providers return nil).
+// Already gone = nil (provider contract). A live pid that is not our supervisor (reused after a crash)
+// is never signalled: the state is stale, so it is removed and Delete returns nil.
 func (p Provider) Delete(ctx context.Context, id string) error {
 	s, err := p.Get(ctx, id)
+	if errors.Is(err, provider.ErrNotFound) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
 	pid, _ := strconv.Atoi(s.ID)
+	if cmd, err := psCommand(pid); err != nil || !strings.Contains(cmd, "local run") {
+		return RemoveState()
+	}
 	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return fmt.Errorf("stop local pid %d: %w", pid, err)
 	}
@@ -226,6 +234,12 @@ func (p Provider) Delete(ctx context.Context, id string) error {
 		}
 	}
 	return RemoveState()
+}
+
+// commandOf is the full command line of pid (`ps -o command=`); an error means no such process.
+func commandOf(pid int) (string, error) {
+	out, err := exec.Command("ps", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
+	return strings.TrimSpace(string(out)), err
 }
 
 func waitGone(pid int, d time.Duration) bool {
