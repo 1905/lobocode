@@ -360,12 +360,11 @@ func TestRequireParts(t *testing.T) {
 		{name: "provider key: runpod", check: Laptop.RequireProviderKey, l: Laptop{RunPodAPIKey: "r"}},
 		{name: "provider key: vast", check: Laptop.RequireProviderKey, l: Laptop{VastAPIKey: "v"}},
 		{name: "provider key: none", check: Laptop.RequireProviderKey, l: Laptop{CFTunnelToken: "tok"}, wantErr: []string{"RUNPOD_API_KEY", "VASTAI_API_KEY"}},
-		{name: "tunnel: ok", check: Laptop.RequireTunnel, l: Laptop{CFTunnelToken: "tok", Domain: "d"}},
-		{name: "tunnel: both missing", check: Laptop.RequireTunnel, l: Laptop{RunPodAPIKey: "r"}, wantErr: []string{"CF_TUNNEL_TOKEN", "LOBO_DOMAIN"}},
 		{name: "bucket: ok", check: Laptop.RequireBucket, l: Laptop{BucketURL: "https://b.dev"}},
 		{name: "bucket: missing", check: Laptop.RequireBucket, l: Laptop{}, wantErr: []string{"LOBO_BUCKET_URL"}},
 		{name: "bucket: not a url", check: Laptop.RequireBucket, l: Laptop{BucketURL: "nope"}, wantErr: []string{"LOBO_BUCKET_URL", "want a URL"}},
 		{name: "cloud: full", check: Laptop.RequireCloud, l: full},
+		{name: "cloud: tunnel missing", check: Laptop.RequireCloud, l: Laptop{RunPodAPIKey: "r", BucketURL: "https://b.dev"}, wantErr: []string{"CF_TUNNEL_TOKEN", "LOBO_DOMAIN"}},
 		{name: "cloud: tunnel and bucket missing, named together", check: Laptop.RequireCloud, l: Laptop{RunPodAPIKey: "r", Domain: "d"}, wantErr: []string{"CF_TUNNEL_TOKEN", "LOBO_BUCKET_URL"}},
 	}
 	for _, tt := range tests {

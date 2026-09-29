@@ -17,8 +17,8 @@ import (
 type Laptop struct {
 	RunPodAPIKey  string `env:"RUNPOD_API_KEY"` // cloud: at least one of RUNPOD_API_KEY / VASTAI_API_KEY (RequireCloud)
 	LoboAPIKey    string `env:"LOBO_API_KEY" validate:"required"`
-	CFTunnelToken string `env:"CF_TUNNEL_TOKEN"` // cloud up only: RequireCloud / RequireTunnel
-	Domain        string `env:"LOBO_DOMAIN"`     // cloud up only: RequireCloud / RequireTunnel
+	CFTunnelToken string `env:"CF_TUNNEL_TOKEN"` // cloud up only: RequireCloud
+	Domain        string `env:"LOBO_DOMAIN"`     // cloud up only: RequireCloud
 	BucketURL     string `env:"LOBO_BUCKET_URL" validate:"omitempty,url"`
 	// Optional model source over SSH (the model server). Empty = public bucket URL.
 	ModelSource     string `env:"LOBO_MODEL_SOURCE"`       // ssh://lobo@203.0.113.10:22
@@ -77,7 +77,13 @@ func LoadLaptop(envPath string) (Laptop, error) {
 
 // RequireCloud checks every key `up` on a cloud provider (runpod, vast) needs. Local mode needs none of them.
 func (l Laptop) RequireCloud() error {
-	if m := missing(l.tunnel(), l.bucket()); len(m) > 0 {
+	var m []string
+	for _, kv := range [][2]string{{"CF_TUNNEL_TOKEN", l.CFTunnelToken}, {"LOBO_DOMAIN", l.Domain}, {"LOBO_BUCKET_URL", l.BucketURL}} {
+		if kv[1] == "" {
+			m = append(m, kv[0])
+		}
+	}
+	if len(m) > 0 {
 		return fmt.Errorf("config: cloud needs %s", strings.Join(m, ", "))
 	}
 	if err := l.RequireBucket(); err != nil {
@@ -94,14 +100,6 @@ func (l Laptop) RequireProviderKey() error {
 	return nil
 }
 
-// RequireTunnel checks the keys a pod needs to publish its API: CF_TUNNEL_TOKEN and LOBO_DOMAIN.
-func (l Laptop) RequireTunnel() error {
-	if m := missing(l.tunnel()); len(m) > 0 {
-		return fmt.Errorf("config: tunnel needs %s", strings.Join(m, ", "))
-	}
-	return nil
-}
-
 // RequireBucket checks LOBO_BUCKET_URL: set and a URL.
 func (l Laptop) RequireBucket() error {
 	if l.BucketURL == "" {
@@ -111,25 +109,6 @@ func (l Laptop) RequireBucket() error {
 		return fmt.Errorf("config: LOBO_BUCKET_URL: want a URL, got %q", l.BucketURL)
 	}
 	return nil
-}
-
-func (l Laptop) tunnel() [][2]string {
-	return [][2]string{{"CF_TUNNEL_TOKEN", l.CFTunnelToken}, {"LOBO_DOMAIN", l.Domain}}
-}
-
-func (l Laptop) bucket() [][2]string { return [][2]string{{"LOBO_BUCKET_URL", l.BucketURL}} }
-
-// missing lists the names of the empty {name, value} pairs.
-func missing(groups ...[][2]string) []string {
-	var m []string
-	for _, g := range groups {
-		for _, kv := range g {
-			if kv[1] == "" {
-				m = append(m, kv[0])
-			}
-		}
-	}
-	return m
 }
 
 // RequireR2 checks the upload keys. Only `lobo release` needs them.
