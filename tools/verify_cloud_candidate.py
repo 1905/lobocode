@@ -97,9 +97,12 @@ def verify(layout, metadata_path, source_sha, image_digest):
         visited.add(digest)
         return layout / "blobs" / "sha256" / digest.removeprefix("sha256:")
 
-    def walk(value, depth=0):
+    def walk(value, depth=0, platforms=()):
         require(depth <= 8, "OCI graph is too deep")
         path = descriptor(value)
+        if "platform" in value:
+            require(isinstance(value["platform"], dict), "Invalid OCI descriptor platform")
+            platforms = (*platforms, value["platform"])
         media_type = value.get("mediaType")
         require(media_type in INDEX_TYPES | MANIFEST_TYPES, "Unsupported OCI graph media type")
         document = json_file(path)
@@ -109,7 +112,7 @@ def verify(layout, metadata_path, source_sha, image_digest):
             children = document.get("manifests")
             require(isinstance(children, list) and 0 < len(children) <= 16, "Invalid OCI image index")
             for child in children:
-                walk(child, depth + 1)
+                walk(child, depth + 1, platforms)
             return
         config_descriptor = document.get("config")
         config_path = descriptor(config_descriptor)
@@ -124,12 +127,15 @@ def verify(layout, metadata_path, source_sha, image_digest):
         if annotations.get("vnd.docker.reference.type") == "attestation-manifest":
             require(config.get("os") == "unknown" and config.get("architecture") == "unknown", "Invalid attestation config")
             return
-        images.append((config_descriptor, config, layers))
+        images.append((config_descriptor, config, layers, platforms))
 
     walk(roots[0])
     require(len(images) == 1, "Expected exactly one runnable image")
-    config_descriptor, config, layers = images[0]
+    config_descriptor, config, layers, platforms = images[0]
     require(config.get("os") == "linux" and config.get("architecture") == "amd64", "Image must be Linux AMD64")
+    for platform in platforms:
+        require(platform.get("os") == "linux" and platform.get("architecture") == "amd64",
+                "Runnable OCI descriptor platform differs from Linux AMD64 image config")
     require(layers, "Complete image has no layers")
     image_config = config.get("config", {})
     require(isinstance(image_config, dict), "Invalid runtime config")
@@ -172,11 +178,13 @@ def self_test():
 
         layer = blob(b"synthetic fixture layer", "application/vnd.oci.image.layer.v1.tar")
 
-        def prepare(config_value, nested=False, attestation=False):
+        def prepare(config_value, nested=False, attestation=False, platform=None, index_platform=None):
             config_desc = blob(json.dumps(config_value).encode(), "application/vnd.oci.image.config.v1+json")
             manifest = {"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
                         "config": config_desc, "layers": [layer]}
             descriptor = blob(json.dumps(manifest).encode(), manifest["mediaType"])
+            if platform is not None:
+                descriptor["platform"] = platform
             if nested:
                 children = [descriptor]
                 if attestation:
@@ -184,9 +192,12 @@ def self_test():
                     att_manifest = {"schemaVersion": 2, "mediaType": manifest["mediaType"], "config": att_config, "layers": []}
                     att_desc = blob(json.dumps(att_manifest).encode(), manifest["mediaType"])
                     att_desc["annotations"] = {"vnd.docker.reference.type": "attestation-manifest"}
+                    att_desc["platform"] = {"os": "unknown", "architecture": "unknown"}
                     children.append(att_desc)
                 index = {"schemaVersion": 2, "mediaType": "application/vnd.oci.image.index.v1+json", "manifests": children}
                 descriptor = blob(json.dumps(index).encode(), index["mediaType"])
+                if index_platform is not None:
+                    descriptor["platform"] = index_platform
             (layout / "index.json").write_text(json.dumps({"schemaVersion": 2, "manifests": [descriptor]}))
             metadata = root / "metadata.json"
             metadata.write_text(json.dumps({"containerimage.digest": descriptor["digest"], "containerimage.config.digest": config_desc["digest"]}))
@@ -208,6 +219,16 @@ def self_test():
         metadata, digest = prepare(config, nested=True, attestation=True)
         assert verify(layout, metadata, source_sha, digest)["model"] == "q6"
         checks += 1
+        for nested in (False, True):
+            metadata, digest = prepare(config, nested=nested, platform={"os": "linux", "architecture": "amd64"})
+            assert verify(layout, metadata, source_sha, digest)["platform"] == "linux/amd64"
+            checks += 1
+        for platform in ({"os": "linux", "architecture": "arm64"}, {"os": "darwin", "architecture": "amd64"}):
+            metadata, digest = prepare(config, nested=True, platform=platform)
+            rejected(lambda: verify(layout, metadata, source_sha, digest))
+        metadata, digest = prepare(config, nested=True, index_platform={"os": "linux", "architecture": "arm64"})
+        rejected(lambda: verify(layout, metadata, source_sha, digest))
+        metadata, digest = prepare(config)
         rejected(lambda: verify(layout, metadata, "a" * 12, digest))
         rejected(lambda: verify(layout, metadata, source_sha, "sha256:" + "b" * 64))
         for key, value in (("architecture", "arm64"), ("os", "darwin")):

@@ -159,8 +159,8 @@ jobs:
           done
   prebuilt:
     if: github.repository == '1905/lobocode' && github.event_name == 'workflow_dispatch' && inputs.prebuilt_candidate
-    # Valid candidates use exactly the runner's unique custom label. Invalid
-    # labels fail on a hosted runner instead of waiting for a nonexistent one.
+    # Candidates use exactly the runner's unique custom label. Only labels
+    # without the required prefix fall back to hosted input validation.
     runs-on: ${{ startsWith(inputs.runner_label, 'cloud-e2e-') && inputs.runner_label || 'ubuntu-latest' }}
     timeout-minutes: 90
     permissions:
