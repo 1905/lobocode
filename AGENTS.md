@@ -22,5 +22,10 @@ User corrections saved on 2026-09-30.
   [docs/implementation-mistakes.md](docs/implementation-mistakes.md).
 
 Current state: SSH transport is implemented locally. Complete public-image
-distribution and latest-image resolution are planned, not yet implemented.
-See [the implementation plan](plans/2026-09-30-public-pod-images.md).
+distribution and latest-image resolution have partial, uncommitted implementation.
+The first Dell compile check passed for an earlier source snapshot. The latest
+changes, full image builds and live provider acceptance remain unverified.
+The installed app still uses `3dec9ad`; it does not contain the image changes.
+The [written spec](plans/2026-09-30-public-pod-images/spec.md) is pending review
+under the planning workflow introduced on 2026-09-30. Preserve existing work.
+The [earlier plan](plans/2026-09-30-public-pod-images.md) remains as a record.
