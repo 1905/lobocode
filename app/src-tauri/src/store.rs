@@ -16,6 +16,8 @@ pub struct Store {
     panel_open: bool,
     saved_target: Option<Target>,
     local_supported: bool,
+    memory_generation: u64,
+    memory_request: u64,
 }
 impl Store {
     pub fn new(saved_target: Option<Target>, local_supported: bool) -> Self {
@@ -37,6 +39,8 @@ impl Store {
             panel_open: false,
             saved_target,
             local_supported,
+            memory_generation: 0,
+            memory_request: 0,
         }
     }
     pub fn is_local(&self) -> bool {
@@ -258,6 +262,7 @@ impl Store {
         }
     }
     pub fn apply_config(&mut self, c: ConfigShow, r: Readiness) {
+        self.invalidate_memory();
         if !self.up_running && !self.stop_running && self.state.phase != Phase::Booting {
             self.state.provider = r.default_provider.clone();
             self.state.model = r.default_model.clone();
@@ -268,6 +273,7 @@ impl Store {
         self.apply_default_target();
     }
     pub fn apply_models(&mut self, m: Listing) {
+        let before = (self.state.model.clone(), self.state.target);
         let model_configured = self
             .state
             .config
@@ -290,6 +296,9 @@ impl Store {
         self.model_auto_picked = true;
         self.state.models = Some(m);
         self.apply_default_target();
+        if before != (self.state.model.clone(), self.state.target) {
+            self.invalidate_memory();
+        }
     }
     pub fn apply_snap(&mut self, s: Snap, now: DateTime<Utc>) -> Vec<Note> {
         let before = self.state.phase.clone();
@@ -487,6 +496,7 @@ impl Store {
     }
     pub fn choose(&mut self, t: Target) {
         if !self.up_running && !self.stop_running {
+            self.invalidate_memory();
             self.saved_target = Some(t);
             self.state.target = if self.local_supported {
                 t
@@ -502,6 +512,7 @@ impl Store {
     }
     pub fn set_model(&mut self, m: String) {
         if !self.up_running && !self.stop_running && self.state.catalog_ids.contains(&m) {
+            self.invalidate_memory();
             self.state.model = m;
         }
     }
@@ -520,6 +531,39 @@ impl Store {
     pub fn needs_setup(&mut self) {
         if !self.up_running && !self.stop_running && !self.cleanup_failed {
             self.state.phase = Phase::NoConfig;
+        }
+    }
+    pub fn invalidate_memory(&mut self) {
+        self.memory_generation = self.memory_generation.wrapping_add(1);
+        self.state.local_memory = None;
+    }
+    pub fn begin_memory(&mut self) -> Option<(u64, u64, String)> {
+        if self.state.target != Target::Local
+            || self.up_running
+            || self.stop_running
+            || !matches!(
+                self.state.phase,
+                Phase::Off | Phase::Failed { .. } | Phase::NoConfig
+            )
+        {
+            return None;
+        }
+        self.memory_request = self.memory_request.wrapping_add(1);
+        Some((
+            self.memory_generation,
+            self.memory_request,
+            self.state.model.clone(),
+        ))
+    }
+    pub fn apply_memory(&mut self, generation: u64, request: u64, memory: LocalMemory) {
+        if generation == self.memory_generation
+            && request == self.memory_request
+            && self.state.target == Target::Local
+            && memory.model == self.state.model
+            && !self.up_running
+            && !self.stop_running
+        {
+            self.state.local_memory = Some(memory);
         }
     }
 }

@@ -46,6 +46,7 @@
     "endpoint": "http://127.0.0.1:8933/v1",
     "is_local": false,
     "last_detail": "vast 26461230, offer 51401937, 18877 Mbps down, California, US, $0.73/h",
+    "local_memory": null,
     "log_tail": [
       "vast 26461230, offer 51401937, 18877 Mbps down, California, US, $0.73/h"
     ],

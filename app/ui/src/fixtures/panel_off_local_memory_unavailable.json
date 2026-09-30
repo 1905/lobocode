@@ -1,9 +1,9 @@
 {
-  "name": "boot_local",
+  "name": "off_local_memory_unavailable",
   "now_ms": 1790683200000,
   "state": {
-    "boot_progress": 0.4867261371251618,
-    "boot_start_ms": 1790683160000,
+    "boot_progress": 0.0,
+    "boot_start_ms": null,
     "boot_steps": [
       "rent",
       "gpu",
@@ -33,48 +33,28 @@
         "VASTAI_API_KEY": "3f9c…c0de"
       }
     },
-    "current_step": "download",
-    "download": {
-      "bytes": 12400000000,
-      "mbps": 88.0,
-      "source": "Hugging Face",
-      "total": 28595762272
-    },
+    "current_step": null,
+    "download": null,
     "endpoint": "http://127.0.0.1:8931/v1",
     "is_local": true,
-    "last_detail": "llama.cpp b11118 11 MB",
-    "local_memory": null,
-    "log_tail": [
-      "llama.cpp b11118 11 MB"
-    ],
-    "menu_text": "43%",
-    "model": "q6",
-    "models": {
-      "free_bytes": 958902697984,
-      "models": [
-        {
-          "file": "Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf",
-          "id": "q6",
-          "on_disk": 22082528352,
-          "size": 22082528352,
-          "verified": true
-        },
-        {
-          "file": "Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf",
-          "id": "q8",
-          "on_disk": 12300000000,
-          "size": 28595762272,
-          "verified": false
-        }
-      ],
-      "runtime": {
-        "present": true,
-        "version": "b11118"
-      },
-      "weights": "/Volumes/Extreme/_lobocode"
+    "last_detail": "",
+    "local_memory": {
+      "available_bytes": null,
+      "budget_bytes": null,
+      "ctx": 8192,
+      "message": "Cannot assess Mac memory for q8 with 8192 context tokens.",
+      "metal_limit_bytes": null,
+      "model": "q8",
+      "required_bytes": null,
+      "status": "unavailable",
+      "total_bytes": null
     },
+    "log_tail": [],
+    "menu_text": "off",
+    "model": "q8",
+    "models": null,
     "phase": {
-      "kind": "booting"
+      "kind": "off"
     },
     "provider": "vast",
     "readiness": {
@@ -99,22 +79,9 @@
       "status": null,
       "version": null
     },
-    "steps": [
-      {
-        "at_s": 2.0,
-        "step": "rent"
-      },
-      {
-        "at_s": 3.0,
-        "step": "gpu"
-      },
-      {
-        "at_s": 4.0,
-        "step": "download"
-      }
-    ],
+    "steps": [],
     "target": "local",
-    "up_phase": "download",
+    "up_phase": null,
     "warning": null
   }
 }

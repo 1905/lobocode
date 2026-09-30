@@ -110,17 +110,24 @@ handoffs merely because a local build passes.
 
 ## 6. Local memory rejection happens too late
 
-The app currently offers local Start without checking available memory. The
-backend checks a fixed GPU budget after runtime preparation and supervisor
-startup. That check ignores memory used by other apps and the selected context
-size. A downloaded model is not proof that this Mac can load it safely.
+The app offered local Start without checking available memory. The backend
+checked a fixed GPU budget after runtime preparation and supervisor startup.
+That check ignored memory used by other apps and the selected context size.
+A downloaded model is not proof that this Mac can load it safely.
 
 User correction: inspect Mac memory first. If the selected model cannot fit,
-show an error instead of starting it. The
-[memory-check spec](../plans/2026-09-30-local-memory-check/spec.md) records fresh
-physical-memory and Metal checks, context-dependent estimates, startup rejection
-and a second check before loading. It is pending approval, not an implemented
-fix. This Mac remains limited to UI checks with no inference.
+show an error instead of starting it. The approved
+[memory-check spec](../plans/2026-09-30-local-memory-check/spec.md) now has a shared
+physical-memory and Metal guard. It checks before runtime preparation and again
+before loading. The app displays its model/context estimate, rejects stale
+results, and keeps Cloud as an explicit choice.
+
+Dell checks pass: 449 workspace tests, with two existing opt-in tests ignored,
+and Clippy. The new denial test first reproduced an unwanted fake-runtime start;
+it now proves insufficient and unknown memory cause no startup side effects.
+Native fixture compilation and 11 frontend tests pass. Native E2E and hosted
+app checks are still pending. This Mac remains limited to UI checks and builds.
+The memory reserve is a conservative policy, not a measured inference peak.
 
 ## Acceptance required before public delivery
 
@@ -199,3 +206,7 @@ bundle replacement. Existing builds need one manual install to gain an updater.
 The updater replaces only the standalone desktop app. Homebrew continues to own
 the optional CLI. Each new cloud start must independently resolve and pull the
 latest public image for its selected model, as required by the image plan.
+
+### Memory feature validation checkpoint
+
+The memory guard is implemented through `b9a1966`; it is not installed in the user's production app yet. Native fixture E2E passed five cases, then the app disconnected during denied Start. Cleanup passed and no model started. Preserve the failed run at `bin/app-e2e/lobo-native-e2e-zlqngx7s`; do not report complete native acceptance. The user deferred further E2E while the approved app setup, live memory/activity, native activation and scoped Stop fixes are implemented.

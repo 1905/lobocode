@@ -421,3 +421,40 @@ fn up_errors_and_tail_limits() {
     s.poll_failed("offline".into());
     assert_eq!(s.view(now()).phase, Phase::Off);
 }
+
+#[test]
+fn memory_selection_config_and_latest_request_discard_stale_results() {
+    for change in ["model", "target", "config", "request"] {
+        let mut store = Store::new(Some(Target::Local), true);
+        let (cfg, readiness) = config();
+        store.apply_config(cfg.clone(), readiness.clone());
+        store.apply_snap(snap(true, None), now());
+        let (generation, request, model) = store.begin_memory().unwrap();
+        let memory: LocalMemory = lobo_core::local::memory::assess(
+            &model,
+            8192,
+            &lobo_core::local::memory::MemorySnapshot {
+                total_bytes: 64 << 30,
+                available_bytes: 60 << 30,
+                metal_limit_bytes: 48 << 30,
+            },
+        )
+        .unwrap()
+        .into();
+        match change {
+            "model" => store.set_model("q6".into()),
+            "target" => store.choose(Target::Cloud),
+            "config" => {
+                let mut cfg = cfg;
+                cfg.values.insert("LOBO_CTX".into(), "65536".into());
+                store.apply_config(cfg, readiness);
+            }
+            "request" => {
+                store.begin_memory().unwrap();
+            }
+            _ => unreachable!(),
+        }
+        store.apply_memory(generation, request, memory);
+        assert_eq!(store.view(now()).local_memory, None, "{change}");
+    }
+}

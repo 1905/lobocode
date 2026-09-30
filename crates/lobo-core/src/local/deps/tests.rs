@@ -16,11 +16,13 @@ fn config(w: &Path) -> MacConfig {
     }
 }
 fn deps(w: &Path) -> MacDeps {
-    MacDeps::new(
+    let mut d = MacDeps::new(
         config(w),
         Arc::new(LogRing::new(100)),
         CancellationToken::new(),
-    )
+    );
+    d.memory = Arc::new(|| Ok(ample_memory()));
+    d
 }
 fn executable(path: &Path, body: &str) {
     fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
@@ -29,18 +31,19 @@ fn executable(path: &Path, body: &str) {
 
 #[tokio::test]
 async fn check_gpu_table() {
-    let q8 = lobo_proto::catalog::get("q8").unwrap();
-    let need = min_free_mib(q8.size);
-    for (usable, script, want) in [
-        (49152, "echo 'MTL0: Apple M1 Max'", ""),
+    let need = super::super::memory::assess("q8", 65536, &ample_memory())
+        .unwrap()
+        .required_bytes;
+    for (budget, script, want) in [
+        (100 << 30, "echo 'MTL0: Apple M1 Max'", ""),
         (need, "echo 'MTL0: Apple M1 Max'", ""),
         (
             need - 1,
             "echo 'MTL0: Apple M1 Max'",
-            "q8 needs 29.1 GB, this Mac allows ~29 GB to the GPU",
+            "q8 with 65536 context tokens requires",
         ),
         (
-            49152,
+            100 << 30,
             "echo 'Available devices:'; echo 'ggml_metal_init: error: failed'",
             "no Metal device",
         ),
@@ -50,8 +53,14 @@ async fn check_gpu_table() {
         let server = tmp.path().join("server");
         executable(&server, script);
         d.cfg.llama_server = server;
-        d.cfg.model = q8.clone();
-        d.usable_mib = Arc::new(move || Ok(usable));
+        d.cfg.model = lobo_proto::catalog::get("q8").unwrap().clone();
+        d.memory = Arc::new(move || {
+            Ok(super::super::memory::MemorySnapshot {
+                available_bytes: budget + (4 << 30),
+                metal_limit_bytes: 110 << 30,
+                ..ample_memory()
+            })
+        });
         let result = d.check_gpu(&CancellationToken::new()).await;
         if want.is_empty() {
             result.unwrap();
@@ -218,7 +227,8 @@ async fn start_llama_args_env() {
         ("RUNPOD_API_KEY".into(), "secret-rp".into()),
         ("LOBO_API_KEY".into(), "secret-lobo".into()),
     ];
-    let d = MacDeps::new(cfg, logs.clone(), CancellationToken::new());
+    let mut d = MacDeps::new(cfg, logs.clone(), CancellationToken::new());
+    d.memory = Arc::new(|| Ok(ample_memory()));
     Llama::start(&d).await.unwrap().await.unwrap().unwrap();
     let out = logs.tail(100).join("\n") + "\n";
     for want in [
@@ -302,7 +312,8 @@ async fn stop_token_kills_llama_and_waits_for_exit() {
     cfg.llama_server = tmp.path().join("server");
     executable(&cfg.llama_server, "exec /bin/sleep 30");
     let stop = CancellationToken::new();
-    let d = MacDeps::new(cfg, Arc::new(LogRing::new(100)), stop.clone());
+    let mut d = MacDeps::new(cfg, Arc::new(LogRing::new(100)), stop.clone());
+    d.memory = Arc::new(|| Ok(ample_memory()));
     let exit = Llama::start(&d).await.unwrap();
     assert!(!d.wait_llama(Duration::ZERO).await);
     stop.cancel();
@@ -311,4 +322,108 @@ async fn stop_token_kills_llama_and_waits_for_exit() {
     assert!(!super::super::state::alive(
         d.pid.load(Ordering::Acquire) as i32
     ));
+}
+
+fn ample_memory() -> super::super::memory::MemorySnapshot {
+    super::super::memory::MemorySnapshot {
+        total_bytes: 128 << 30,
+        available_bytes: 100 << 30,
+        metal_limit_bytes: 96 << 30,
+    }
+}
+#[tokio::test]
+async fn rejected_memory_never_runs_device_probe() {
+    for unknown in [false, true] {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut d = deps(tmp.path());
+        let marker = tmp.path().join("device-ran");
+        d.cfg.llama_server = tmp.path().join("server");
+        executable(
+            &d.cfg.llama_server,
+            &format!("touch '{}'; echo MTL0", marker.display()),
+        );
+        d.memory = Arc::new(move || {
+            if unknown {
+                return Err(Error::Local(
+                    "fixture native measurement unavailable".into(),
+                ));
+            }
+            Ok(super::super::memory::MemorySnapshot {
+                available_bytes: 10 << 30,
+                ..ample_memory()
+            })
+        });
+        let error = d
+            .check_gpu(&CancellationToken::new())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains(if unknown {
+                "measurement unavailable"
+            } else {
+                "GiB"
+            }),
+            "{error}"
+        );
+        assert!(!marker.exists());
+    }
+}
+#[tokio::test]
+async fn declining_memory_after_gpu_check_prevents_inference() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut d = deps(tmp.path());
+    let marker = tmp.path().join("inference-ran");
+    d.cfg.llama_server = tmp.path().join("server");
+    executable(
+        &d.cfg.llama_server,
+        &format!(
+            "if [ \"$1\" = --list-devices ]; then echo MTL0; else touch '{}'; fi",
+            marker.display()
+        ),
+    );
+    let count = Arc::new(AtomicUsize::new(0));
+    let c = count.clone();
+    d.memory = Arc::new(move || {
+        Ok(super::super::memory::MemorySnapshot {
+            available_bytes: if c.fetch_add(1, Ordering::SeqCst) == 0 {
+                100 << 30
+            } else {
+                10 << 30
+            },
+            ..ample_memory()
+        })
+    });
+    d.check_gpu(&CancellationToken::new()).await.unwrap();
+    assert!(Llama::start(&d).await.is_err());
+    assert_eq!(count.load(Ordering::SeqCst), 2);
+    assert_eq!(d.pid.load(Ordering::Acquire), 0);
+    assert!(!d.llama_started.load(Ordering::Acquire));
+    assert!(d.wait_llama(Duration::ZERO).await);
+    assert!(!marker.exists());
+}
+#[tokio::test]
+async fn unknown_memory_before_inference_has_no_process() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut d = deps(tmp.path());
+    d.memory = Arc::new(|| {
+        Err(Error::Local(
+            "fixture native measurement unavailable".into(),
+        ))
+    });
+    let error = Llama::start(&d).await.err().unwrap().to_string();
+    assert!(error.contains("measurement unavailable"), "{error}");
+    assert_eq!(d.pid.load(Ordering::Acquire), 0);
+    assert!(!d.llama_started.load(Ordering::Acquire));
+    assert!(d.wait_llama(Duration::ZERO).await);
+}
+
+#[tokio::test]
+async fn cancelled_gpu_check_never_reads_memory_or_device() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut d = deps(tmp.path());
+    d.memory = Arc::new(|| panic!("cancelled startup must not inspect memory"));
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    assert!(matches!(d.check_gpu(&cancel).await, Err(Error::Cancelled)));
 }

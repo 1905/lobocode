@@ -2,13 +2,14 @@
 
 **Date:** 2026-09-30
 **Scope:** /Users/kass/dev/lobocode
-**Status:** pending review
+**Status:** approved
+**Approval:** 2026-09-30 — user requested “do plan spec. then implement it”, followed by E2E, merge, and the separate updater feature in full auto.
 
 ## TL;DR
 
 **What:** Check available Mac memory before local Start. Block startup and show required versus available memory when the selected model cannot fit.
 **Why:** The current check runs after startup begins and ignores memory used by other apps and the selected context size.
-**Your action:** Approve this memory-check spec. The cloud-image work continues under its existing approval.
+**Your action:** Nothing. Spec, plan, implementation, E2E and merge are authorized. The cloud-image work continues separately.
 **Limits:** No inference on this Mac, automatic model changes, memory-limit overrides, or release. Passing the check is an estimate, not a guarantee against later memory pressure.
 
 ## Problem(s)
@@ -50,7 +51,8 @@ system reserve = 4 GiB
 budget = min(available now - system reserve, Metal recommended working set)
 ```
 
-Subtractions saturate at zero. Do not add inactive pages, file cache, speculative pages or purgeable pages again.
+The system-reserve subtraction saturates at zero. Inconsistent native page counters fail closed.
+Do not add inactive pages, file cache, speculative pages or purgeable pages again.
 In particular, `free_count` already includes speculative pages in Apple's VM statistics.
 Compression and swap do not create additional capacity in this calculation.
 This is an estimate of reclaimable physical memory, not a promise that all cache pages can be reclaimed immediately.
@@ -66,7 +68,7 @@ can start = required <= budget
 ```
 
 The KV formula follows the current one-slot, q8_0 K/V, flash-attention runtime arguments.
-Use the pinned runtime's context padding in the calculator and document its source beside the constant.
+Round context up to 256 tokens, matching `llama-context.cpp:289` in pinned runtime b11118. Accept 1–262,144 tokens for this profile.
 The runtime reserve covers recurrent state, compute buffers and runtime overhead. It is a conservative product policy, not a measured peak.
 At 65,536 tokens, the KV allowance is 2.125 GiB. Q6 requires about 26.7 GiB; Q8 requires about 32.8 GiB before the separate system reserve.
 Reject unknown model profiles or unsupported context values instead of reusing an unrelated estimate.
@@ -126,9 +128,12 @@ Start-time validation stays in the shared backend, so commands, tray actions and
 | `crates/lobo-core/Cargo.toml`, `Cargo.lock`, `app/src-tauri/Cargo.lock` | Add only the native Metal bindings needed for the read-only query, if not already available. |
 | `crates/lobo-core/tests/local_provider.rs`, `crates/lobo-core/src/local/deps/tests.rs` | Inject memory snapshots and prove denied starts do not download, spawn or load. |
 | `app/src-tauri/src/{backend,controller,store,types,tray}.rs` and existing tests | Carry assessment, refresh it, reject stale results and preserve backend enforcement. |
+| `app/src-tauri/src/{lib,commands}.rs`, `app/src-tauri/Cargo.toml` | Add compile-time E2E-only memory fixture controls. Production builds never register those controls. |
+| `app/src-tauri/src/memory_fixture.rs` (if needed) | Keep deterministic E2E memory probes isolated from production code. |
 | `app/ui/src/gen/*` | Regenerate affected app state types. |
 | `app/ui/src/panel/{StartCard,LocalStart}.svelte`, `app/ui/src/lib/{view,view.test}.ts` | Display compact status and error; disable invalid Start without hiding target/model choices. |
 | Existing app fixtures and `app/e2e/app.spec.js` | Add insufficient, unknown and passing-memory UI states; validate the blocked path without inference. |
+| `app/e2e/wdio.conf.js`, `tools/native_app_e2e.py`, `.github/workflows/rust.yml`, `Makefile` | Select and run explicit memory E2E cases safely on this Mac and in hosted macOS CI. |
 | `README.md`, `CHANGELOG.md`, `AGENTS.md`, `docs/implementation-mistakes.md`, relevant UI assets | Describe the guard, record the late-check defect and keep validation limits explicit. |
 
 ## Tests
@@ -164,4 +169,17 @@ Start-time validation stays in the shared backend, so commands, tray actions and
 
 P1: Implement and verify the shared memory guard plus compact app UI; commit locally after clean self-review.
 P2: Update assets/docs and build/install the local app/DMG; record exact validation limits in the delivery commit.
-Public release remains held. The separate approved public-image plan continues independently.
+Public release remains held. Normal branch pushes and CI are authorized by the user's full-auto instruction.
+The separate approved public-image plan continues independently. After this feature passes E2E and is merged, execute the GitHub app-updates feature from the merged baseline.
+
+## As-built notes
+
+- Core commit `6422173` adds `inspect_with(model, ctx, &MemoryProbe)` for deterministic probes and contextual errors. The production probe remains native and read-only.
+- `platform::usable_mib` stays exported for compatibility. Local admission no longer uses it.
+- Invalid native counters reject the assessment. Only subtracting the system reserve clamps to zero; this clarifies the calculation text above.
+- Dell verification: 449 workspace tests pass, with two existing opt-in tests ignored. The previously verified Go interoperability checks were not re-enabled in this run. Native adapter and app E2E verification remain pending.
+- The 4 GiB runtime reserve remains a conservative policy. No model inference or peak-memory calibration ran on this Mac.
+
+- App commit `b9a1966` implements the state/UI and seven native fixture cases. Eleven frontend tests and UI/native builds pass.
+- Native fixture execution passed five cases, then disconnected during denied Start; the final case could not run. Cleanup passed and no inference started. The user deferred E2E until the later validation stage.
+- Integrate this implemented guard into the approved app setup/visibility feature branch; final hosted checks, E2E and master merge are still required.

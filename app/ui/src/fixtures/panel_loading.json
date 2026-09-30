@@ -23,6 +23,7 @@
     "endpoint": null,
     "is_local": false,
     "last_detail": "",
+    "local_memory": null,
     "log_tail": [],
     "menu_text": "lobo",
     "model": "q8",

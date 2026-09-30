@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import type { PanelState } from '../gen/PanelState';
+import type { LocalMemory } from '../gen/LocalMemory';
 import * as view from './view';
 import cases from '../fixtures/time_cases.json';
 const fixtures = import.meta.glob<{
@@ -94,4 +95,56 @@ test('shared countdown cases and failure action', () => {
     tone: 'red',
   });
   expect(view.fail(f('fail').state).primary.label).toBe('RETRY');
+});
+
+test('local Start requires a current complete memory pass; Cloud is independent', () => {
+  const s = structuredClone(f('off_local').state);
+  s.local_memory = null;
+  expect(view.canStart(s)).toBe(false);
+  expect(view.memoryView(s).status).toBe('checking');
+  const memory: LocalMemory = {
+    model: s.model,
+    ctx: 8192,
+    status: 'ready',
+    message: 'q6 · 8192 context tokens',
+    required_bytes: 26 * 2 ** 30,
+    budget_bytes: 28 * 2 ** 30,
+    total_bytes: 64 * 2 ** 30,
+    available_bytes: 32 * 2 ** 30,
+    metal_limit_bytes: 48 * 2 ** 30,
+  };
+  s.local_memory = memory;
+  expect(view.canStart(s)).toBe(true);
+  expect(view.memoryView(s).values).toBe('26.0 GiB required · 28.0 GiB budget');
+  s.local_memory = { ...memory, status: 'insufficient' };
+  expect(view.canStart(s)).toBe(false);
+  s.local_memory = { ...memory, model: 'other' };
+  expect(view.canStart(s)).toBe(false);
+  expect(view.memoryView(s).status).toBe('checking');
+  s.local_memory = { ...memory, required_bytes: null };
+  expect(view.canStart(s)).toBe(false);
+  s.target = 'cloud';
+  expect(view.canStart(s)).toBe(true);
+});
+
+test('unavailable memory preserves the error and never invents byte values', () => {
+  const s = structuredClone(f('fail_local').state);
+  const message = 'Cannot assess Mac memory: '.repeat(40);
+  s.local_memory = {
+    model: s.model,
+    ctx: 8192,
+    status: 'unavailable',
+    message,
+    total_bytes: null,
+    available_bytes: null,
+    metal_limit_bytes: null,
+    required_bytes: null,
+    budget_bytes: null,
+  };
+  expect(view.memoryView(s)).toMatchObject({
+    status: 'unavailable',
+    message,
+    values: null,
+  });
+  expect(view.canStart(s)).toBe(false);
 });

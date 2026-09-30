@@ -11,7 +11,7 @@ use lobo_core::{
 use lobo_proto::{ConfigShow, Instance, Listing, Readiness, Snap, Stage, Status, UpRequest};
 use std::{
     collections::BTreeMap,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
 struct SlowProvider {
@@ -79,6 +79,10 @@ struct FakeBackend {
     ready: AtomicBool,
     up_calls: AtomicUsize,
     down_calls: AtomicUsize,
+    memory_mode: AtomicUsize,
+    memory_delay_ms: AtomicU64,
+    memory_started: tokio::sync::Notify,
+    start_deny: AtomicBool,
 }
 #[async_trait]
 impl Backend for FakeBackend {
@@ -111,8 +115,38 @@ impl Backend for FakeBackend {
         self.calls.lock().unwrap().push("snapshot");
         Ok(control::snapshot(&self.d).await?)
     }
+    async fn local_memory(
+        &self,
+        model: &str,
+    ) -> Result<lobo_core::local::memory::MemoryAssessment> {
+        let mode = self.memory_mode.load(Ordering::SeqCst);
+        let delay = self.memory_delay_ms.load(Ordering::SeqCst);
+        self.memory_started.notify_one();
+        tokio::time::sleep(Duration::from_millis(delay)).await;
+        if mode == 2 {
+            return Err(AppError {
+                kind: "local".into(),
+                message: "probe unavailable".into(),
+            });
+        }
+        Ok(lobo_core::local::memory::assess(
+            model,
+            8192,
+            &lobo_core::local::memory::MemorySnapshot {
+                total_bytes: 64 << 30,
+                available_bytes: (if mode == 1 { 8 } else { 60 }) << 30,
+                metal_limit_bytes: 48 << 30,
+            },
+        )?)
+    }
     fn up(&self, req: UpRequest, c: CancellationToken) -> Result<control::UpOperation> {
         self.up_calls.fetch_add(1, Ordering::SeqCst);
+        if req.provider.as_deref() == Some("local") && self.start_deny.load(Ordering::SeqCst) {
+            return Err(AppError {
+                kind: "local".into(),
+                message: "fresh Start rejected: memory insufficient".into(),
+            });
+        }
         self.calls.lock().unwrap().push("up");
         Ok(control::up(
             self.d.clone(),
@@ -172,6 +206,10 @@ fn fixture(
         ready: AtomicBool::new(true),
         up_calls: AtomicUsize::new(0),
         down_calls: AtomicUsize::new(0),
+        memory_mode: AtomicUsize::new(0),
+        memory_delay_ms: AtomicU64::new(0),
+        memory_started: tokio::sync::Notify::new(),
+        start_deny: AtomicBool::new(false),
     });
     let c = Controller::new(
         b.clone(),
@@ -187,7 +225,7 @@ fn fixture(
 async fn start(c: &Arc<Controller>, p: &SlowProvider) {
     c.load_config(true).await;
     c.refresh(false).await;
-    c.start();
+    c.start().unwrap();
     for _ in 0..1000 {
         if p.rents.load(Ordering::SeqCst) > 0 {
             return;
@@ -199,6 +237,19 @@ async fn start(c: &Arc<Controller>, p: &SlowProvider) {
 async fn join_stop(c: &Controller) {
     let h = c.active.lock().unwrap().stop.take().unwrap();
     h.await.unwrap();
+}
+async fn memory_status(c: &Controller, status: &str) {
+    for _ in 0..1000 {
+        if c.state()
+            .local_memory
+            .as_ref()
+            .is_some_and(|m| m.status == status)
+        {
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+    panic!("memory status never became {status}");
 }
 
 #[tokio::test(start_paused = true)]
@@ -227,12 +278,12 @@ async fn refresh_models_only_when_requested() {
 async fn stop_waits_for_real_core_rent_and_duplicate_start() {
     let (c, b, p) = fixture(20, false, false);
     start(&c, &p).await;
-    c.start();
+    c.start().unwrap();
     assert_eq!(b.up_calls.load(Ordering::SeqCst), 1);
     c.stop();
     c.stop();
     c.dismiss();
-    c.start();
+    c.start().unwrap();
     assert_eq!(c.state().phase, Phase::Stopping);
     tokio::time::advance(Duration::from_secs(19)).await;
     assert_eq!(b.down_calls.load(Ordering::SeqCst), 0);
@@ -263,7 +314,7 @@ async fn stop_timeout_keeps_ownership_and_warning() {
         c.state().warning.as_deref(),
         Some("stop: cleanup is still running")
     );
-    c.start();
+    c.start().unwrap();
     c.dismiss();
     assert_eq!(b.up_calls.load(Ordering::SeqCst), 1);
     assert_eq!(b.down_calls.load(Ordering::SeqCst), 0);
@@ -333,4 +384,75 @@ async fn failed_quit_keeps_polling_and_retries_cleanup_on_the_next_quit() {
     c.quit().await.unwrap();
     assert!(c.shutdown.is_cancelled());
     assert!(p.running.lock().unwrap().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn local_memory_denial_unavailable_and_cloud_selection() {
+    let (c, b, p) = fixture(0, false, false);
+    c.load_config(true).await;
+    c.refresh(false).await;
+    c.choose(Target::Local);
+    b.memory_mode.store(1, Ordering::SeqCst);
+    c.refresh_memory().await;
+    memory_status(&c, "insufficient").await;
+    assert_eq!(c.state().local_memory.unwrap().status, "insufficient");
+    b.memory_mode.store(2, Ordering::SeqCst);
+    c.refresh_memory().await;
+    memory_status(&c, "unavailable").await;
+    let unavailable = c.state().local_memory.unwrap();
+    assert_eq!(unavailable.status, "unavailable");
+    assert_eq!(unavailable.required_bytes, None);
+    c.choose(Target::Cloud);
+    assert_eq!(c.state().target, Target::Cloud);
+    assert_eq!(c.state().local_memory, None);
+    assert_eq!(p.rents.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn stale_memory_response_cannot_replace_new_model_or_target() {
+    let (c, b, _) = fixture(0, false, false);
+    c.load_config(true).await;
+    c.refresh(false).await;
+    c.store.lock().unwrap().choose(Target::Local);
+    b.memory_delay_ms.store(1000, Ordering::SeqCst);
+    let worker = c.clone();
+    let old = tokio::spawn(async move { worker.refresh_memory().await });
+    b.memory_started.notified().await;
+    c.store.lock().unwrap().set_model("q6".into());
+    b.memory_delay_ms.store(0, Ordering::SeqCst);
+    b.memory_mode.store(1, Ordering::SeqCst);
+    c.refresh_memory().await;
+    old.await.unwrap();
+    assert_eq!(c.state().local_memory.as_ref().unwrap().model, "q6");
+    assert_eq!(
+        c.state().local_memory.as_ref().unwrap().status,
+        "insufficient"
+    );
+    c.store.lock().unwrap().choose(Target::Cloud);
+    c.refresh_memory().await;
+    assert_eq!(c.state().local_memory, None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn displayed_pass_does_not_authorize_a_denied_start_or_retry() {
+    let (c, b, p) = fixture(0, false, false);
+    c.load_config(true).await;
+    c.refresh(false).await;
+    c.choose(Target::Local);
+    c.refresh_memory().await;
+    memory_status(&c, "ready").await;
+    assert_eq!(c.state().local_memory.unwrap().status, "ready");
+    b.start_deny.store(true, Ordering::SeqCst);
+    assert!(
+        c.start()
+            .unwrap_err()
+            .message
+            .contains("fresh Start rejected")
+    );
+    assert!(matches!(c.state().phase, Phase::Failed { .. }));
+    assert_eq!(c.state().local_memory, None);
+    assert!(c.start().is_err());
+    assert_eq!(p.rents.load(Ordering::SeqCst), 0);
+    assert_eq!(b.up_calls.load(Ordering::SeqCst), 2);
+    assert!(!c.store.lock().unwrap().needs_cleanup());
 }

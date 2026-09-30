@@ -2,7 +2,7 @@
   import type { PanelState } from '../gen/PanelState';
   import type { Target } from '../gen/Target';
   import { api, message } from '../lib/api';
-  import { stopping } from '../lib/view';
+  import { stopping, canStart } from '../lib/view';
   import Header from './Header.svelte';
   import Footer from './Footer.svelte';
   import SetupCard from './SetupCard.svelte';
@@ -65,7 +65,7 @@
     } else if (
       e.key === 'Enter' &&
       panel.phase.kind === 'off' &&
-      (panel.target === 'local' || panel.readiness?.cloud_ready)
+      canStart(panel)
     ) {
       e.preventDefault();
       action('start');
@@ -102,11 +102,17 @@
           )}
       />{:else if panel.phase.kind === 'stopping'}<div class="row">
         <span class="cyan">[ .. ]</span><span>{stopping(panel)}</span><Cursor />
-      </div>{:else}<FailCard {panel} {action} />{/if}{#if panel.warning}<p
-        class="warning two-lines"
-      >
+      </div>{:else}<FailCard
+        {panel}
+        {action}
+        {pick}
+      />{/if}{#if panel.warning}<p class="warning two-lines">
         ! {panel.warning}
-      </p>{/if}{#if error}<p class="error">{error}</p>{/if}
+      </p>{/if}{#if error && !(panel.phase.kind === 'failed' && panel.phase.message === error)}<p
+        class="error"
+      >
+        {error}
+      </p>{/if}
   </div>
   <Footer {action} />
 </main>
