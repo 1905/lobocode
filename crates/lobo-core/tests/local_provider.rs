@@ -64,12 +64,18 @@ fn free_pair() -> u16 {
     panic!("no free port pair")
 }
 struct Fixture {
+    _process_guard: tokio::sync::MutexGuard<'static, ()>,
     tmp: tempfile::TempDir,
     p: LocalProvider,
     calls: Arc<AtomicUsize>,
 }
 impl Fixture {
-    fn new(mode: &str) -> Self {
+    async fn new(mode: &str) -> Self {
+        // pre_exec forces fork. A concurrently forked child can briefly inherit
+        // another test's port probe until exec closes its CLOEXEC descriptors.
+        // Keep real-process fixtures separate through cleanup, including probes.
+        static PROCESSES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+        let guard = PROCESSES.lock().await;
         let tmp = tempfile::tempdir().unwrap();
         let state = StateFile::at(tmp.path().join("local.json"));
         let calls = Arc::new(AtomicUsize::new(0));
@@ -95,7 +101,12 @@ impl Fixture {
             },
             state,
         };
-        Self { tmp, p, calls }
+        Self {
+            _process_guard: guard,
+            tmp,
+            p,
+            calls,
+        }
     }
     fn pid(&self, name: &str) -> i32 {
         fs::read_to_string(self.tmp.path().join(name))
@@ -124,7 +135,7 @@ async fn prechecks_before_runtime() {
     for case in [
         "platform", "model", "running", "weights", "space", "port", "api-port",
     ] {
-        let mut f = Fixture::new("ok");
+        let mut f = Fixture::new("ok").await;
         let mut o = opts();
         let mut listener = None;
         let want = match case {
@@ -183,7 +194,7 @@ async fn prechecks_before_runtime() {
 }
 #[tokio::test]
 async fn lifecycle() {
-    let f = Fixture::new("ok");
+    let f = Fixture::new("ok").await;
     let i = rent(&f.p).await;
     let pid: i32 = i.id.parse().unwrap();
     assert_eq!(
@@ -220,7 +231,7 @@ async fn lifecycle() {
 }
 #[tokio::test]
 async fn child_fails_shows_log_tail() {
-    let f = Fixture::new("fail");
+    let f = Fixture::new("fail").await;
     fs::write(log_path(&f.p.state), b"old secret log line\n").unwrap();
     let e =
         f.p.rent(&opts(), CancellationToken::new(), &|_| {})
@@ -236,7 +247,7 @@ async fn child_fails_shows_log_tail() {
 }
 #[tokio::test]
 async fn delete_kills_stubborn() {
-    let f = Fixture::new("stubborn");
+    let f = Fixture::new("stubborn").await;
     let i = rent(&f.p).await;
     let start = tokio::time::Instant::now();
     f.p.delete(&i.id).await.unwrap();
@@ -245,7 +256,7 @@ async fn delete_kills_stubborn() {
     assert!(!f.p.state.path.exists());
 }
 async fn group_case(mode: &str) {
-    let f = Fixture::new(mode);
+    let f = Fixture::new(mode).await;
     let i = rent(&f.p).await;
     let pid = i.id.parse::<i32>().unwrap();
     let child = f.pid("child");
@@ -267,7 +278,7 @@ async fn delete_dead_leader_live_child_killed() {
 }
 #[tokio::test]
 async fn delete_reverifies_before_sigkill() {
-    let mut f = Fixture::new("stubborn");
+    let mut f = Fixture::new("stubborn").await;
     let i = rent(&f.p).await;
     let calls = Arc::new(AtomicUsize::new(0));
     let c = calls.clone();
@@ -292,7 +303,7 @@ async fn delete_never_signals_stranger() {
         "lobo local run --boot-id",
         "/tmp/local run.txt --boot-id b1",
     ] {
-        let mut f = Fixture::new("ok");
+        let mut f = Fixture::new("ok").await;
         let i = rent(&f.p).await;
         f.p.hooks.ps = Arc::new(move |_| Ok(cmd.into()));
         f.p.delete(&i.id).await.unwrap();
@@ -302,7 +313,7 @@ async fn delete_never_signals_stranger() {
 }
 #[tokio::test]
 async fn cancellation_before_state_kills_entire_group() {
-    let f = Fixture::new("no-state-child");
+    let f = Fixture::new("no-state-child").await;
     let cancel = CancellationToken::new();
     let c = cancel.clone();
     let options = opts();
@@ -324,7 +335,7 @@ async fn cancellation_before_state_kills_entire_group() {
 }
 #[tokio::test]
 async fn timeout_before_state_kills_entire_group() {
-    let mut f = Fixture::new("no-state-child");
+    let mut f = Fixture::new("no-state-child").await;
     f.p.hooks.state_wait = Duration::from_secs(2);
     let e =
         f.p.rent(&opts(), CancellationToken::new(), &|_| {})
@@ -349,7 +360,7 @@ impl EnsureRuntime for CancelRuntime {
 }
 #[tokio::test]
 async fn cancelled_runtime_cannot_spawn() {
-    let mut f = Fixture::new("ok");
+    let mut f = Fixture::new("ok").await;
     f.p.hooks.ensure_runtime = Arc::new(CancelRuntime);
     let result = f.p.rent(&opts(), CancellationToken::new(), &|_| {}).await;
     assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
@@ -393,7 +404,7 @@ fn core_deps(f: &Fixture) -> lobo_core::control::Deps {
 }
 #[tokio::test]
 async fn core_cancel_after_spawn_waits_for_real_local_group() {
-    let f = Fixture::new("no-state-child");
+    let f = Fixture::new("no-state-child").await;
     let mut op = lobo_core::control::up(
         core_deps(&f),
         lobo_core::control::UpOpts {
@@ -432,7 +443,7 @@ impl EnsureRuntime for WaitingRuntime {
 }
 #[tokio::test]
 async fn core_cancel_during_runtime_preparation_spawns_nothing() {
-    let mut f = Fixture::new("ok");
+    let mut f = Fixture::new("ok").await;
     let entered = Arc::new(tokio::sync::Notify::new());
     f.p.hooks.ensure_runtime = Arc::new(WaitingRuntime(entered.clone()));
     let mut op = lobo_core::control::up(
