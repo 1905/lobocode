@@ -89,3 +89,8 @@ pub use up::{UpOperation, up};
 mod up_tests;
 
 pub use precheck::{apply_defaults, check_providers, check_release, check_target, resolve_up};
+
+pub mod app_scope;
+pub use app_scope::{
+    OwnerSink, RuntimeTarget, discover_app, down_app, sample_app, snapshot_app, up_app,
+};

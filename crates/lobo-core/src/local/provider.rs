@@ -36,6 +36,60 @@ pub fn command_of(pid: i32) -> Result<String> {
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
 }
+/// Opaque process-start identity. macOS uses kernel start microseconds; Linux
+/// uses boot-relative clock ticks. Compare only IDs collected on this host.
+/// macOS API: https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_info.h
+pub fn process_start_id(pid: i32) -> Result<u64> {
+    if pid <= 0 {
+        return Err(Error::Local("invalid process pid".into()));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // SAFETY: proc_pidinfo writes at most the supplied struct size.
+        let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+        let size = std::mem::size_of_val(&info) as i32;
+        let n = unsafe {
+            libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDTBSDINFO,
+                0,
+                (&mut info as *mut libc::proc_bsdinfo).cast(),
+                size,
+            )
+        };
+        if n != size {
+            let e = std::io::Error::last_os_error();
+            return if e.raw_os_error() == Some(libc::ESRCH) {
+                Err(Error::NotFound)
+            } else {
+                Err(e.into())
+            };
+        }
+        info.pbi_start_tvsec
+            .checked_mul(1_000_000)
+            .and_then(|s| s.checked_add(info.pbi_start_tvusec))
+            .ok_or_else(|| Error::Local("process start identity overflow".into()))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let text = std::fs::read_to_string(format!("/proc/{pid}/stat")).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                Error::NotFound
+            } else {
+                e.into()
+            }
+        })?;
+        // comm may contain spaces or parentheses. Field 22 starts after its final ).
+        text.rsplit_once(')')
+            .and_then(|(_, fields)| fields.split_whitespace().nth(19))
+            .and_then(|field| field.parse::<u64>().ok())
+            .ok_or_else(|| Error::Local("invalid process start identity".into()))
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    Err(Error::Local(
+        "process identity is unsupported on this host".into(),
+    ))
+}
 pub fn is_supervisor(pid: i32, boot_id: &str, ps: &dyn Fn(i32) -> Result<String>) -> bool {
     if pid <= 0 || boot_id.is_empty() {
         return false;
@@ -89,6 +143,8 @@ pub struct LocalHooks {
     pub ensure_runtime: Arc<dyn EnsureRuntime>,
     pub free_bytes: fn(&Path) -> Result<u64>,
     pub ps: Arc<dyn Fn(i32) -> Result<String> + Send + Sync>,
+    pub start_id: Arc<dyn Fn(i32) -> Result<u64> + Send + Sync>,
+    pub signal: Arc<dyn Fn(i32, Signal) -> Result<()> + Send + Sync>,
     pub state_wait: Duration,
     pub stop_wait: Duration,
     // Explicit child-only environment overrides keep tests off global env state.
@@ -102,6 +158,8 @@ impl Default for LocalHooks {
             ensure_runtime: Arc::new(PinnedRuntime),
             free_bytes: super::models::free_space,
             ps: Arc::new(command_of),
+            start_id: Arc::new(process_start_id),
+            signal: Arc::new(signal),
             state_wait: Duration::from_secs(15),
             stop_wait: Duration::from_secs(10),
             child_env: vec![],
@@ -176,6 +234,37 @@ impl LocalProvider {
             .read()?
             .filter(|s| s.pid.to_string() == id)
             .ok_or(Error::NotFound)
+    }
+    fn owned_state(
+        &self,
+        id: &str,
+        boot_id: &str,
+        start_id: Option<u64>,
+    ) -> Result<Option<LocalState>> {
+        if boot_id.is_empty() {
+            return Err(Error::Local("local boot identity is missing".into()));
+        }
+        let s = match self.state_for(id) {
+            Ok(s) => s,
+            Err(Error::NotFound) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        if s.boot_id != boot_id {
+            return Ok(None);
+        }
+        let pid = i32::try_from(s.pid).map_err(|_| Error::Local("invalid local pid".into()))?;
+        if !is_supervisor(pid, boot_id, &*self.hooks.ps) {
+            return Ok(None);
+        }
+        let current = match (self.hooks.start_id)(pid) {
+            Ok(value) => value,
+            Err(Error::NotFound) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        if start_id.is_some_and(|start| start != current) {
+            return Ok(None);
+        }
+        Ok(Some(s))
     }
     async fn spawn(&self, opts: &CreateOpts, cancel: CancellationToken) -> Result<Instance> {
         let log_path = log_path(&self.state);
@@ -360,6 +449,56 @@ impl Provider for LocalProvider {
     }
     async fn get(&self, id: &str) -> Result<Instance> {
         Ok(instance(&self.state_for(id)?))
+    }
+    async fn runtime_identity(&self, id: &str) -> Result<Option<(String, i32, u64)>> {
+        let s = match self.state_for(id) {
+            Ok(s) => s,
+            Err(Error::NotFound) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        let pid = i32::try_from(s.pid).map_err(|_| Error::Local("invalid local pid".into()))?;
+        if !is_supervisor(pid, &s.boot_id, &*self.hooks.ps) {
+            return Ok(None);
+        }
+        let start = (self.hooks.start_id)(pid)?;
+        Ok(Some((s.boot_id, pid, start)))
+    }
+    async fn delete_owned(&self, id: &str, boot_id: &str, start_id: Option<u64>) -> Result<()> {
+        let Some(s) = self.owned_state(id, boot_id, start_id)? else {
+            return Ok(());
+        };
+        let pid = s.pid as i32;
+        // Capture an identity for pending-create recovery too. Recheck at each
+        // signal boundary; never kill a replacement supervisor at the same PID.
+        let start = match start_id {
+            Some(start) => start,
+            None => (self.hooks.start_id)(pid)?,
+        };
+        if self.owned_state(id, boot_id, Some(start))?.is_none() {
+            return Ok(());
+        }
+        (self.hooks.signal)(pid, Signal::SIGTERM)?;
+        if !wait_group_gone(pid, self.hooks.stop_wait).await {
+            match (self.hooks.start_id)(pid) {
+                Ok(current) if current == start => {
+                    if self.owned_state(id, boot_id, Some(start))?.is_none() {
+                        return Ok(());
+                    }
+                }
+                Ok(_) => return Ok(()),
+                // TERM can exit the verified leader while its child ignores it.
+                // Its existing group remains ours. A live replacement leader
+                // must never be signalled, including one seen after this read.
+                Err(Error::NotFound) if !alive(pid) => {}
+                Err(Error::NotFound) => return Ok(()),
+                Err(e) => return Err(e),
+            }
+            (self.hooks.signal)(-pid, Signal::SIGKILL)?;
+            if !wait_group_gone(pid, Duration::from_secs(2)).await {
+                return Err(Error::Local(format!("local group {pid} survived SIGKILL")));
+            }
+        }
+        self.state.remove_if(pid, boot_id)
     }
     async fn delete(&self, id: &str) -> Result<()> {
         let state = match self.state_for(id) {

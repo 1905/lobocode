@@ -40,6 +40,34 @@ pub(crate) async fn adopt(d: &Deps, pending: &PendingCreate) -> Result<Instance>
     }
     Err(pending.unresolved(detail))
 }
+/// App reconciliation needs proof of boot ownership, not only a new list ID.
+/// Shared legacy domains do not bind an agent response to a provider instance.
+pub(crate) async fn adopt_owned(d: &Deps, pending: &PendingCreate) -> Result<Instance> {
+    let instance = adopt(d, pending).await?;
+    let provider = d
+        .providers
+        .get(&pending.provider)
+        .ok_or_else(|| pending.unresolved("provider is no longer configured"))?;
+    let proven = if pending.provider == "local" {
+        provider
+            .runtime_identity(&instance.id)
+            .await?
+            .is_some_and(|(boot, _, _)| !boot.is_empty() && boot == pending.boot_id)
+    } else {
+        d.connection
+            .as_ref()
+            .map(|c| c.recorded(&pending.provider, &instance.id))
+            .transpose()?
+            .flatten()
+            .is_some_and(|(boot, _)| !boot.is_empty() && boot == pending.boot_id)
+    };
+    if !proven {
+        return Err(pending.unresolved(
+            "new instance boot ownership cannot be proved; refusing deletion or another create",
+        ));
+    }
+    Ok(instance)
+}
 pub(crate) async fn delete_verified(
     provider: &dyn Provider,
     id: &str,
@@ -70,12 +98,74 @@ pub(crate) async fn delete_verified(
         .await
         .map_err(|_| Error::Other(format!("cleanup timed out for {} {id}", provider.name())))?
 }
+pub(crate) async fn delete_owned_verified(
+    provider: &dyn Provider,
+    id: &str,
+    boot_id: &str,
+    start_id: Option<u64>,
+    poll: Duration,
+) -> Result<()> {
+    let operation = async {
+        provider.delete_owned(id, boot_id, start_id).await?;
+        for n in 0..5 {
+            if n > 0 {
+                tokio::time::sleep(if poll.is_zero() {
+                    Duration::from_secs(2)
+                } else {
+                    poll
+                })
+                .await;
+            }
+            match provider.get(id).await {
+                Err(Error::NotFound) => return Ok(()),
+                Err(e) => return Err(e),
+                Ok(_) if provider.name() == "local" => {
+                    let identity = provider.runtime_identity(id).await?;
+                    if identity.is_none_or(|(boot, _, start)| {
+                        boot != boot_id || start_id.is_some_and(|expected| expected != start)
+                    }) {
+                        return Ok(());
+                    }
+                }
+                Ok(_) => {}
+            }
+        }
+        Err(Error::Other(format!(
+            "owned instance {id} is still present after delete"
+        )))
+    };
+    tokio::time::timeout(CLEANUP_TIMEOUT, operation)
+        .await
+        .map_err(|_| Error::Other(format!("cleanup timed out for {} {id}", provider.name())))?
+}
+pub(crate) async fn pending_owned(
+    d: &Deps,
+    guard: &mut OperationGuard<'_>,
+    start_id: Option<u64>,
+) -> Result<()> {
+    pending_scoped(d, guard, true, start_id).await
+}
 pub(crate) async fn pending(d: &Deps, guard: &mut OperationGuard<'_>) -> Result<()> {
+    pending_scoped(d, guard, false, None).await
+}
+async fn pending_scoped(
+    d: &Deps,
+    guard: &mut OperationGuard<'_>,
+    owned: bool,
+    start_id: Option<u64>,
+) -> Result<()> {
     let Some(mut pending) = guard.pending().cloned() else {
         return Ok(());
     };
     if pending.instance_id.is_none() {
-        let instance = tokio::time::timeout(CLEANUP_TIMEOUT, adopt(d, &pending))
+        let reconcile = async {
+            if owned {
+                adopt_owned(d, &pending).await
+            } else {
+                adopt(d, &pending).await
+            }
+        };
+        let instance = tokio::time::timeout(CLEANUP_TIMEOUT, reconcile)
             .await
             .map_err(|_| pending.unresolved("reconciliation timed out"))??;
         pending.instance_id = Some(instance.id);
@@ -85,13 +175,23 @@ pub(crate) async fn pending(d: &Deps, guard: &mut OperationGuard<'_>) -> Result<
         .providers
         .get(&pending.provider)
         .ok_or_else(|| pending.unresolved("provider is no longer configured"))?;
-    delete_verified(&**provider, pending.instance_id.as_deref().unwrap(), d.poll)
-        .await
-        .map_err(|e| pending.unresolved(e.to_string()))?;
-    if let Some(connection) = &d.connection {
-        connection
-            .stop(&pending.provider, pending.instance_id.as_deref().unwrap())
-            .await?;
+    let id = pending.instance_id.as_deref().unwrap();
+    if owned {
+        delete_owned_verified(&**provider, id, &pending.boot_id, start_id, d.poll).await
+    } else {
+        delete_verified(&**provider, id, d.poll).await
+    }
+    .map_err(|e| pending.unresolved(e.to_string()))?;
+    if (pending.provider != "local" || !owned)
+        && let Some(connection) = &d.connection
+    {
+        if owned {
+            connection
+                .stop_owned(&pending.provider, id, &pending.boot_id)
+                .await?;
+        } else {
+            connection.stop(&pending.provider, id).await?;
+        }
     }
     if let Some(connection) = &d.connection
         && pending.provider != "local"

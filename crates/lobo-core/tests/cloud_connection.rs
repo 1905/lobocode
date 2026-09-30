@@ -342,3 +342,51 @@ async fn detached_ssh_streaming_reconnect_and_failures() {
     fs::remove_dir_all("/lobo/cloud-ssh").unwrap();
     eprintln!("host-key rejection, port conflict and owned cleanup passed");
 }
+
+#[tokio::test]
+async fn scoped_connection_mutations_preserve_foreign_owner_and_keys() {
+    let tmp = tempfile::tempdir().unwrap();
+    let manager =
+        Manager::new(tmp.path().join("lobo.env"), "/missing-helper".into(), 28900).unwrap();
+    fs::create_dir_all(&manager.root).unwrap();
+    let original = serde_json::to_vec(&serde_json::json!({
+        "provider": "vast", "id": "foreign", "boot_id": "0123456789abcdef",
+        "config_path": manager.config_path, "port": 28900,
+        "expires_at": chrono::Utc::now() + chrono::TimeDelta::minutes(10),
+    }))
+    .unwrap();
+    let desired = manager.root.join("desired.json");
+    fs::write(&desired, &original).unwrap();
+    let keys = manager.root.join("0123456789abcdef");
+    fs::create_dir(&keys).unwrap();
+    fs::write(keys.join("client"), "private fixture key").unwrap();
+    for (provider, id, boot) in [
+        ("runpod", "ours", "fedcba9876543210"),
+        ("vast", "foreign", "fedcba9876543210"),
+    ] {
+        manager.stop_owned(provider, id, boot).await.unwrap();
+        let mut i = Instance {
+            provider: provider.into(),
+            id: id.into(),
+            ..Default::default()
+        };
+        assert!(manager.attach_owned(&mut i, boot).await.is_err());
+        assert!(
+            manager
+                .start_owned(
+                    &mut i,
+                    &CreateOpts {
+                        boot_id: boot.into(),
+                        ..Default::default()
+                    }
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(fs::read(&desired).unwrap(), original);
+        assert_eq!(
+            fs::read_to_string(keys.join("client")).unwrap(),
+            "private fixture key"
+        );
+    }
+}
