@@ -35,3 +35,9 @@ Run `36704616125` completed. The app, core-macos and static agent jobs pass. The
 Linux lint passes, but the core library suite reports 249 passed, one ignored and one failed. `local::deps::tests::check_gpu_table` fails while executing a generated fixture with `ExecutableFileBusy` / `Text file busy`. This fixture failure is under investigation. It is not an inference run or evidence that the memory guard failed. The full workflow is not green yet.
 
 The test helper now writes its executable through a child shell with literal positional arguments, then waits for exit before execution. This removes writable fixture descriptors from the shared test process. Concurrent fork inheritance is the likely failure mechanism; the hosted run did not capture descriptor traces. No production retries or sleeps were added. Dell `cargo test --locked -p lobo-core --lib` passes 250 tests with one opt-in test ignored. Hosted Linux retest remains pending.
+
+## App ownership checkpoint 5d3817e
+
+Task 5 source and regression tests are committed. Start captures the request and reserves its worker before memory admission. The app persists runtime identity privately, guards discovery before adoption, and uses the same owned target through Stop. Parent source review corrected stale discovery persistence and stale Ready status after Stop.
+
+Rust formatting and whitespace checks pass. The new app tests have not run yet; compilation and tests will run on hosted macOS. No local build or test started after the user reported unavailable Mac memory. OpenCode repair, Dock behavior and telemetry remain in progress. No install, E2E or public release occurred.
