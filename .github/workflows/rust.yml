@@ -15,6 +15,7 @@ on:
       - "tools/protofixtures/**"
       - "tools/corefixtures/**"
       - "tools/clifixtures/**"
+      - "tools/native_app_e2e.py"
       - "internal/**"
       - "cmd/**"
       - "go.mod"
@@ -148,3 +149,4 @@ jobs:
         run: |
           make app-e2e-build
           python3 tools/native_app_e2e.py --setup-only
+          python3 tools/native_app_e2e.py --memory-only

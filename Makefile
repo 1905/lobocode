@@ -66,8 +66,7 @@ app-lint:
 	pnpm -C app/ui format:check
 
 app-fixtures:
-	cargo test --locked --manifest-path $(APP_MANIFEST) export_bindings
-	cargo test --locked --manifest-path $(APP_MANIFEST) --test fixtures
+	cargo run --locked --manifest-path $(APP_MANIFEST) --example generate_ui
 
 app-icons:
 	cargo run --locked --manifest-path $(APP_MANIFEST) --example render_icons -- bin/app-renders
@@ -88,6 +87,7 @@ app-e2e-build:
 
 app-e2e: app-e2e-build
 	python3 tools/native_app_e2e.py --setup-only
+	python3 tools/native_app_e2e.py --memory-only
 
 # Drag-to-install disk image: lobocode.app next to an Applications shortcut. Unsigned (ad-hoc).
 DMG := $(BIN)/lobocode.dmg
