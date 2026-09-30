@@ -23,6 +23,8 @@ pub struct Laptop {
     pub lobo_api_key: String,
     pub cf_tunnel_token: String,
     pub domain: String,
+    pub connection: String,
+    pub cloud_port: String,
     pub bucket_url: String,
     pub model_source: String,
     pub model_ssh_key_file: String,
@@ -50,6 +52,8 @@ impl Laptop {
             lobo_api_key: get("LOBO_API_KEY"),
             cf_tunnel_token: get("CF_TUNNEL_TOKEN"),
             domain: get("LOBO_DOMAIN"),
+            connection: get("LOBO_CONNECTION"),
+            cloud_port: get("LOBO_CLOUD_PORT"),
             bucket_url: get("LOBO_BUCKET_URL"),
             model_source: get("LOBO_MODEL_SOURCE"),
             model_ssh_key_file: get("LOBO_MODEL_SSH_KEY_FILE"),
@@ -76,9 +80,24 @@ impl Laptop {
         }
     }
     pub fn require_cloud(&self) -> Result<()> {
+        self.connection_mode()?;
         let missing: Vec<_> = [
-            ("CF_TUNNEL_TOKEN", &self.cf_tunnel_token),
-            ("LOBO_DOMAIN", &self.domain),
+            (
+                "CF_TUNNEL_TOKEN",
+                if self.uses_ssh() {
+                    "unused"
+                } else {
+                    &self.cf_tunnel_token
+                },
+            ),
+            (
+                "LOBO_DOMAIN",
+                if self.uses_ssh() {
+                    "unused"
+                } else {
+                    &self.domain
+                },
+            ),
             ("LOBO_BUCKET_URL", &self.bucket_url),
         ]
         .into_iter()
@@ -93,6 +112,34 @@ impl Laptop {
         }
         self.require_bucket()?;
         self.require_provider_key()
+    }
+    pub fn connection_mode(&self) -> Result<&str> {
+        match self.connection.as_str() {
+            "ssh" => Ok("ssh"),
+            "cloudflare" => Ok("cloudflare"),
+            "" if !self.domain.is_empty() && !self.cf_tunnel_token.is_empty() => Ok("cloudflare"),
+            "" => Ok("ssh"),
+            _ => Err(Error::Config(
+                "LOBO_CONNECTION: want ssh or cloudflare".into(),
+            )),
+        }
+    }
+    pub fn uses_ssh(&self) -> bool {
+        matches!(self.connection_mode(), Ok("ssh"))
+    }
+    pub fn cloud_port(&self) -> u16 {
+        if self.cloud_port.is_empty() || self.cloud_port == "0" {
+            8933
+        } else {
+            parse_local_port(&self.cloud_port).unwrap_or(8933)
+        }
+    }
+    pub fn cloud_url(&self) -> String {
+        if self.uses_ssh() {
+            format!("http://127.0.0.1:{}/v1", self.cloud_port())
+        } else {
+            format!("https://{}/v1", self.domain)
+        }
     }
     pub fn require_provider_key(&self) -> Result<()> {
         if self.runpod_api_key.is_empty() && self.vast_api_key.is_empty() {
@@ -258,6 +305,18 @@ pub struct Defaults {
 }
 pub fn defaults_partial(l: &Laptop) -> (Defaults, BTreeMap<String, String>) {
     let mut bad = BTreeMap::new();
+    if let Err(e) = l.connection_mode() {
+        bad.insert("LOBO_CONNECTION".into(), e.to_string());
+    }
+    if let Err(e) = parse_local_port(&l.cloud_port) {
+        bad.insert("LOBO_CLOUD_PORT".into(), e.to_string());
+    }
+    if l.uses_ssh() && l.port().abs_diff(l.cloud_port()) < 2 {
+        bad.insert(
+            "LOBO_CLOUD_PORT".into(),
+            "cloud and local port pairs overlap".into(),
+        );
+    }
     let mut one_of = |key: &str, v: &str, choices: &[&str]| {
         if v.is_empty() || choices.contains(&v) {
             v.to_owned()

@@ -30,6 +30,17 @@ pub fn readiness(path: &Path) -> Readiness {
 
 /// Settings validation. Empty values clear a setting; zero retains built-in limits.
 pub fn validate_set(set: &BTreeMap<String, String>) -> std::result::Result<(), String> {
+    if let Some(v) = set.get("LOBO_CONNECTION")
+        && !matches!(v.as_str(), "" | "ssh" | "cloudflare")
+    {
+        return Err("LOBO_CONNECTION: want ssh or cloudflare".into());
+    }
+    if let Some(v) = set.get("LOBO_CLOUD_PORT")
+        && !v.is_empty()
+        && (v == "0" || parse_local_port(v).is_err())
+    {
+        return Err("LOBO_CLOUD_PORT: whole number 1024-65534, or empty".into());
+    }
     for (key, min) in [
         ("LOBO_MIN_MBPS", 1),
         ("LOBO_CTX", 512),

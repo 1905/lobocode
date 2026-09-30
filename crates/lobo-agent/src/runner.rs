@@ -19,6 +19,19 @@ pub type Exit = oneshot::Receiver<Result<()>>;
 pub trait Tunnel: Send + Sync {
     async fn start(&self, boot: CancellationToken, life: CancellationToken) -> Result<Exit>;
 }
+/// Private SSH starts in bootstrap. No public tunnel process is needed.
+pub struct PrivateConnection;
+#[async_trait]
+impl Tunnel for PrivateConnection {
+    async fn start(&self, _boot: CancellationToken, life: CancellationToken) -> Result<Exit> {
+        let (tx, rx) = oneshot::channel();
+        tokio::spawn(async move {
+            life.cancelled().await;
+            let _ = tx.send(Ok(()));
+        });
+        Ok(rx)
+    }
+}
 #[async_trait]
 pub trait GpuCheck: Send + Sync {
     async fn check(&self, cancel: CancellationToken) -> Result<()>;

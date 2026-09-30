@@ -44,13 +44,19 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
         ),
         &|v| s.provider_keys(v),
     )?;
-    let domain = p.text(
-        "2/4 · Access · Domain",
-        "The hostname your Cloudflare tunnel serves, e.g. lobo.example.com. Cloud only.",
-        &s.domain,
-        &s.cloud_only(&hostname),
-    )?;
-    s.domain = domain;
+    if lobo_core::config::Laptop::from_values(&s.cur)
+        .connection_mode()
+        .ok()
+        == Some("cloudflare")
+    {
+        let domain = p.text(
+            "2/4 · Access · Domain",
+            "The hostname your Cloudflare tunnel serves, e.g. lobo.example.com. Cloud only.",
+            &s.domain,
+            &s.cloud_only(&hostname),
+        )?;
+        s.domain = domain;
+    }
     let opts = if s.current("LOBO_API_KEY").is_empty() {
         vec![("generate a key", "new")]
     } else {
@@ -68,14 +74,20 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
         &opts,
         &s.api_key,
     )?;
-    s.tunnel = p.secret(
-        "2/4 · Access · Cloudflare tunnel token",
-        &secret_desc(
-            "Zero Trust → Networks → Tunnels → your tunnel → token. Cloud only.",
-            s.current("CF_TUNNEL_TOKEN"),
-        ),
-        &|v| s.tunnel_token(v),
-    )?;
+    if lobo_core::config::Laptop::from_values(&s.cur)
+        .connection_mode()
+        .ok()
+        == Some("cloudflare")
+    {
+        s.tunnel = p.secret(
+            "2/4 · Access · Cloudflare tunnel token",
+            &secret_desc(
+                "Zero Trust → Networks → Tunnels → your tunnel → token. Cloud only.",
+                s.current("CF_TUNNEL_TOKEN"),
+            ),
+            &|v| s.tunnel_token(v),
+        )?;
+    }
     let bucket = p.text(
         "2/4 · Access · Bucket URL",
         "Public R2 URL with releases/ and models/. Cloud only.",
@@ -290,9 +302,7 @@ mod tests {
             want.extend([
                 "RunPod API key",
                 "Vast.ai API key",
-                "Domain",
                 "LOBO API key",
-                "Cloudflare tunnel token",
                 "Bucket URL",
                 "Minimum download speed, MB/s",
                 "Model",
@@ -321,7 +331,7 @@ mod tests {
             .unwrap();
         assert_eq!(r["LOBO_CTX"], "8192");
         assert_eq!(p.checks, 2);
-        assert_eq!(p.titles[7], "3/4 · Provider · Default provider");
+        assert_eq!(p.titles[5], "3/4 · Provider · Default provider");
         assert!(p.titles.iter().any(|s| s.ends_with("Vast max price, $/h")));
     }
     #[test]

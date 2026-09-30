@@ -5,7 +5,10 @@ pub async fn snapshot(d: &Deps) -> Result<Snap> {
     if let Some(e) = error {
         return Err(e);
     }
-    let Some(instance) = instances.into_iter().next() else {
+    let Some(mut instance) = instances.into_iter().next() else {
+        if let Some(connection) = &d.connection {
+            connection.stop_saved().await?;
+        }
         return Ok(Snap {
             down: true,
             at: GoTime::from_utc(d.clock.now()),
@@ -13,7 +16,10 @@ pub async fn snapshot(d: &Deps) -> Result<Snap> {
         });
     };
     let at = GoTime::from_utc(d.clock.now());
-    if instance.provider != "local" && d.cfg.domain.is_empty() {
+    if let Some(connection) = &d.connection {
+        connection.attach(&mut instance).await?;
+    }
+    if instance.agent_url.is_empty() {
         return Ok(Snap {
             pod: Some(instance),
             at,
@@ -65,6 +71,11 @@ pub async fn down(d: &Deps) -> Result<f64> {
                 instance.provider, instance.id
             )));
         }
+        if let Some(connection) = &d.connection
+            && let Err(e) = connection.stop(&instance.provider, &instance.id).await
+        {
+            errors.push(e);
+        }
     }
     let wait = if d.poll.is_zero() {
         Duration::from_secs(2)
@@ -92,6 +103,11 @@ pub async fn down(d: &Deps) -> Result<f64> {
         }
     }
     errors.extend(left);
+    if let Some(connection) = &d.connection
+        && let Err(e) = connection.stop_saved().await
+    {
+        errors.push(e);
+    }
     if errors.is_empty() {
         Ok(spent)
     } else {
@@ -100,15 +116,18 @@ pub async fn down(d: &Deps) -> Result<f64> {
 }
 pub async fn target(d: &Deps) -> Result<(Arc<dyn AgentApi>, String)> {
     let (instances, error) = list_all(d).await;
-    if let Some(instance) = instances.first() {
+    if let Some(mut instance) = instances.into_iter().next() {
+        if let Some(connection) = &d.connection {
+            connection.attach(&mut instance).await?;
+        }
         return Ok(((d.new_agent)(&instance.agent_url), instance.api_url.clone()));
     }
     if let Some(e) = error {
         return Err(e);
     }
-    if d.cfg.domain.is_empty() {
+    if d.cfg.uses_ssh() || d.cfg.domain.is_empty() {
         return Err(Error::Other(
-            "nothing running, and LOBO_DOMAIN is empty: start one with `lobo up`".into(),
+            "nothing running: start one with `lobo up`".into(),
         ));
     }
     Ok((

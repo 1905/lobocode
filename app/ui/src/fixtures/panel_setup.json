@@ -25,7 +25,7 @@
     },
     "current_step": null,
     "download": null,
-    "endpoint": null,
+    "endpoint": "http://127.0.0.1:8933/v1",
     "is_local": false,
     "last_detail": "",
     "log_tail": [],

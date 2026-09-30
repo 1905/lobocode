@@ -12,6 +12,9 @@ pub const POD_NAME: &str = "lobo";
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CreateOpts {
+    pub connection: String,
+    pub connection_public_key: String,
+    pub connection_host_key: String,
     pub image: String,
     pub release_url: String,
     pub release_sha256: String,
@@ -50,6 +53,9 @@ pub trait Provider: Send + Sync {
 }
 
 pub fn on_domain(mut instance: Instance, domain: &str) -> Instance {
+    if domain.is_empty() {
+        return instance;
+    }
     instance.api_url = format!("https://{domain}/v1");
     instance.agent_url = format!("https://{domain}");
     instance

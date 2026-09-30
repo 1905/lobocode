@@ -6,6 +6,25 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 const FIXTURE: &str = include_str!("../../../fixtures/runpod/pod.json");
 
+#[tokio::test]
+async fn rejected_create_does_not_echo_connection_private_key() {
+    let s = MockServer::start().await;
+    Mock::given(|_: &Request| true)
+        .respond_with(ResponseTemplate::new(400).set_body_string("invalid key secret-host-base64"))
+        .mount(&s)
+        .await;
+    let mut opts = fixture_opts();
+    opts.connection = "ssh".into();
+    opts.connection_host_key = "secret-host-base64".into();
+    let error = Client::with_base("key", &s.uri())
+        .create(&opts, "COMMUNITY", 0.0)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(!error.contains("secret-host-base64"));
+    assert!(error.contains("redacted host key"));
+}
+
 #[test]
 fn pod_fixture_decodes() {
     let p: Pod = serde_json::from_str(FIXTURE).unwrap();
@@ -387,4 +406,27 @@ async fn create_rejection_is_distinct_from_ambiguous_response() {
             kind
         );
     }
+}
+#[test]
+fn private_connection_requests_tcp_and_reads_late_mapping() {
+    use super::*;
+    let mut opts = crate::provider::fixture_opts();
+    opts.connection = "ssh".into();
+    opts.connection_public_key = "ssh-ed25519 public".into();
+    opts.connection_host_key = "private-base64".into();
+    let body = build_create_payload(&opts, "COMMUNITY", 0.0);
+    assert_eq!(body["ports"], serde_json::json!(["2222/tcp"]));
+    assert_eq!(body["supportPublicIp"], true);
+    assert!(body["env"].get("CF_TUNNEL_TOKEN").is_none());
+    assert_eq!(body["env"]["LOBO_CONNECTION"], "ssh");
+    let waiting: Pod =
+        serde_json::from_value(serde_json::json!({"id":"p","publicIp":null,"portMappings":null}))
+            .unwrap();
+    assert_eq!(to_instance(waiting).ssh_port, 0);
+    let running: Pod = serde_json::from_value(
+        serde_json::json!({"id":"p","publicIp":"203.0.113.7","portMappings":{"2222":30122}}),
+    )
+    .unwrap();
+    let i = to_instance(running);
+    assert_eq!((i.ssh_host.as_str(), i.ssh_port), ("203.0.113.7", 30122));
 }

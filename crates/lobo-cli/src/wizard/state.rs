@@ -7,12 +7,11 @@ pub const SECRETS: [&str; 4] = [
     "LOBO_API_KEY",
     "CF_TUNNEL_TOKEN",
 ];
-pub const SUMMARY_ROWS: [(&str, &str); 16] = [
+pub const SUMMARY_ROWS: [(&str, &str); 15] = [
     ("RUNPOD_API_KEY", "RunPod key"),
     ("VASTAI_API_KEY", "Vast key"),
-    ("LOBO_DOMAIN", "Domain"),
+    ("LOBO_CONNECTION", "Connection"),
     ("LOBO_API_KEY", "LOBO API key"),
-    ("CF_TUNNEL_TOKEN", "Tunnel token"),
     ("LOBO_BUCKET_URL", "Bucket URL"),
     ("LOBO_PROVIDER", "Default provider"),
     ("LOBO_MIN_MBPS", "Min MB/s"),
@@ -151,6 +150,13 @@ impl WizardState {
         .into_iter()
         .map(|(k, v)| (k.into(), v))
         .collect();
+        out.insert(
+            "LOBO_CONNECTION".into(),
+            lobo_core::config::Laptop::from_values(&self.cur)
+                .connection_mode()
+                .unwrap_or("ssh")
+                .into(),
+        );
         if self.is_local() || self.both_keys() && self.provider != "local" {
             out.insert("LOBO_PROVIDER".into(), self.provider.clone());
         }
@@ -327,7 +333,7 @@ mod tests {
         ] {
             assert!(sum.contains(want));
         }
-        assert_eq!(sum.lines().count(), 16);
+        assert_eq!(sum.lines().count(), 15);
         for (line, (_, label)) in sum.lines().zip(SUMMARY_ROWS) {
             assert!(line.starts_with(label));
         }

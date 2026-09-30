@@ -30,6 +30,8 @@ pub struct Offer {
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
 #[serde(default)]
 pub struct Inst {
+    pub public_ipaddr: Option<String>,
+    pub ports: Value,
     pub id: i64,
     pub label: String,
     #[serde(rename = "actual_status")]
@@ -96,15 +98,21 @@ impl Client {
             .bytes()
             .await
             .map_err(|e| RequestFailure::transport(status, e))?;
+        let host_key = body
+            .and_then(|b| b["env"]["LOBO_CONNECTION_HOST_KEY"].as_str())
+            .unwrap_or_default();
+        let detail = String::from_utf8_lossy(&bytes).trim().to_owned();
+        let detail = if host_key.is_empty() {
+            detail
+        } else {
+            detail.replace(host_key, "[redacted host key]")
+        };
         let error = match status {
             404 => Error::NotFound,
             401 | 403 => Error::Api(format!(
                 "vast {method} {path}: HTTP {status} (check VASTAI_API_KEY)"
             )),
-            300.. => Error::Api(format!(
-                "vast {method} {path}: HTTP {status}: {}",
-                String::from_utf8_lossy(&bytes).trim()
-            )),
+            300.. => Error::Api(format!("vast {method} {path}: HTTP {status}: {}", detail)),
             _ => return Ok(bytes.to_vec()),
         };
         let code = serde_json::from_slice::<Value>(&bytes)
@@ -130,17 +138,23 @@ impl Client {
         serde_json::from_slice(&bytes).map_err(|e| Error::Api(format!("vast {method} {path}: {e}")))
     }
     pub async fn search_offers(&self, max_dph: f64, min_mbps: i64) -> Result<Vec<Offer>> {
+        self.search_connected_offers(max_dph, min_mbps, false).await
+    }
+    async fn search_connected_offers(
+        &self,
+        max_dph: f64,
+        min_mbps: i64,
+        direct: bool,
+    ) -> Result<Vec<Offer>> {
         #[derive(Deserialize)]
         struct Offers {
             offers: Option<Vec<Offer>>,
         }
-        let v: Offers = self
-            .json(
-                Method::POST,
-                "/bundles",
-                Some(&search_query(max_dph, min_mbps)),
-            )
-            .await?;
+        let mut query = search_query(max_dph, min_mbps);
+        if direct {
+            query["direct_port_count"] = json!({"gte":2});
+        }
+        let v: Offers = self.json(Method::POST, "/bundles", Some(&query)).await?;
         Ok(v.offers.unwrap_or_default())
     }
     pub async fn create(&self, offer_id: i64, body: &Value) -> Result<i64> {
@@ -168,10 +182,17 @@ impl Client {
         let result: Created = serde_json::from_slice(&bytes)
             .map_err(|e| Error::Api(format!("vast PUT {path}: {e}")))?;
         if !result.success || result.new_contract == 0 {
-            return Err(Error::Rejected(format!(
+            let mut detail = format!(
                 "vast create offer {offer_id}: {} {}",
                 result.error, result.msg
-            )));
+            );
+            if let Some(key) = body["env"]["LOBO_CONNECTION_HOST_KEY"]
+                .as_str()
+                .filter(|k| !k.is_empty())
+            {
+                detail = detail.replace(key, "[redacted host key]");
+            }
+            return Err(Error::Rejected(detail));
         }
         Ok(result.new_contract)
     }
@@ -214,8 +235,12 @@ pub fn search_query(max_dph: f64, min_mbps: i64) -> Value {
     })
 }
 pub fn create_body(o: &CreateOpts) -> Value {
+    let mut env = bootstrap::env(o, "vast");
+    if o.connection == "ssh" {
+        env.insert("-p 2222:2222".into(), "1".into());
+    }
     json!({"client_id":"me", "image":o.image, "disk":DISK_GB, "label":POD_NAME, "runtype":"ssh",
-        "onstart":format!("#!/bin/bash\n{}",bootstrap::script("vast")), "env":bootstrap::env(o,"vast")})
+        "onstart":format!("#!/bin/bash\n{}",bootstrap::connected_script("vast", &o.connection)), "env":env})
 }
 
 pub struct VastProvider {
@@ -271,7 +296,7 @@ impl Provider for VastProvider {
         };
         let offers = tokio::select! { biased;
             _ = cancel.cancelled() => return Err(Error::Cancelled),
-            offers = self.client.search_offers(max_dph, o.min_mbps) => offers?,
+            offers = self.client.search_connected_offers(max_dph, o.min_mbps, o.connection == "ssh") => offers?,
         };
         let before: HashSet<_> = tokio::select! { biased;
             _ = cancel.cancelled() => return Err(Error::Cancelled),
@@ -362,6 +387,18 @@ fn to_instance(i: Inst) -> Instance {
         GoTime::ZERO
     };
     Instance {
+        ssh_host: i.public_ipaddr.unwrap_or_default(),
+        ssh_port: i
+            .ports
+            .get("2222/tcp")
+            .and_then(|p| p.get(0))
+            .and_then(|p| p.get("HostPort"))
+            .and_then(|p| {
+                p.as_str()
+                    .and_then(|v| v.parse::<u16>().ok())
+                    .or_else(|| p.as_u64().and_then(|v| u16::try_from(v).ok()))
+            })
+            .unwrap_or_default(),
         provider: "vast".into(),
         id: i.id.to_string(),
         status: i.status,

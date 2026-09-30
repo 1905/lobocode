@@ -392,6 +392,7 @@ impl lobo_core::control::AgentApi for ReadyAgent {
 }
 fn core_deps(f: &Fixture) -> lobo_core::control::Deps {
     lobo_core::control::Deps {
+        connection: None,
         providers: [("local".into(), Arc::new(f.p.clone()) as Arc<dyn Provider>)].into(),
         operations: Arc::new(lobo_core::control::OperationState::memory()),
         releases: Arc::new(UnusedRelease),

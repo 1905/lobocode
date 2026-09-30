@@ -175,7 +175,11 @@ async fn snapshot_no_domain_and_local() {
         d.new_agent = Arc::new(move |_| a.clone());
         let s = snapshot(&d).await.unwrap();
         assert_eq!(s.pod.unwrap().provider, name);
-        assert_eq!(ag.calls(), if name == "local" { 2 } else { 0 });
+        assert_eq!(
+            ag.calls(),
+            2,
+            "an explicit agent URL works without a domain"
+        );
     }
 }
 #[tokio::test]

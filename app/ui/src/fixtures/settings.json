@@ -3,19 +3,19 @@
     "exists": true,
     "path": "/Users/you/.config/lobo/config.env",
     "set": {
-      "CF_TUNNEL_TOKEN": true,
       "LOBO_API_KEY": true,
       "LOBO_BUCKET_URL": true,
-      "LOBO_DOMAIN": true,
+      "LOBO_CLOUD_PORT": true,
+      "LOBO_CONNECTION": true,
       "LOBO_MIN_MBPS": true,
       "RUNPOD_API_KEY": true,
       "VASTAI_API_KEY": true
     },
     "values": {
-      "CF_TUNNEL_TOKEN": "eyJh…fQ==",
       "LOBO_API_KEY": "sk-9…7e4d",
       "LOBO_BUCKET_URL": "https://pub-….r2.dev",
-      "LOBO_DOMAIN": "lobo.example.com",
+      "LOBO_CLOUD_PORT": "8933",
+      "LOBO_CONNECTION": "ssh",
       "LOBO_MIN_MBPS": "100",
       "RUNPOD_API_KEY": "rpa_…a1b2",
       "VASTAI_API_KEY": "3f9c…c0de"

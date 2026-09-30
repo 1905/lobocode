@@ -7,6 +7,41 @@ fn load(text: &str) -> Result<Laptop> {
 }
 const FULL: &str = "RUNPOD_API_KEY=rp\nVASTAI_API_KEY=vk\nLOBO_API_KEY=sk\nCF_TUNNEL_TOKEN=tok\nLOBO_DOMAIN=lobo.x.cc\nLOBO_BUCKET_URL=https://b\nR2_ACCOUNT_ID=account\nR2_ACCESS_KEY=access\nR2_SECRET_KEY=secret\nR2_ENDPOINT=https://r2\n";
 #[test]
+fn cloud_without_domain_and_legacy_selection() {
+    for key in ["RUNPOD_API_KEY", "VASTAI_API_KEY"] {
+        let cfg = load(&format!(
+            "LOBO_API_KEY=sk\n{key}=provider\nLOBO_BUCKET_URL=https://pub.r2.dev\n"
+        ))
+        .unwrap();
+        cfg.require_cloud().unwrap();
+        assert!(cfg.uses_ssh());
+        assert_eq!(cfg.cloud_url(), "http://127.0.0.1:8933/v1");
+        let generated = crate::genkey::opencode_for_laptop(&cfg, "sk").unwrap();
+        assert!(generated.contains("http://127.0.0.1:8933/v1"));
+        assert!(!generated.contains("https:///"));
+    }
+    let legacy = load(FULL).unwrap();
+    assert!(!legacy.uses_ssh());
+    assert_eq!(legacy.cloud_url(), "https://lobo.x.cc/v1");
+    let migrated = load(&format!(
+        "{FULL}LOBO_CONNECTION=ssh\nLOBO_CLOUD_PORT=9010\n"
+    ))
+    .unwrap();
+    assert!(migrated.uses_ssh());
+    assert_eq!(migrated.cloud_url(), "http://127.0.0.1:9010/v1");
+    let mut invalid = migrated;
+    invalid.cloud_port = "8932".into();
+    assert!(
+        invalid
+            .defaults()
+            .unwrap_err()
+            .to_string()
+            .contains("overlap")
+    );
+    invalid.connection = "public-http".into();
+    assert!(invalid.require_cloud().is_err());
+}
+#[test]
 fn load_laptop_full() {
     let l = load(FULL).unwrap();
     assert_eq!(l.runpod_api_key, "rp");
@@ -41,9 +76,7 @@ fn load_laptop_ignores_bad_defaults() {
 fn load_laptop_local_only() {
     let l = load("LOBO_API_KEY=sk-x\nLOBO_PROVIDER=local\n").unwrap();
     let e = l.require_cloud().unwrap_err().to_string();
-    for k in ["CF_TUNNEL_TOKEN", "LOBO_DOMAIN", "LOBO_BUCKET_URL"] {
-        assert!(e.contains(k));
-    }
+    assert!(e.contains("LOBO_BUCKET_URL"));
     assert!(load("LOBO_API_KEY=sk-x\nLOBO_WEIGHTS_DIR=/w\n").is_ok());
 }
 #[test]
@@ -68,7 +101,7 @@ fn require_cloud() {
     let mut l = Laptop::default();
     assert_eq!(
         l.require_cloud().unwrap_err().to_string(),
-        "config: cloud needs CF_TUNNEL_TOKEN, LOBO_DOMAIN, LOBO_BUCKET_URL"
+        "config: cloud needs LOBO_BUCKET_URL"
     );
     l.cf_tunnel_token = "t".into();
     l.domain = "d".into();

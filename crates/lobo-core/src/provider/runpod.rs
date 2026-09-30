@@ -65,6 +65,7 @@ pub struct Pod {
     pub last_started_at: RunPodTime,
     pub created_at: RunPodTime,
     pub gpu_count: i64,
+    pub public_ip: Option<String>,
     #[serde(deserialize_with = "null_ports")]
     pub port_mappings: BTreeMap<String, i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -78,12 +79,15 @@ fn null_ports<'de, D: Deserializer<'de>>(
 
 pub fn build_create_payload(o: &CreateOpts, cloud: &str, min_download_mbps: f64) -> Value {
     let mut env = bootstrap::env(o, "runpod");
-    let mut start = bootstrap::script("runpod");
+    let mut start = bootstrap::connected_script("runpod", &o.connection);
     let mut ports = Vec::<&str>::new();
     if !o.ssh_pub_key.is_empty() {
         ports.push("22/tcp");
         start.insert_str(0, SSH_PREFIX);
         env.insert("PUBLIC_KEY".into(), o.ssh_pub_key.clone());
+    }
+    if o.connection == "ssh" {
+        ports.push("2222/tcp");
     }
     let mut payload = json!({
         "name": POD_NAME, "imageName": o.image, "gpuTypeIds": [GPU_TYPE], "gpuCount": 1,
@@ -93,6 +97,9 @@ pub fn build_create_payload(o: &CreateOpts, cloud: &str, min_download_mbps: f64)
     });
     if min_download_mbps > 0.0 {
         payload["minDownloadMbps"] = json!(min_download_mbps);
+    }
+    if o.connection == "ssh" {
+        payload["supportPublicIp"] = json!(true);
     }
     payload
 }
@@ -122,6 +129,11 @@ impl Client {
         }
     }
     async fn request(&self, method: Method, path: &str, body: Option<Value>) -> Result<Vec<u8>> {
+        let host_key = body
+            .as_ref()
+            .and_then(|b| b["env"]["LOBO_CONNECTION_HOST_KEY"].as_str())
+            .unwrap_or_default()
+            .to_owned();
         let mut req = self
             .hc
             .request(method.clone(), format!("{}{path}", self.base_url))
@@ -137,7 +149,10 @@ impl Client {
             return Err(Error::NotFound);
         }
         if status.as_u16() >= 300 {
-            let msg = String::from_utf8_lossy(&bytes).trim().to_owned();
+            let mut msg = String::from_utf8_lossy(&bytes).trim().to_owned();
+            if !host_key.is_empty() {
+                msg = msg.replace(&host_key, "[redacted host key]");
+            }
             if is_no_capacity(&msg) {
                 return Err(Error::NoCapacity(msg));
             }
@@ -280,6 +295,13 @@ impl Provider for RunPodProvider {
 }
 fn to_instance(p: Pod) -> Instance {
     Instance {
+        ssh_host: p.public_ip.unwrap_or_default(),
+        ssh_port: p
+            .port_mappings
+            .get("2222")
+            .or_else(|| p.port_mappings.get("2222/tcp"))
+            .and_then(|p| u16::try_from(*p).ok())
+            .unwrap_or_default(),
         provider: "runpod".into(),
         id: p.id,
         status: p.desired_status,

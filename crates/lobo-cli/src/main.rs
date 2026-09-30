@@ -1,5 +1,12 @@
-#[tokio::main]
+#[tokio::main(worker_threads = 2)]
 async fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args
+        .get(1)
+        .is_some_and(|s| s == lobo_core::connection::HELPER_ARG)
+    {
+        std::process::exit(lobo_core::connection::entry(&args[2..]).await);
+    }
     let app = lobo_cli::app::App::real();
     #[cfg(feature = "test-fakes")]
     let app = if let Some(name) = std::env::var_os("LOBO_TEST_SCENARIO") {

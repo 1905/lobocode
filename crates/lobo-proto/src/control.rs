@@ -34,6 +34,12 @@ pub struct Instance {
     #[serde(skip)]
     #[ts(skip)]
     pub agent_url: String,
+    #[serde(skip)]
+    #[ts(skip)]
+    pub ssh_host: String,
+    #[serde(skip)]
+    #[ts(skip)]
+    pub ssh_port: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]

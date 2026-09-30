@@ -56,6 +56,45 @@ pub fn script(provider: &str) -> String {
     format!("{SCRIPT_START}{terminate}{SCRIPT_END}")
 }
 
+pub fn connected_script(provider: &str, connection: &str) -> String {
+    let script = script(provider);
+    if connection == "ssh" {
+        script.replace(
+            "export LOBO_T_BOOT0=",
+            &format!("{SSH_START}\nexport LOBO_T_BOOT0="),
+        )
+    } else {
+        script
+    }
+}
+
+pub const SSH_START: &str = r###"timeout 300 bash -c 'command -v /usr/sbin/sshd >/dev/null || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq openssh-server >/dev/null; }'
+umask 077
+mkdir -p /lobo/cloud-ssh /run/sshd
+printf '%s' "$LOBO_CONNECTION_HOST_KEY" | base64 -d > /lobo/cloud-ssh/host
+printf 'restrict,port-forwarding,permitopen="127.0.0.1:8080",permitopen="127.0.0.1:8081" %s\n' "$LOBO_CONNECTION_PUBLIC_KEY" > /lobo/cloud-ssh/authorized_keys
+cat > /lobo/cloud-ssh/config <<'LOBO_SSH_CONFIG'
+Port 2222
+ListenAddress 0.0.0.0
+HostKey /lobo/cloud-ssh/host
+PidFile /lobo/cloud-ssh/sshd.pid
+AuthorizedKeysFile /lobo/cloud-ssh/authorized_keys
+PermitRootLogin prohibit-password
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM yes
+AllowUsers root
+AllowTcpForwarding local
+PermitOpen 127.0.0.1:8080 127.0.0.1:8081
+AllowAgentForwarding no
+X11Forwarding no
+PermitTTY no
+ForceCommand /bin/false
+LOBO_SSH_CONFIG
+/usr/sbin/sshd -f /lobo/cloud-ssh/config
+unset LOBO_CONNECTION_HOST_KEY LOBO_CONNECTION_PUBLIC_KEY"###;
+
 pub fn env(o: &CreateOpts, provider: &str) -> BTreeMap<String, String> {
     let mut values: BTreeMap<String, String> = [
         ("LOBO_PROVIDER", provider.to_owned()),
@@ -94,6 +133,18 @@ pub fn env(o: &CreateOpts, provider: &str) -> BTreeMap<String, String> {
     if !o.model_ssh_key.is_empty() {
         values.insert("LOBO_MODEL_SSH_KEY".into(), o.model_ssh_key.clone());
         values.insert("LOBO_MODEL_SSH_HOSTKEY".into(), o.model_host_key.clone());
+    }
+    if o.connection == "ssh" {
+        values.insert("LOBO_CONNECTION".into(), "ssh".into());
+        values.insert(
+            "LOBO_CONNECTION_PUBLIC_KEY".into(),
+            o.connection_public_key.clone(),
+        );
+        values.insert(
+            "LOBO_CONNECTION_HOST_KEY".into(),
+            o.connection_host_key.clone(),
+        );
+        values.remove("CF_TUNNEL_TOKEN");
     }
     values
 }

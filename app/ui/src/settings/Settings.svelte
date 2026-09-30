@@ -33,10 +33,6 @@
   let free = $state<number | null>(null);
   let tab = $state('local');
   const targets = $derived(readiness ? providerTargets(readiness) : null);
-  const plain = [
-    ['LOBO_DOMAIN', 'domain', 'lobo.example.com'],
-    ['LOBO_BUCKET_URL', 'bucket url', 'https://pub-….r2.dev'],
-  ];
   const numeric = [
     ['LOBO_MIN_MBPS', 'min MB/s', '100'],
     ['LOBO_CTX', 'context', '65536'],
@@ -227,15 +223,23 @@
       </section>
       <section>
         <h2 class="copper">// access</h2>
-        <label class="field"
-          ><span>{plain[0][1]}</span><input
-            aria-label={plain[0][1]}
-            placeholder={plain[0][2]}
-            bind:value={fields.plain.LOBO_DOMAIN}
+        <div class="field">
+          <span>connection</span><span class="small"
+            >{fields.plain.LOBO_CONNECTION === 'cloudflare'
+              ? 'Existing public tunnel'
+              : 'Private · encrypted SSH'}</span
+          >
+        </div>
+        {#if fields.plain.LOBO_CONNECTION === 'cloudflare'}
+          <LinkButton
+            label="use private connection"
+            tone="cyan"
             disabled={saving}
-            spellcheck="false"
-          /></label
-        >
+            onclick={() => (fields.plain.LOBO_CONNECTION = 'ssh')}
+          />
+        {:else}
+          <p class="small dim">No domain or tunnel account required.</p>
+        {/if}
         <div class="field">
           <span class="dim">api key</span>
           <div class="row grow">
@@ -259,20 +263,17 @@
           </div>
         </div>
         <label class="field"
-          ><span>tunnel token</span><input
-            aria-label="tunnel token"
-            type="password"
-            placeholder={secretHint(config, 'CF_TUNNEL_TOKEN')}
-            bind:value={fields.secrets.CF_TUNNEL_TOKEN}
-            autocomplete="off"
-            spellcheck="false"
+          ><span>cloud port</span><input
+            aria-label="cloud port"
+            placeholder="8933"
+            bind:value={fields.plain.LOBO_CLOUD_PORT}
             disabled={saving}
           /></label
         >
         <label class="field"
-          ><span>{plain[1][1]}</span><input
-            aria-label={plain[1][1]}
-            placeholder={plain[1][2]}
+          ><span>bucket url</span><input
+            aria-label="bucket url"
+            placeholder="https://pub-….r2.dev"
             bind:value={fields.plain.LOBO_BUCKET_URL}
             disabled={saving}
             spellcheck="false"
