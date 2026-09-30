@@ -211,6 +211,8 @@ fn export_bindings_schema() {
         Listing,
         LocalState,
         ConfigShow,
+        UpRequest,
+        Readiness,
         catalog::Model
     );
     let mut names = std::fs::read_dir(&dir)
@@ -240,6 +242,8 @@ fn export_bindings_schema() {
         "Listing",
         "LocalState",
         "ConfigShow",
+        "UpRequest",
+        "Readiness",
         "Model",
     ]
     .map(|s| format!("{s}.ts"));
@@ -258,4 +262,15 @@ fn export_bindings_schema() {
     assert!(!ts.contains("api_url"));
     assert!(!ts.contains("agent_url"));
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn app_request_and_readiness_wire() {
+    assert_eq!(
+        serde_json::to_value(UpRequest::default()).unwrap(),
+        serde_json::json!({"provider":null,"model":null,"ctx":null,"source":null,"cloud":null})
+    );
+    let value = serde_json::json!({"exists":true,"cloud_ready":false,"ready":true,"local_supported":true,"providers":[],"default_provider":"local","default_model":"q6","local_port":9000,"error":null});
+    let r: Readiness = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(serde_json::to_value(r).unwrap(), value);
 }

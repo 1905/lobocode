@@ -191,3 +191,5 @@ The user said "continue". Resume the authorized full-auto implementation and del
 - Pod image CI 36661673515 also passed at 57caf1a. Sent the CI-repair QA notification with the green Rust run and remaining app/live-test limits.
 
 - P4 complete at runtime/package revision fcb8aff. All six packaging criteria, temporary Homebrew install/test, default-feature seam check and 51 CLI tests pass. Rust CI 36662757471 and pod image 36662757454 are green. Final live checks remain P6. P5 shared config/protocol and separate app workspace implementation started.
+
+- P5 shared API batch: UpRequest/Readiness and generated TS, readiness/validation, resolve_up and free_bytes_nearest implemented. 255 proto/core tests pass (one ignored network check), clippy passes. Separate app scaffold, reducer and controller are uncommitted work in progress.

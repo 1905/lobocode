@@ -109,4 +109,4 @@ pub use up::{UpOperation, up};
 #[cfg(test)]
 mod up_tests;
 
-pub use precheck::{apply_defaults, check_providers, check_release, check_target};
+pub use precheck::{apply_defaults, check_providers, check_release, check_target, resolve_up};

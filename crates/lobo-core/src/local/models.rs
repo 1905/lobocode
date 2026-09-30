@@ -73,5 +73,17 @@ pub fn free_space(dir: &Path) -> Result<u64> {
     }
 }
 
+/// Measure an unsaved folder selection without creating it.
+pub fn free_bytes_nearest(path: &Path) -> Option<u64> {
+    let cfg = crate::config::Laptop {
+        weights_dir: path.to_string_lossy().into(),
+        ..Default::default()
+    };
+    let expanded = cfg.weights();
+    let absolute = std::path::absolute(expanded).ok()?;
+    let nearest = absolute.ancestors().find(|p| p.exists())?;
+    free_space(nearest).ok()
+}
+
 #[cfg(test)]
 mod tests;
