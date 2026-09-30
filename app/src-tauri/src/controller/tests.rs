@@ -466,12 +466,23 @@ async fn quit_awaits_cancelled_create() {
     assert_eq!(p.deletes.load(Ordering::SeqCst), 1);
 }
 #[tokio::test(start_paused = true)]
-async fn worker_panic_cleans_up_and_remains_failed() {
-    let (c, _, p) = fixture(20, false, true);
+async fn worker_panic_retains_unproven_cloud_ownership_and_remains_failed() {
+    let (c, b, p) = fixture(20, false, true);
     start(&c, &p).await;
     let h = c.active.lock().unwrap().up.take().unwrap();
     assert!(h.await.unwrap().is_err());
-    assert!(p.running.lock().unwrap().is_empty());
+    // This fake has no saved SSH connection proving the uncertain instance boot.
+    assert_eq!(p.running.lock().unwrap().len(), 1);
+    assert_eq!(p.deletes.load(Ordering::SeqCst), 0);
+    let owner = b.load_owner().unwrap().unwrap();
+    assert_eq!(owner.instance_id, None);
+    assert!(!owner.boot_id.is_empty());
+    let guard =
+        b.d.operations
+            .acquire(&CancellationToken::new())
+            .await
+            .unwrap();
+    assert_eq!(guard.pending().unwrap().boot_id, owner.boot_id);
     assert!(matches!(c.state().phase, Phase::Failed { .. }));
 }
 #[tokio::test(start_paused = true)]
