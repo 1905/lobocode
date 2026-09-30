@@ -574,6 +574,9 @@ async fn displayed_pass_does_not_authorize_a_denied_start_or_retry() {
     c.refresh_memory().await;
     memory_status(&c, "ready").await;
     assert_eq!(c.state().local_memory.unwrap().status, "ready");
+    // The next display sample must reflect the same memory loss as admission.
+    // The owned worker now refreshes status after a rejected admission too.
+    b.memory_mode.store(1, Ordering::SeqCst);
     b.start_deny.store(true, Ordering::SeqCst);
     assert!(
         c.submit_start()
@@ -585,7 +588,7 @@ async fn displayed_pass_does_not_authorize_a_denied_start_or_retry() {
             .contains("fresh Start rejected")
     );
     assert!(matches!(c.state().phase, Phase::Failed { .. }));
-    assert_eq!(c.state().local_memory, None);
+    memory_status(&c, "insufficient").await;
     assert!(c.submit_start().unwrap().await.unwrap().is_err());
     assert_eq!(p.rents.load(Ordering::SeqCst), 0);
     assert_eq!(b.prepare_calls.load(Ordering::SeqCst), 2);
