@@ -14,6 +14,26 @@ on:
         description: Publish immutable model images (does not move latest tags)
         type: boolean
         default: false
+      prebuilt_candidate:
+        description: Verify a prepared Q6 OCI export instead of rebuilding model images
+        type: boolean
+        default: false
+      runner_label:
+        description: Unique ephemeral runner label beginning with cloud-e2e-
+        type: string
+        default: ''
+      source_sha:
+        description: Full source commit baked into the prepared Q6 image
+        type: string
+        default: ''
+      image_digest:
+        description: Exact sha256 digest of the prepared OCI image
+        type: string
+        default: ''
+      promote_latest:
+        description: Also promote the verified immutable Q6 image to latest-q6 (requires publish)
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
@@ -22,6 +42,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   image:
+    if: ${{ !inputs.prebuilt_candidate }}
     runs-on: ${{ vars.POD_IMAGE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 180
     strategy:
@@ -136,3 +157,126 @@ jobs:
               --tag "ghcr.io/1905/lobocode:latest-$model" "ghcr.io/1905/lobocode@$digest"
             echo "latest-$model -> $digest" >> "$GITHUB_STEP_SUMMARY"
           done
+  prebuilt:
+    if: github.repository == '1905/lobocode' && github.event_name == 'workflow_dispatch' && inputs.prebuilt_candidate
+    # Valid candidates use exactly the runner's unique custom label. Invalid
+    # labels fail on a hosted runner instead of waiting for a nonexistent one.
+    runs-on: ${{ startsWith(inputs.runner_label, 'cloud-e2e-') && inputs.runner_label || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    env:
+      CANDIDATE_RUNNER: ${{ inputs.runner_label }}
+      CANDIDATE_SHA: ${{ inputs.source_sha }}
+      CANDIDATE_DIGEST: ${{ inputs.image_digest }}
+      CANDIDATE_PUBLISH: ${{ inputs.publish }}
+      CANDIDATE_PROMOTE: ${{ inputs.promote_latest }}
+    steps:
+      - name: Validate candidate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == 1905/lobocode ]]
+          [[ "$CANDIDATE_RUNNER" =~ ^cloud-e2e-[a-z0-9][a-z0-9-]{0,63}$ ]]
+          [[ "$CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$CANDIDATE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          [[ "$CANDIDATE_PUBLISH" == true || "$CANDIDATE_PUBLISH" == false ]]
+          [[ "$CANDIDATE_PROMOTE" == true || "$CANDIDATE_PROMOTE" == false ]]
+          if [[ "$CANDIDATE_PROMOTE" == true && "$CANDIDATE_PUBLISH" != true ]]; then
+            echo 'latest-q6 promotion requires explicit publication.' >&2
+            exit 1
+          fi
+          [[ "$(uname -s)/$(uname -m)" == Linux/x86_64 ]]
+          # The task runner binds only its completed artifact directory here.
+          findmnt --noheadings --output OPTIONS --target /candidate | tr ',' '\n' | grep -qx ro
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify every OCI blob and image identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/verify_cloud_candidate.py \
+            --source-sha "$CANDIDATE_SHA" --image-digest "$CANDIDATE_DIGEST" \
+            > "$RUNNER_TEMP/candidate-verification.json"
+          cat "$RUNNER_TEMP/candidate-verification.json"
+          {
+            echo 'Prepared Q6 image verification passed. No model was started.'
+            echo '```json'
+            cat "$RUNNER_TEMP/candidate-verification.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Install pinned ORAS
+        if: inputs.publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/oras-bin"
+          curl --fail --silent --show-error --location --connect-timeout 15 --max-time 120 \
+            https://github.com/oras-project/oras/releases/download/v1.3.4/oras_1.3.4_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/oras.tar.gz"
+          printf '%s  %s\n' f27adb935022d94df8dc77719c322dda592c78a0d57a6f7dcdd8d900b248c454 \
+            "$RUNNER_TEMP/oras.tar.gz" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/oras.tar.gz" -C "$RUNNER_TEMP/oras-bin" oras
+          "$RUNNER_TEMP/oras-bin/oras" version
+      - name: Publish the verified immutable image and optionally promote Q6
+        if: inputs.publish
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          umask 077
+          oras="$RUNNER_TEMP/oras-bin/oras"
+          auth="$RUNNER_TEMP/ghcr-candidate.json"
+          trap 'rm -f "$auth" "$RUNNER_TEMP/anonymous-token.json"' EXIT
+          tag="sha-${CANDIDATE_SHA:0:12}-q6"
+          repository=ghcr.io/1905/lobocode
+          # Anonymous reads distinguish an absent tag from auth/network errors.
+          remote_digest() {
+            local reference=$1 status anonymous_token
+            # A model upload can outlast an anonymous registry token.
+            curl --fail --silent --show-error --connect-timeout 15 --max-time 30 \
+              --max-filesize 1048576 \
+              'https://ghcr.io/token?service=ghcr.io&scope=repository:1905/lobocode:pull' \
+              --output "$RUNNER_TEMP/anonymous-token.json" || return 1
+            anonymous_token=$(jq -er '.token | select(type == "string" and length > 0)' "$RUNNER_TEMP/anonymous-token.json") || return 1
+            status=$(curl --silent --show-error --connect-timeout 15 --max-time 30 \
+              --max-filesize 4194304 --output "$RUNNER_TEMP/remote-manifest.json" \
+              --write-out '%{http_code}' \
+              -H "Authorization: Bearer $anonymous_token" \
+              -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+              "https://ghcr.io/v2/1905/lobocode/manifests/$reference")
+            case "$status" in
+              200) printf 'sha256:%s\n' "$(sha256sum "$RUNNER_TEMP/remote-manifest.json" | cut -d ' ' -f 1)" ;;
+              404) printf 'absent\n' ;;
+              *) echo "Anonymous manifest request failed: HTTP $status" >&2; return 1 ;;
+            esac
+          }
+          existing=$(remote_digest "$tag")
+          if [[ "$existing" != absent && "$existing" != "$CANDIDATE_DIGEST" ]]; then
+            echo 'Immutable tag already points to another image. Preserving it.' >&2
+            exit 1
+          fi
+          printf '%s' "$GHCR_TOKEN" | "$oras" login ghcr.io --username "$GITHUB_ACTOR" \
+            --password-stdin --registry-config "$auth"
+          unset GHCR_TOKEN
+          "$oras" cp --force --concurrency 1 --from-oci-layout --to-registry-config "$auth" \
+            "/candidate/q6-oci@$CANDIDATE_DIGEST" "$repository:$tag"
+          [[ "$(remote_digest "$tag")" == "$CANDIDATE_DIGEST" ]] || {
+            echo 'Anonymous immutable tag digest verification failed.' >&2; exit 1;
+          }
+          echo "$repository:$tag -> $CANDIDATE_DIGEST (anonymous access verified)" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$CANDIDATE_PROMOTE" == true ]]; then
+            existing=$(remote_digest latest-q6)
+            if [[ "$existing" != absent && "$existing" != "$CANDIDATE_DIGEST" ]]; then
+              echo 'latest-q6 now points to another image. Preserving it.' >&2
+              exit 1
+            fi
+            "$oras" tag --registry-config "$auth" "$repository@$CANDIDATE_DIGEST" latest-q6
+            [[ "$(remote_digest latest-q6)" == "$CANDIDATE_DIGEST" ]] || {
+              echo 'Anonymous latest-q6 digest verification failed.' >&2; exit 1;
+            }
+            echo "latest-q6 -> $CANDIDATE_DIGEST (anonymous access verified)" >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -94,3 +94,7 @@ Current host constraint (2026-09-30): the user reported no available Mac memory 
 Latest user instruction resumes one direct local comparison without OpenCode: exactly 47,000 synthetic input tokens, Q6, context 65,536, at most 32 output tokens. Use the hosted build's normal memory guard and isolated task-owned runtime. This supersedes the earlier 64-token input cap and E2E hold for this diagnostic only. Native UI E2E, broad local tests, installation and release remain deferred. Preserve personal config, installed app and CLI. See `plans/2026-09-30-app-setup-memory-visibility/plan-v1.1.md`.
 
 Diagnostic result: hosted build `b5617ae` failed normal memory admission before model load (26.7 GiB required, 9.4 GiB available after reserves). Zero generations. Owned cleanup passed. The same-size comparison is pending; do not claim model success or start the conditional OpenCode investigation from this result. The ready script and fake checks are recorded in the v1.1 plan and results.
+
+## Cloud E2E priority — 2026-09-30
+
+Latest user instruction: “local test later. do cloud e2e”, after asking about TUI and Mac. RunPod test rentals and cloud-client E2E are now authorized; local inference stays deferred. Use Q6, one GPU at a time, isolated config/state, bounded direct prompts without OpenCode and exact owned cleanup. App/CLI release remains held. Prepare the complete image before resolving the separate earlier public-image promotion hold. Track plan v1.4.
