@@ -503,12 +503,14 @@ fn immutable_runtime_is_private_and_controls_running_identity() {
     assert_eq!(store.runtime(), Some(owner));
     assert!(store.view(now()).is_local);
     let json = serde_json::to_string(&store.view(now())).unwrap();
-    assert!(!json.contains("private-boot"));
-    assert!(!json.contains("4242"));
+    assert!(json.contains("private-boot"));
+    assert!(json.contains("4242"));
     assert!(!json.contains("local_start_id"));
+    assert!(!json.contains("local_pid"));
+    assert!(!json.contains("\"runtime\""));
     assert!(!json.contains("runtime_generation"));
     store.set_runtime(None);
     let json = serde_json::to_string(&store.view(now())).unwrap();
-    assert!(!json.contains("private-boot"));
-    assert!(!json.contains("4242"));
+    assert!(json.contains("private-boot"));
+    assert!(json.contains("4242"));
 }
