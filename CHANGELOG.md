@@ -6,6 +6,7 @@
 - Actual Mac app and 80×24 TUI cloud starts report missing public Q6 image (HTTP 404) before rental. RunPod inventory stays empty. Complete-image preparation and live cloud acceptance remain in progress.
 - Prepare an optional CI path to verify and publish a complete Q6 image built elsewhere. Verification is the default; publication and latest-tag promotion require explicit inputs. Dell fixture checks and workflow lint pass. Actual image verification and publication remain pending.
 - Reject prepared images whose advertised CPU platform differs from their Linux AMD64 image config. All 23 verifier fixtures pass on Dell.
+- Build and independently verify a complete 24.69 GB Q6 GPU image with bundled runtime, agent, SSH and model weights. Verification-only CI passed at `505c255`. The image remains unpublished; live RunPod inference and client acceptance are pending.
 
 - Prepare a separate one-request Q6 diagnostic with exactly 47,000 synthetic input tokens and at most 32 output tokens. Dell HTTP fake checks pass. Actual Mac startup was blocked by normal memory admission: 26.7 GiB required, 9.4 GiB available after reserves. No model loaded or generation ran; speed and model acceptance remain unverified.
 - Hosted app checks and bundle verification pass at `b5617ae`. Native Dock, window and app-flow acceptance remain deferred; the installed app is unchanged.
