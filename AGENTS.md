@@ -74,3 +74,9 @@ inference restriction for this feature. The memory guard must pass normally.
 Backend/full/lifecycle suites still run off this Mac. No cloud rental or release.
 The user has now quit OpenCode and stopped the local runtime; leave it stopped
 until the authorized post-fix E2E.
+
+The expanded app spec was approved on 2026-09-30. The user then said “e2e test
+later”: implement first with unit/build checks, and defer native E2E plus the
+bounded inference benchmark to the later validation stage. The memory branch
+must be integrated into the new isolated feature branch without prematurely
+merging unverified code to master. Image builds and updater remain paused.

@@ -2,7 +2,8 @@
 
 **Date:** 2026-09-30
 **Scope:** /Users/kass/dev/lobocode
-**Status:** pending review
+**Status:** approved
+**Approval:** User approved the expanded spec on 2026-09-30, including implementation and bounded scripted E2E.
 
 ## TL;DR
 
@@ -38,7 +39,6 @@
 3. Display samples lack their collection time and share the watchdog's slow schedule. Both local and cloud runners use 30-second ticks; the UI cannot prove that a value belongs to the current model process. Evidence: `crates/lobo-agent/src/runner.rs:269`, `crates/lobo-core/src/local/supervise.rs:219`, `crates/lobo-agent/src/pod.rs:499`, `crates/lobo-proto/src/agent.rs:118`.
 4. The app intentionally hides itself from normal macOS app switching. It declares `LSUIElement=true` and sets accessory activation, despite already creating a native main window. Evidence: `app/src-tauri/Info.plist:3`, `app/src-tauri/src/lib.rs:52`, `app/src-tauri/src/windows.rs:55`.
 5. Ready displays generation and prompt rate gauges without a request activity state. Those gauges can be zero while the server processes input. Missing counters also default to zero in the current parser. Evidence: `app/ui/src/lib/view.ts:126`, `app/ui/src/panel/ReadyCard.svelte:45`, `crates/lobo-agent/src/metrics.rs:34`.
-6. App Stop delegates to an all-provider down operation. It can stop a local model, also delete cloud instances, then return a Vast error. Status likewise rejects a valid local instance when another provider fails. Evidence: `crates/lobo-core/src/control/status.rs:3`, `crates/lobo-core/src/control/status.rs:40`.
 6. Local Stop and status use global provider enumeration. Stop records Vast errors while deleting every returned runtime, including Local; status rejects provider errors before selecting a valid Local instance. Start also scans every provider. Evidence: `app/src-tauri/src/backend.rs:57`, `crates/lobo-core/src/control/status.rs:3`, `crates/lobo-core/src/control/status.rs:40`, `crates/lobo-core/src/control/mod.rs:56`, `crates/lobo-core/src/control/up.rs:196`.
 
 The session's read-only investigation observed a healthy Q6 runtime without swap activity. An 18-character user message expanded into an approximately 47,000-token request. A separate four-token title request completed at 9.86 tokens/s. Task 15 was reading input while `/metrics` reported zero rates and one processing request. See [investigation.md](investigation.md) for the observed counters and progress. These observations are not acceptance results for this feature. No prompt text, credentials or raw request bodies belong in these artifacts.
@@ -54,7 +54,6 @@ The session's OpenCode endpoint, Q6 model, key and `default_agent=lobo` were alr
 5. Restore Dock, Cmd+Tab, reopen and native window behavior while retaining the tray. Addresses problem 4.
 6. Distinguish reading input, generating output, confirmed idle and unavailable activity without interpreting zero rates as idle. Addresses problem 5.
 7. Keep app lifecycle and status actions scoped to the selected or owned runtime. Never contact unrelated providers during Local operations. Addresses problem 6.
-7. Scope app Stop and status to the owned runtime identity, with zero cloud-provider calls for a local target. Addresses problem 6.
 
 ## Non-goals
 
@@ -203,7 +202,6 @@ Keep the existing Quit implementation and cleanup ownership. These UI changes mu
 | `crates/lobo-agent/src/api.rs` | Return sanitized optional telemetry and accurate sample age. Do not expose raw slots. |
 | `crates/lobo-core/src/control/status.rs`, `up.rs`, `cleanup.rs` and tests | Add app-targeted lifecycle/status operations with immutable runtime ownership; preserve explicit CLI global operations and unrelated operation/connection records. |
 | `crates/lobo-core/src/control/agent_http.rs` and `crates/lobo-core/src/control/mod.rs` | Support direct status sampling through the cached active agent connection without provider discovery per sample. |
-| `crates/lobo-core/src/control/status.rs` and app runtime ownership state | Add identity-scoped app status/Stop without all-provider fallback. Retain CLI bulk down and startup worker cleanup contracts. |
 | `app/src-tauri/src/backend.rs`, `commands.rs` and `controller.rs` | Add current-instance OpenCode setup, authenticated model verification, operation invalidation and two-second visible telemetry polling. Keep secrets in Rust. |
 | `app/src-tauri/src/types.rs`, `store.rs` and `tray.rs` | Carry setup result and sanitized display data; reject stale or mismatched boot samples. Show active work in the tray even when rates are zero. |
 | `app/src-tauri/Info.plist`, `src/lib.rs` and `src/windows.rs` | Enable regular app activation, register commands and retain native reopen/tray behavior. |
@@ -213,6 +211,8 @@ Keep the existing Quit implementation and cleanup ownership. These UI changes mu
 | `app/ui/src/proto/`, `app/ui/src/gen/` and `app/ui/src/fixtures/` | Regenerate types and add loading, processing, unavailable, stale and old-agent fixtures. |
 | `app/e2e/` and existing core/agent test modules | Cover config setup, zero-rate active processing, process identity, protocol compatibility and native app behavior. |
 | `README.md`, `CHANGELOG.md` and `docs/implementation-mistakes.md` | Document in-app setup, exact memory meanings and validation limits. Record unfinished acceptance until it passes. |
+
+Implementation file-map detail from the approved plan: create `crates/lobo-core/src/control/app_scope.rs` and `app_scope/tests.rs`, `crates/lobo-core/src/local/process_memory.rs` and its tests, `crates/lobo-proto/src/telemetry.rs`, `crates/lobo-agent/src/telemetry.rs`, `app/e2e/runtime.spec.js`, `tools/bounded_runtime_e2e.py`, and this feature's `results.md`. Modify their module registrations, Cargo manifests/locks, `connection.rs`, local provider identity checks, existing control/connection test modules, `app/src-tauri/examples/generate_ui.rs`, `app/src-tauri/tests/fixtures.rs`, `e2e_memory.rs`, `app/e2e/{fixture.py,wdio.conf.js,app.spec.js}`, `tools/native_app_e2e.py`, `Makefile`, and `.github/workflows/rust.yml`. The workflow adds an explicit dispatch switch to defer native E2E without skipping unit/build checks. These files implement the approved contracts; they add no user-facing scope.
 
 ## Tests
 
@@ -281,21 +281,26 @@ Deliver focused build and smoke evidence first after implementation is authorize
 
 ## Out of scope
 
-- Versioned implementation plan or product code in this drafting task.
-- Resuming the existing feature queue or image jobs from this spec alone.
-- Branch pushes, release tags, DMG installation, image publication or GPU rental without resumed authorization.
+- Resuming unrelated image builds or the updater. Completing the memory baseline is an authorized prerequisite for these fixes.
+- Public release tags, image publication or GPU rental. Normal branch pushes, CI, local QA installation and direct merges follow the existing full-auto authorization.
 - Changes to the independent local memory-admission feature or GitHub updater design.
 - Mac inference beyond the bounded two-request E2E exception, broad host process inspection, or user prompt/config capture.
 - CLI packaging, global OpenCode policy changes, automatic model selection or performance tuning.
 
 ## Rollout
 
-P1 — After explicit resumption, finish the memory branch's native E2E and merge prerequisite (`b9a1966` at drafting); one focused commit if fixes are needed, gated on clean review.
+P1 — Create the isolated feature worktree from clean master and merge the existing memory branch (`b9a1966` at drafting) into that feature branch. Preserve its pending documentation. Do not merge unverified memory code to master merely to create a baseline.
 
-P2 — On that merged baseline, fix app-owned Start/status/Stop scope and add in-app OpenCode configuration plus regular native activation; one commit gated on clean review.
+P2 — On that combined feature baseline, fix app-owned Start/status/Stop scope and add in-app OpenCode configuration plus regular native activation; one commit gated on clean review.
 
 P3 — Add measured memory, request activity, independent sampling and compact views; one commit gated on clean review and focused remote/native fixture checks.
 
-P4 — Complete failure, compatibility and regression acceptance; document actual limits and update the changelog in one commit gated on clean review.
+P4 — After implementation, complete the deferred E2E, failure, compatibility and regression acceptance; document actual limits and update the changelog in one commit gated on clean review.
 
-This is one feature and one future implementation plan. All phases remain unstarted here. Existing work and image jobs stay paused. No push, public release, image publication or rental follows from this draft. After implementation resumes, show usable smoke-tested native results before completing the broader suites; do not claim full acceptance early.
+This is one feature and one implementation plan. The approved work includes implementation, normal CI/direct merges, local QA delivery and bounded scripted E2E. Image builds and the updater remain paused. Public release, image publication and rental remain held. Show usable smoke-tested native results before completing the broader suites; do not claim full acceptance early.
+
+## Execution clarification
+
+After approving this spec, the user said “e2e test later.” Implement fixes and run unit/build checks first. Defer native fixture E2E, OpenCode integration E2E and the bounded model benchmark until the later validation stage. Keep all unfinished acceptance visible. Do not resume the image builds or updater.
+
+A previously launched memory fixture E2E had already ended: five cases passed; the app disconnected during the denied-Start case and the final case could not connect. Cleanup passed and no model started. Preserve the evidence at `bin/app-e2e/lobo-native-e2e-zlqngx7s` in the memory worktree. Investigate the existing logs; do not rerun E2E during implementation.
