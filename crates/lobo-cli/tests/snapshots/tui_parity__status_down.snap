@@ -1,0 +1,7 @@
+---
+source: crates/lobo-cli/tests/tui_parity.rs
+expression: text
+---
+lobo status  ·  12:00:00
+
+lobo: down (no lobo instance on any provider)

@@ -1,0 +1,35 @@
+---
+source: crates/lobo-cli/tests/tui_parity.rs
+expression: text
+---
+lobo status  ·  12:00:00
+
+Pod
+id            3ab00vd3rf1575  runpod · RUNNING
+cost          $0.69/h  ·  up 1h30m  ·  spent $1.03
+
+Release
+version       2026.09.23-1  ·  git feaaaa5
+image         ghcr.io/ggml-org/llama.cpp:server-cuda-b11118
+
+Agent
+stage         ● ready  q8 · ctx 8192
+
+GPU
+device        NVIDIA GeForce RTX 5090
+load          █████████████████████░░░  87%
+vram          ██████████████████████░░ 30,112 / 32,607 MB
+
+Host
+cpu load      1.20  0.90  0.70  (1/5/15 min)
+ram           ░░░░░░░░░░░░░░░░░░░░░░░░ 9,120 / 450,560 MB
+
+LLM  (totals since llama-server start)
+requests      1 running · 0 queued
+tokens in     182,340  ·  2410 tok/s prompt
+tokens out    21,044  ·  48.3 tok/s gen
+
+Watchdog
+idle          5m12s
+auto-kill     in 24m48s (idle)
+expires       22:00 Wed

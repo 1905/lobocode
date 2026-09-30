@@ -10,7 +10,7 @@ Authorization: the user said, "when plan is fixed start implementation in full a
 | P1 | [Workspace and protocol](plan-p1-v1.1.md) | done: 5dfe9ab, CI 36557109125 |
 | P2 | [Pod agent](plan-p2-v1.2.md) | code/CI done at ed65ecc; live E2E pending P6 |
 | P3 | [Core](plan-p3-v1.2.md) | code/CI done at 2884464; live inference pending P6 |
-| P4 | [CLI](plan-p4-v1.2.md) | in progress: CLI boundary and Go fixtures |
+| P4 | [CLI](plan-p4-v1.2.md) | in progress: control commands, dashboards and Go replay |
 | P5 | [App](plan-p5-v1.2.md) | pending P4 |
 | P6 | [Cutover](plan-p6-v1.2.md) | pending P5 |
 
@@ -32,6 +32,7 @@ The current corrections have not received another independent model review. Runt
 - Keep one final Codex code review in P6. Builds, fixture checks and focused tests run in every phase.
 - HTTPS workflow push was rejected for missing workflow scope. The existing ~/ssh/github-kass key authenticates as 1905. Use an explicit SSH command with git@github.com:1905/lobocode.git; do not reuse stale account aliases.
 - No Jira issue is identified for lobocode. Do not use unrelated Sputnik issues.
+- On 2026-09-30 the user explicitly requested app E2E testing when implementation finishes. Verify the actual app flows in P5/P6, including setup, start/stop, reopen/resume and failure handling. Keep browser fixture checks distinct from native app and final live GPU evidence. Use the local Playwright CLI skill for browser automation.
 - Use the installed notify skill for QA and final Telegram messages. Keep temporary public preview links out of session chat.
 
 ## Plan corrections
@@ -160,3 +161,10 @@ The user said "continue". Resume the authorized full-auto implementation and del
 - P4 first CLI batch: 27 Rust test functions pass, including all 53 Go replay cases and 17 help paths. Real terminal Save/Escape checks passed; build-info override printed lobo 9.9.9. Captured fixtures regenerate without drift. CLI lint and Go capture vet passed. Control/dashboard/release handlers remain pending.
 
 - First CLI candidate befb354 passed pod-image CI 36657068951, but Rust CI 36657068815 failed. Ubuntu exposed version-dependent Go JSON decoder wording; the fixture now records the stable CLI-owned prefix. Apple Silicon exposed an ephemeral-port collision in a local process test; fixtures now allocate unique low port pairs and never re-probe a pair already assigned to another test. Focused replay and repeated process tests pass locally; corrected CI remains pending.
+
+- Corrected candidate 8cf8515 passed Rust CI 36658079574: Ubuntu, Apple Silicon and the static agent. All 53 CLI fixtures reproduce exactly; 13 real-process tests passed three consecutive local runs. P4 setup candidate QA notification sent; live command implementation continues.
+- TUI implementation research: Ratatui inline viewports reserve rows from the current cursor and clamp to terminal size (https://docs.rs/ratatui/latest/ratatui/enum.Viewport.html). Local 0.30.2 source shows `resize` preserves the configured inline height, so content-height changes need terminal recreation at the old origin. Crossterm disallows mixing EventStream with synchronous input reads (https://docs.rs/crossterm/latest/crossterm/event/index.html); use nonblocking poll/read ticks alongside Ratatui cursor queries. Terminal restoration and native terminal smoke remain required.
+
+- P4 control batch implements Tasks 30–41 and the fake-binary part of 46: eight Go dashboard goldens, terminal-buffer snapshots, boot report, start/status/stop handlers and executable JSON replay. All 43 CLI tests pass with test-fakes enabled. Cancellation waits for a 121-second fake create; failed cleanup never reports completion. Broken JSON output waits for deletion. An issued down remains owned through Ctrl-C. App E2E is still pending implementation; no live provider call was made.
+
+- Five isolated PTY checks passed for the compiled fake-provider CLI: ready, q, Ctrl-C, status quit and terminal resize. Each restores canonical input, echo, signals and cursor visibility; no alternate screen is used. Both cancelled starts exit 1 after cleanup. These checks use fake providers and verify terminal behavior, not live inference. All-target/all-feature CLI clippy and workflow actionlint pass.

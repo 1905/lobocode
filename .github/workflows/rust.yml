@@ -36,6 +36,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Rust lint and tests
         run: make rust-lint rust-test
+      - name: CLI executable parity with fake providers
+        run: cargo test --locked -p lobo-cli --features test-fakes --test cli_fakes
       - name: Check generated TypeScript
         run: |
           make proto-ts
@@ -93,3 +95,5 @@ jobs:
         run: test "$(uname -m)" = arm64
       - name: Test core, CLI and local process lifecycle
         run: cargo test --locked -p lobo-core -p lobo-cli -j 2
+      - name: CLI executable parity with fake providers
+        run: cargo test --locked -p lobo-cli --features test-fakes --test cli_fakes -j 2

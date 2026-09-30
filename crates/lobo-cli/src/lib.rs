@@ -1,10 +1,14 @@
 pub mod app;
+pub mod bootlog;
 pub mod build_info;
 pub mod cli;
 pub mod cmd;
 pub mod duration;
+#[cfg(feature = "test-fakes")]
+pub mod fakes;
 pub mod help;
 pub mod logfmt;
+pub mod tui;
 pub mod wizard;
 
 use app::{App, Io};
@@ -127,15 +131,10 @@ async fn execute(app: &App, argv: Vec<OsString>, io: &mut Io) -> anyhow::Result<
             }
         },
         Some(Cmd::Up(a)) => {
-            let cfg = app::load_cfg(&path)?;
-            let _opts = cmd::up::prepare(app, &a, &changed, &cfg, &path)?;
-            anyhow::bail!("startup command implementation pending");
+            cmd::up::run(app, &a, &changed, &path, io).await?;
         }
-        Some(Cmd::Down(_)) | Some(Cmd::Status(_)) => {
-            let cfg = app::load_cfg(&path)?;
-            lobo_core::control::check_providers(&cfg, app.local_supported)?;
-            anyhow::bail!("control command implementation pending");
-        }
+        Some(Cmd::Down(a)) => cmd::down::run(app, &a, &path, io).await?,
+        Some(Cmd::Status(a)) => cmd::status::run(app, &a, &path, io).await?,
         Some(Cmd::Logs(_)) | Some(Cmd::Test(_)) => {
             app::load_cfg(&path)?;
             anyhow::bail!("agent command implementation pending");

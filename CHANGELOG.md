@@ -2,8 +2,12 @@
 
 ## Unreleased
 
+- Rust P4 control commands: start, status and stop call the shared core. Inline dashboards preserve Go output; boot timings go to stderr and the local timing log.
+- Ctrl-C during startup and broken JSON output wait for owned cleanup. Cleanup failures stay errors. Stop keeps issued deletes awaited after Ctrl-C.
+- Focused checks: eight Go dashboard goldens, output replay, delayed-create cancellation, failed deletion and broken-output cleanup pass. Logs, live API checks, release packaging and app implementation remain pending.
+
 - Rust CI repair: normalize version-dependent Go JSON decoder messages in CLI fixtures. Local process tests use unique ports outside the usual outgoing-connection range.
-- Focused checks: all 53 CLI replay cases and repeated local process tests pass. Cross-platform CI is pending.
+- Focused checks: all 53 CLI replay cases and repeated local process tests pass. Ubuntu and Apple Silicon CI passed at 8cf8515.
 
 - Rust P4 partial CLI: config commands and terminal wizard, help, API-key generation, model listing and the shared local supervisor entry. The Go CLI remains the installed default.
 - Checks: 27 Rust test functions pass, covering 53 Go CLI replay cases, help metadata, key rotation and local flags. Isolated terminal Save/Escape smoke tests pass. Live control commands, dashboards, release packaging and candidate CI remain pending.

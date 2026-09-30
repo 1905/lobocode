@@ -686,7 +686,7 @@ pub struct UpModel { pub state: UpState, frame: usize }
 impl UpModel { pub fn new() -> Self; pub fn update(&mut self, m: UpMsg, now: DateTime<Utc>) -> Flow; pub fn view(&self) -> Text<'static>; pub fn err(&self) -> Option<&str>; }
 pub const SPINNER: [&str; 8];   // bubbles spinner.Dot frames: ⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷
 ```
-- [ ] Failing tests: `Event(None)` → Quit; a `done` event → Quit; `q`/ctrl+c → Quit with the U-08 error text; `Tick` advances the frame and sets `state.at`.
+- [ ] Failing tests: `Event(None)` → Quit; a `done` event → Quit; `q`/ctrl+c → Quit with `interrupted = true`. The command emits U-08 only after owned cleanup succeeds. `Tick` advances the frame and sets `state.at`.
 - [ ] Verify: `cargo test -p lobo-cli tui::up::tests::model` → ok.
 - [ ] Commit: `lobo-cli: up model`.
 
@@ -695,11 +695,13 @@ pub const SPINNER: [&str; 8];   // bubbles spinner.Dot frames: ⣾ ⣽ ⣻ ⢿ �
 **Files:** `src/tui/run.rs`. Rows: U-05, U-08, S-02.
 
 ```rust
-pub async fn run_up(rx: mpsc::Receiver<UpEvent>, clock: Arc<dyn Clock>) -> anyhow::Result<()>;          // Err = model err
-pub async fn run_status(deps: &Deps, clock: Arc<dyn Clock>) -> anyhow::Result<()>;
+pub async fn run_up(rx: &mut mpsc::Receiver<UpEvent>, ready: &mut Option<ReadyInfo>, clock: Arc<dyn Clock>, cancel: &CancellationToken, no_color: bool) -> anyhow::Result<()>;
+pub async fn run_status(deps: &Deps, cancel: &CancellationToken, no_color: bool) -> anyhow::Result<()>;
 pub fn draw_up(f: &mut Frame, m: &UpModel);  pub fn draw_status(f: &mut Frame, m: &StatusModel, tz: &chrono::Local);
 ```
 ratatui `Terminal::with_options(Viewport::Inline(h))` (bubbletea default is inline, output stays in scrollback), `h` = rendered line count capped at the terminal height; raw mode on, restored on every exit path (guard type with `Drop`). Up ticks every 100 ms (spinner); status fetches at start and every 2 s via `control::snapshot`.
+
+Implementation note: Ratatui 0.30.2 cannot change an inline viewport's configured height through `resize`. Recreate the terminal at its prior origin when content height changes. Poll crossterm input without blocking on each 100 ms tick; do not mix EventStream with the cursor queries used by inline initialization/resizing. The command retains the event receiver and UpOperation through cleanup. A consumer error or quit requests cancellation, then completion is awaited; cleanup failures take precedence.
 - [ ] Failing tests (TestBackend, fixed size): `draw_up` of the `up_ready` state on `TestBackend::new(120, 20)` → `insta::assert_snapshot!(terminal.backend())`; `draw_status` of `status_ready` on `TestBackend::new(80, 40)` with `Utc`.
 - [ ] Verify: `cargo test -p lobo-cli tui::run` → ok.
 - [ ] Orchestrator (manual, free): a small `#[ignore]` example `cargo run -p lobo-cli --example tui_demo` that feeds the boot script into `run_up` with a 300 ms delay per event; watch it once in a real terminal; check the screen is restored after `q`.
@@ -710,9 +712,9 @@ ratatui `Terminal::with_options(Viewport::Inline(h))` (bubbletea default is inli
 **Files:** `src/bootlog.rs`. Rows: U-09.
 
 ```rust
-pub fn tee_ready(rx: mpsc::Receiver<UpEvent>) -> (mpsc::Receiver<UpEvent>, Arc<Mutex<Option<ReadyInfo>>>);
+// Consumers record ReadyInfo directly while reading events. No detached tee task.
 #[derive(Serialize)] pub struct BootLine<'a> { pub at: GoTime, pub conns: i64, pub ready: &'a ReadyInfo, pub source: &'a str } // alphabetical = Go map order
-pub fn report_boot(w: &mut dyn Write, r: Option<&ReadyInfo>, source: &str, conns: i64, log: &Path, now: DateTime<Utc>);
+pub fn report_boot(w: &mut dyn Write, r: Option<&ReadyInfo>, source: &str, conns: i64, log: &Path, now: DateTime<Utc>) -> std::io::Result<()>;
 ```
 Table = Go `tabwriter(minwidth 0, tabwidth 0, padding 2, ' ')` with a trailing empty cell: every column padded to its widest cell (rune count) + 2.
 - [ ] Failing tests: `report_boot` stderr bytes == `fixtures/go/text/report_boot.txt`; appended line JSON-equal to `boots_line.json`, keys in order `at, conns, ready, source`; two calls → two lines; `None` or no timings → writes nothing.
@@ -724,8 +726,8 @@ Table = Go `tabwriter(minwidth 0, tabwidth 0, padding 2, ' ')` with a trailing e
 **Files:** `src/cmd/up.rs`. Rows: U-06, U-07, J-01.
 
 ```rust
-pub async fn json_up(rx: mpsc::Receiver<UpEvent>, out: &mut dyn Write) -> anyhow::Result<()>;  // "up failed" if any err
-pub async fn plain_up(rx: mpsc::Receiver<UpEvent>) -> anyhow::Result<()>;                      // logs via tracing
+pub async fn json_up(rx: &mut mpsc::Receiver<UpEvent>, out: &mut dyn Write, ready: &mut Option<ReadyInfo>) -> anyhow::Result<()>;  // "up failed" if any err
+pub async fn plain_up(rx: &mut mpsc::Receiver<UpEvent>, ready: &mut Option<ReadyInfo>) -> anyhow::Result<()>;                      // logs via tracing
 ```
 - [ ] Failing tests: `json_up` over the Go-captured events (decode `json_up_boot.jsonl` into `UpEvent`s, feed a channel) → output lines JSON-equal to the file; the failed file → `Err("up failed")`. `plain_up` with the `logfmt` layer on a buffer (`tracing::subscriber::with_default`) → lines equal to `plain_up_boot.txt` / `plain_up_failed.txt` after timestamp strip.
 - [ ] Verify: `cargo test -p lobo-cli cmd::up::tests::consumers` → ok.
@@ -735,7 +737,7 @@ pub async fn plain_up(rx: mpsc::Receiver<UpEvent>) -> anyhow::Result<()>;       
 
 **Files:** `src/cmd/up.rs`. Rows: U-02, U-05, U-08, U-09.
 
-Order exactly U-02. Mode switch U-05 (`term.stdout_tty`). Presign: `if o.provider == "local" { deps.presign = None }`. `report_boot(stderr, ready, &o.source, o.conns, Path::new("boots.jsonl"), clock.now())` after the mode returns, before returning its error. `--ssh` read error → returned as is.
+Order exactly U-02. Mode switch U-05 (`term.stdout_tty`). Presign: `if o.provider == "local" { deps.presign = None }`. `report_boot(stderr, ready, &o.source, o.conns, &app.boot_log, clock.now())` after the mode and owned worker finish, before returning their error. `App.boot_log` defaults to `boots.jsonl`; tests inject a temporary path without changing the process working directory. `--ssh` read error → returned as is.
 - [ ] Failing tests (in-process, `App.deps` = a closure returning `lobo_core::control::testkit::deps(..)`): `--cloud bad` message exact and deps never built; `--q6` sets model q6; `--provider local` → presign `None` (deps closure records it); not-TTY without flags → plain; `--json` → JSON lines; `--ssh <missing>` → error; `boots.jsonl` appears in the temp cwd after a ready run.
 - [ ] Verify: `cargo test -p lobo-cli cmd::up` → ok.
 - [ ] Commit: `lobo-cli: up command`.
@@ -779,7 +781,7 @@ pub fn release_manifest(ver: &str, sha: &str, dirty: bool, built_at: DateTime<Ut
 
 **Files:** `src/cmd/completion.rs`, `src/lib.rs`. Rows: G-07, G-08.
 - [ ] `completion <shell>` via `clap_complete::generate` for bash, zsh, fish, powershell; hidden.
-- [ ] `run` owns one `CancellationToken`; `tokio::signal::ctrl_c` cancels it; passed to `control::up` and used as a `select!` arm around `snapshot`, `down`, `target`, `logs`, `test`.
+- [ ] `run` uses `App.cancel`; `tokio::signal::ctrl_c` cancels it; passed to `control::up` and used as a `select!` arm around read-only `snapshot`, `target`, `logs`, `test`. Check cancellation before `down`; once deletion begins, await deletion and verification even after Ctrl-C. Dropping an issued delete would lose cleanup ownership.
 - [ ] Failing tests: `completion zsh` stdout non-empty and contains `lobo`; `completion` absent from `root_help`; cancelling the token during a fake `up` ends the stream and returns an error (exit 1).
 - [ ] Verify: `cargo test -p lobo-cli cmd::completion && cargo test -p lobo-cli app::tests::cancel` → ok.
 - [ ] Commit: `lobo-cli: completion and Ctrl-C cancellation`.
@@ -801,7 +803,7 @@ pub fn release_manifest(ver: &str, sha: &str, dirty: bool, built_at: DateTime<Ut
 #[cfg(feature = "test-fakes")] pub fn scenario(name: &str) -> Option<App>;   // "boot" | "failed" | "running" | "down"
 ```
 `main.rs`: `#[cfg(feature = "test-fakes")]` reads `LOBO_TEST_SCENARIO`; unknown name → `error: unknown test scenario`. Scenarios mirror Task 5 (same scripts, same fixed clock, same `UpOpts` result).
-- [ ] Failing tests (`cargo test -p lobo-cli --features test-fakes --test cli_fakes`), each with a temp RunPod-only config: `LOBO_TEST_SCENARIO=boot lobo up --json` → stdout JSON-equal to `json_up_boot.jsonl`, exit 0; `failed` → `json_up_failed.jsonl`, stderr `error: up failed`, exit 1; `running lobo status --json` → `status_running.json`; `down lobo status --json` → `status_down.json`; `running lobo down --json` → `down_running.json`; `boot lobo up --plain` → stderr log lines equal to `plain_up_boot.txt` after timestamp strip, and `report_boot.txt` content at the end; `boot lobo up --json --q6=false` → `changed` has q6, model stays release default (Swift app call shape).
+- [ ] Failing tests (`cargo test -p lobo-cli --features test-fakes --test cli_fakes`), each with a temp RunPod-only config: `LOBO_TEST_SCENARIO=boot lobo up --json` → stdout JSON-equal to `json_up_boot.jsonl`, exit 0; `failed` → `json_up_failed.jsonl`, stderr `error: up failed`, exit 1; `running lobo status --json` → `status_running.json`; `down lobo status --json` → `status_down.json`; `running lobo down --json` → `down_running.json`; `boot lobo up --plain` → stderr log lines equal to `plain_up_boot.txt` after timestamp strip, and a boot timing table at the end (zero timings from BootScript; Task 37 byte-checks the representative nonzero table); `boot lobo up --json --q6=false` → `changed` has q6, model stays release default (Swift app call shape).
 - [ ] Verify: the command above → ok.
 - [ ] Commit: `lobo-cli: assert_cmd JSON parity on lobo-core fakes`.
 
