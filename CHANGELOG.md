@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Document native UI acceptance gaps, the unnecessary domain/bucket requirements, and the incomplete public install flow. Clarify standalone DMG installation and separate Homebrew CLI installation. Complete public GPU images are planned; cloud release acceptance remains pending.
+- Record the latest-image requirement in project memory and the distribution plan. Each new cloud start must resolve the current public image; implementation remains pending.
 
 - Add automatic private SSH connections for cloud instances. New setups need no domain, Cloudflare account or tunnel subscription. OpenCode uses `http://127.0.0.1:8933/v1`; GPU and provider charges still apply.
 - Pin a fresh server key for each instance, restrict forwarding to the inference/control APIs, and reconnect through a detached helper. Stop closes the owned connection and removes its keys. Preserve existing complete Cloudflare configurations.
