@@ -63,3 +63,11 @@ Run `36709440347` completed successfully at `86bdb68`. The new core OpenCode wri
 ## App OpenCode setup checkpoint
 
 Commit `bab6a73` adds Task8 commands and regression fixtures. Parent source review covers captured runtime/key validation, bounded no-redirect model discovery, final commit guards and selected-file metadata. Corrections keep commit guards alive across panic handling and parse the bounded captured config bytes instead of reopening the file. Owner reads are also bounded. App compilation and new units are pending hosted macOS. Task9 frontend and Task10 native activation are in progress; no personal config, installed app or runtime was changed.
+
+Run `36712619930` at `18c010e`: Linux protocol/workspace, core-macos and static-agent jobs pass. App Rust Clippy and Svelte checks pass, with zero Svelte errors/warnings. Prettier rejects `app/ui/src/lib/api.ts`; the app unit/build steps did not run. The Clients delivery will include the formatting correction and a hosted rerun. Native E2E remains disabled.
+
+## Clients and native activation checkpoint
+
+Commit `fe54faf` implements Tasks9–10. Parent source review passes path/checkbox retention, runtime-change invalidation, duplicate prevention, safe errors and durable Settings-tab delivery. Review corrections retain useful sanitized authentication errors and preserve pending success when the user changes tabs. The native app uses Regular activation and no longer declares LSUIElement. Actual Dock, Command-Tab, drag, corner and picker acceptance remains deferred.
+
+Dell UI checks pass: 19 tests, zero Svelte errors/warnings, Vite build with 189 modules, and the full UI formatting check. These checks include the Task8 API formatting correction. No Node process, build, app launch or test ran on the memory-constrained Mac. Hosted native compilation, app tests and bundle verification are next. README now describes the app-owned setup flow and marks the old screenshots and pending native acceptance.

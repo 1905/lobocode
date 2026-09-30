@@ -100,7 +100,7 @@ The shared core checks again at Start and immediately before model load. A passi
 
 Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. The app uses the same Rust core and config file as the CLI. It runs local models directly. Opening the app shows a native window, so it works when a full menu bar hides the item behind the notch.
 
-Windows use native macOS title bars and rounded corners. Each view fits without scrolling. Settings groups controls into Local, Cloud and Defaults tabs.
+Windows use native macOS title bars and rounded corners. Each view fits without scrolling. Settings groups controls into Local, Cloud, Defaults and Clients tabs. The Rust candidate uses normal macOS app activation for Dock and Command-Tab access. Native acceptance of the latest changes remains pending.
 
 Build the Rust candidate with `make install-mac`. `make dmg` creates `bin/lobocode.dmg`: open it and drag **lobocode** to **Applications**. The Rust candidate is not published as a release yet.
 
@@ -115,7 +115,15 @@ Build the Rust candidate with `make install-mac`. `make dmg` creates `bin/loboco
 
 ## OpenCode
 
-`lobo gen-api-key` writes `opencode.lobo.json` with the `lobo` cloud provider at `http://127.0.0.1:8933/v1`, the `lobo-local` provider at port `8931`, and the agent. Cloud appears when a provider is configured. Existing public connections retain their domain endpoint. Merge the generated blocks into `~/.config/opencode/opencode.json`, then select the `lobo` agent (Tab). The agent disables MCP tools and skills for this model.
+In the unreleased Rust app, wait for **Ready**, then select **OpenCode…** or open **Settings → Clients**. Confirm the displayed config file. Use **choose existing config…** for a different JSON or JSONC file. The app does not require the CLI or an OpenCode subprocess.
+
+Leave **Use Lobocode by default** checked to set the default model and agent. Clear it to preserve existing defaults. Select **Configure/Repair**, then restart OpenCode. Project settings can override the selected file.
+
+Setup authenticates the active endpoint and uses the running model and context limit. It preserves comments, unrelated providers and custom agent settings. Changed files receive a private backup; the API key stays in a private referenced file. An unchanged repair creates no extra files. Authentication or validation failure prevents replacement.
+
+The provider is `lobo-local` for local models and `lobo` for cloud models. Existing provider restrictions remain in place and appear as warnings. A new `lobo` agent enables core coding tools and disables MCP tool and skill access. Existing custom agent controls remain unchanged.
+
+The optional CLI retains its separate export command: `lobo gen-api-key` writes `opencode.lobo.json` for manual merging. It is not required for app setup. The screenshots above predate the Clients tab; native setup acceptance remains pending.
 
 ## Pod image
 
