@@ -9,7 +9,7 @@ Authorization: the user said, "when plan is fixed start implementation in full a
 |---|---|---|
 | P1 | [Workspace and protocol](plan-p1-v1.1.md) | done: 5dfe9ab, CI 36557109125 |
 | P2 | [Pod agent](plan-p2-v1.2.md) | code/CI done at ed65ecc; live E2E pending P6 |
-| P3 | [Core](plan-p3-v1.2.md) | paused: implementation complete; phase-close checks/CI pending |
+| P3 | [Core](plan-p3-v1.2.md) | implementation complete; phase-close checks/CI pending |
 | P4 | [CLI](plan-p4-v1.2.md) | pending P3 |
 | P5 | [App](plan-p5-v1.2.md) | pending P4 |
 | P6 | [Cutover](plan-p6-v1.2.md) | pending P5 |
@@ -145,3 +145,11 @@ The user said "pause work for now. commit everything,". Save all current changes
 - P4–P6 remain pending. Before P4 implementation, correct its stale TUI interruption text claiming that a pod keeps booting; cancellation now waits for cleanup.
 - Estimated progress remains about 45% by planned tasks. This is not a time estimate or full acceptance.
 - No GPU rental, live R2 write or model-weight download was made.
+
+
+## Resumed — 2026-09-30
+
+The user said "continue". Resume the authorized full-auto implementation and delivery workflow from 488d447. Finish the remaining P3 checks and candidate CI, then implement P4. Corrected the stale P4 interruption inventory to match owned cancellation and cleanup.
+
+- Resume checks: explicit Go/Rust interop passed (3 tests); workspace formatting and tracked fixture/TypeScript drift checks passed.
+- CLI research: clap supports optional boolean values with require_equals/default_missing_value, and ValueSource::CommandLine preserves explicit false flags (https://docs.rs/clap/latest/clap/struct.Arg.html, https://docs.rs/clap/latest/clap/struct.ArgMatches.html). Ratatui supplies terminal restoration hooks (https://ratatui.rs/examples/apps/panic/); inquire distinguishes cancellation and interruption (https://docs.rs/inquire/latest/inquire/error/enum.InquireError.html). Local CLI verification remains pending.

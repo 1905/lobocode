@@ -32,7 +32,7 @@ P4-specific addition to the scope (verbatim, every dispatch): never run the real
 7. **Extra positional args:** Go leaf commands without an `Args` rule silently ignore extra args (`lobo up foo` runs `up`). Rust preserves this behavior. Commands with explicit Go Args rules keep those rules. Capture extra-argument cases in the Go replay fixtures.
 8. **Wizard:** inquire asks one prompt at a time. Same questions, order, show/hide rules, validation messages, summary and saved result as the huh form. No Shift+Tab back navigation (inquire has none); Esc or Ctrl+C quits without saving. The intro note text changes its last line accordingly.
 9. **Test seams:** in-process `lobo_cli::run(&App, argv, &mut Io)` for unit tests. For `assert_cmd` against fakes, the cargo feature `test-fakes` (never on in release builds) lets the binary read `LOBO_TEST_SCENARIO` and swap in `lobo_core::control::testkit` fakes. `make rust-build-lobo` and goreleaser build default features only; Task 51 checks the release binary ignores the variable.
-10. **Parity baseline** is `master` HEAD at P4 start, not `5443667`: commit `6a72092` changed `internal/tui/status.go` and added `status_local.golden` after `5443667`.
+10. **Parity baseline** is `master` at P4 start, `3117f9b5a64beb466c5b78d5f69bed5bdbb115e0`, not `5443667`: commit `6a72092` changed `internal/tui/status.go` and added `status_local.golden` after `5443667`.
 
 ## Pinned versions
 
@@ -149,7 +149,7 @@ Every later task names the rows it satisfies. Row IDs are stable; Task 52 ticks 
 | U-05 | Mode: `--json` → U-06; `--plain` or stdout not a TTY → U-07; else TUI (T-rows). | main.go:235-242 |
 | U-06 | `--json`: each `UpEvent` as one JSON line on stdout (J rule). Any event with `err` → after the stream, `error: up failed`, exit 1. | main.go:288-308 |
 | U-07 | Plain: INF `up` with `phase`, `detail` (non-empty), `download` = `{pct:.1}% {mbps:.0} MB/s` (total > 0), and on ready `url`, `release`, `git_sha`, `usd_per_h`, `boot` (ms, rounded to the second). Error events → ERR `{err}` with `phase`. Exit 1 with the last error. | main.go:264-286 |
-| U-08 | TUI quit keys `q`, `ctrl+c` → error `interrupted: the pod keeps booting; check with \`lobo status\`, stop with \`lobo down\``, exit 1. TUI error state → exit 1 with that error. | tui/up.go:177,192-196 |
+| U-08 | TUI quit keys `q`, `ctrl+c` cancel the owned operation and wait for cleanup. Exit 1 with `interrupted: startup cancelled and cleanup completed` only after successful cleanup; otherwise report the cleanup failure. TUI error state exits 1 with that error. This deliberately changes Go behavior. | v1.2 cancellation contract; tui/up.go:177,192-196 |
 | U-09 | After every mode: if a ready event with timings was seen → stderr `\nboot timings:\n` + 9 tabwriter rows (padding 2), and one line appended to `./boots.jsonl` (0644): keys `at` (now UTC, RFC3339Nano), `conns`, `ready`, `source`. | timings.go:13-61 |
 
 ### down, status, logs, test, models
@@ -218,7 +218,7 @@ Every later task names the rows it satisfies. Row IDs are stable; Task 52 ticks 
 ## Task 0 — Preconditions (orchestrator, no implementer)
 
 - [ ] P3 is `done` on `feat/rust`; `cargo test --workspace` green.
-- [ ] contracts.md is v1.1 with the P3 additions and this plan's additions folded in, and P3 shipped them (`lobo_core::control::testkit` behind feature `testkit`, `Wiring`, `control::{check_*, apply_defaults}`, `config::{mask, masked, LAYOUT, loose_mode}`, `genkey::{ensure_api_key, write_opencode, OPENCODE_OUT}`, `local::RunConfig::validate`). If not, stop: P4 cannot build on the v1.0 signatures (see "Spec issues" 3).
+- [ ] contracts.md is v1.2 with the P3 additions and this plan's additions folded in, and P3 shipped them (`lobo_core::control::testkit` behind feature `testkit`, `Wiring`, `control::{check_*, apply_defaults}`, `config::{mask, masked, LAYOUT, loose_mode}`, `genkey::{ensure_api_key, write_opencode, OPENCODE_OUT}`, `local::RunConfig::validate`). If not, stop: P4 cannot build on the v1.0 signatures (see "Spec issues" 3).
 - [ ] `git status` clean on `feat/rust`; `git merge master` done (merge-hygiene rule); Go green: `go test ./cmd/lobo/ ./internal/tui/ ./internal/configtui/` → `ok` ×3.
 - [ ] Record the parity baseline: `git log -1 --format=%h master` → write it into the "Decisions" item 10 line of this plan.
 - [ ] Toolchain for later tasks (local, free): `brew install zig`, `cargo install cargo-zigbuild --locked`, `rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin`. `goreleaser --version` → 2.13.x (present).
@@ -344,8 +344,8 @@ Every bool flag: `num_args = 0..=1`, `require_equals = true`, `default_missing_v
 
 **Files:** `src/cli.rs`. Rows: U-01, D-01, S-01, L-01, E-01, M-01, C-01, C-05, C-07, C-08, C-09, K-01, R-01, LR-01, V-01, G-08, G-11.
 
-- [ ] Args structs with fields declared in cobra's alphabetical flag order, help strings copied verbatim from the inventory rows, defaults as in Go (`cloud = "community"`, `n = 200`, `model = "q6"`, `port = 8931`, `api_port = 8932`). `--max-life` uses `duration::parse_go_duration` (Task 11). `logs`: `#[arg(short = 'n', long = "n")]`. Hidden: `release`, `local`, `completion`. `config get`: exactly one `KEY`. Leaf commands take no positional args (G-11) except `config set` (`Vec<String>`) and `config get`.
-- [ ] Failing tests: parse each `cases.json` args vector that exits 0 in Go without error-from-parser; `lobo up extra` → parse error (G-11); `lobo logs -n 5` and `--n 5` → 5; `lobo config get` → error; `lobo local run --ctx 1 --idle-min 1 x` → error.
+- [ ] Args structs with fields declared in cobra's alphabetical flag order, help strings copied verbatim from the inventory rows, defaults as in Go (`cloud = "community"`, `n = 200`, `model = "q6"`, `port = 8931`, `api_port = 8932`). `--max-life` uses `duration::parse_go_duration` (Task 11). `logs`: `#[arg(short = 'n', long = "n")]`. Hidden: `release`, `local`, `completion`. `config get`: exactly one `KEY`. Go leaf commands without an Args rule accept ignored positional tails (G-11); `config set` consumes its values, while `config get`, `models` and `local run` enforce their explicit argument rules.
+- [ ] Failing tests: parse each `cases.json` args vector that exits 0 in Go without error-from-parser; `lobo up extra` → parse success with ignored extra argument (G-11); `lobo logs -n 5` and `--n 5` → 5; `lobo config get` → error; `lobo local run --ctx 1 --idle-min 1 x` → error.
 - [ ] Verify: `cargo test -p lobo-cli cli::tests` → ok.
 - [ ] Commit: `lobo-cli: full clap command tree`.
 
