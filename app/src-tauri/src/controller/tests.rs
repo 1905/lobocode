@@ -100,6 +100,8 @@ impl Provider for SlowProvider {
         Ok(())
     }
 }
+type PreparationGate = Arc<(Mutex<bool>, std::sync::Condvar)>;
+
 struct FakeBackend {
     d: control::Deps,
     calls: Mutex<Vec<&'static str>>,
@@ -111,7 +113,7 @@ struct FakeBackend {
     memory_started: tokio::sync::Notify,
     start_deny: AtomicBool,
     owner: Arc<Mutex<Option<RuntimeTarget>>>,
-    prepare_gate: Mutex<Option<Arc<(Mutex<bool>, std::sync::Condvar)>>>,
+    prepare_gate: Mutex<Option<PreparationGate>>,
     prepare_started: tokio::sync::Notify,
     prepare_calls: AtomicUsize,
     down_targets: Mutex<Vec<RuntimeTarget>>,

@@ -611,14 +611,14 @@ impl Store {
             self.runtime = target;
         }
     }
-    pub fn submit(&mut self, now: DateTime<Utc>) -> StartSubmission {
+    pub(crate) fn submit(&mut self, now: DateTime<Utc>) -> StartSubmission {
         StartSubmission {
             request: self.begin_up(now),
             config_generation: self.config_generation,
             selection_generation: self.selection_generation,
         }
     }
-    pub fn submission_valid(&self, submission: &StartSubmission) -> bool {
+    pub(crate) fn submission_valid(&self, submission: &StartSubmission) -> bool {
         self.config_generation == submission.config_generation
             && self.selection_generation == submission.selection_generation
             && !self.stop_running
