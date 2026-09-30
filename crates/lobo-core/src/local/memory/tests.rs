@@ -155,6 +155,17 @@ fn native_snapshot_reads_without_loading_a_model() {
         assert!(snapshot().is_err());
         return;
     }
+    // Hosted macOS runners can expose no Metal device. Check the native
+    // capability independently; only that specific failure is acceptable.
+    if objc2_metal::MTLCreateSystemDefaultDevice().is_none() {
+        let error = snapshot().unwrap_err();
+        assert!(
+            matches!(&error, Error::Local(message)
+            if message == "Mac memory measurement unavailable: Metal device unavailable"),
+            "{error}"
+        );
+        return;
+    }
     let s = snapshot().unwrap();
     assert!(s.total_bytes > 0);
     assert!(s.available_bytes <= s.total_bytes);
