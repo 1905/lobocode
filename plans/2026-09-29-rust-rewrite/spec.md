@@ -171,3 +171,8 @@ Completed on feat/rust at 5dfe9ab. Rust CI 36557109125 passed. The protocol libr
 ### P3 as built — 2026-09-30
 
 Shared core implementation passed Ubuntu and Apple Silicon CI at 2884464. Owned startup completion, persistent uncertain-create recovery and local process-group cleanup are implemented and tested. CLI/app consumers and full local/cloud inference remain pending P4–P6. See execution.md for the verified runs and current phase.
+
+
+### P4 as built — 2026-09-30
+
+CLI parity and packaging passed at fcb8aff. GoReleaser's Rust builder (Option A), cargo-zigbuild and Zig produce the same four archive names and Homebrew formula. Local formula install and its version test pass. Development installs stay named `lobo-rs`; Go stays the default through P5. G-11 preserves ignored extra positional arguments. The sequential wizard does not support Shift+Tab back navigation. Cancellation waits for owned cleanup, including issued creates and deletes. Live provider/API acceptance remains P6.

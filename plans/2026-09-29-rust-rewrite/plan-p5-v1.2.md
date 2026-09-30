@@ -772,6 +772,7 @@ Targets (all `mv`-to-trash, never `rm`, like today):
 
 ## Task 40 — Orchestrator app runs (no implementer; free, no cloud)
 
+- Native automation research (2026-09-30): [Tauri's current testing guide](https://v2.tauri.app/develop/tests/webdriver/) recommends WebdriverIO's embedded driver, which supports the actual macOS WKWebView. The old standalone `tauri-driver` Mac limitation does not apply to this embedded route. [Plugin setup](https://webdriver.io/docs/desktop-testing/tauri/plugin-setup/) documents `tauri-plugin-wdio-webdriver` and optional richer IPC helpers. Use a dedicated, non-default `e2e` Cargo feature and test-only capability/config for these plugins. Verify the normal release excludes them. Drive real commands against isolated config and a fake local runtime; do not mock Start/Stop IPC for the lifecycle acceptance check. Browser fixture screenshots still use the user's managed Playwright CLI. Documentation support is confirmed; local driver operation remains unverified until the app exists.
 - [ ] `make install-mac` → `/Applications/lobocode.app` (or `~/Applications`).
 - [ ] Launch from Finder: `open /Applications/lobocode.app` → `main` window shows the panel [P23]. Close it, `open` again → it reopens (Reopen) [P23]. Tray item visible with title; click → popover under the item [D2].
 - [ ] Tray title width jump check across `off → boot → 42% → 27m` (D3). Screenshot the menu bar. If the user rejects it, add the D3-B task.

@@ -1,7 +1,7 @@
 # Rust rewrite P4 — `lobo-cli` (binary `lobo`) Implementation Plan v1.2
 
 **Date:** 2026-09-29
-**Status:** approved for implementation after plan correction (user: full auto, 2026-09-29). Earlier review covered v1.0 only.
+**Status:** done on `feat/rust` (2026-09-30). Runtime/package acceptance: `fcb8aff`. Live provider checks remain P6. Earlier external review covered v1.0 only.
 **Spec:** ./spec.md (full-auto implementation authorized, 2026-09-29)
 **Contracts:** ./contracts.md v1.2. P4 uses those names; its own extras are at the end.
 **Phase:** P4 of 6. Needs P1 (`lobo-proto`) and P3 (`lobo-core`) done on `feat/rust`.
@@ -938,7 +938,18 @@ rust-release-snapshot:
 
 ## Spike result
 
-_(Task 47 and Task 49 fill this: chosen option, the six check lines, the brew install lines.)_
+Option A passed on macOS arm64. Pinned: GoReleaser 2.13.3, cargo-zigbuild 0.23.4, Zig 0.16.0, Rust 1.98.1. One builder flag correction (`--package=lobo-cli`) and an empty snapshot-only `HOMEBREW_TAP_KEY` were needed. No public release or tap write occurred.
+
+1. `goreleaser check`: `1 configuration file(s) validated` (experimental Rust builder and deprecated `brews` warnings remain).
+2. Clean runtime revision `fcb8aff`: `make rust-release-snapshot` exited 0, `release succeeded after 8m32s`. App-only scaffold work started while this ran; no root runtime or packaging source changed until it finished.
+3. Exactly `lobo_darwin_amd64.tar.gz`, `lobo_darwin_arm64.tar.gz`, `lobo_linux_amd64.tar.gz`, `lobo_linux_arm64.tar.gz`; each contains `lobo`.
+4. `file`: Mach-O x86_64 / arm64; ELF x86-64 / ARM aarch64, both statically linked and stripped.
+5. Native archive: `lobo 0.1.0-SNAPSHOT-fcb8aff (fcb8aff, 2026-09-30T03:04:41Z)`.
+6. `dist/homebrew/lobo.rb`: four URL/SHA pairs, `bin.install "lobo"`, version test.
+
+Local Homebrew acceptance: no prior Homebrew lobo installed. Created `local/lobotest`; changed only Darwin URLs to `file://` archives. `brew install --formula local/lobotest/lobo` succeeded (6 files, 7.8 MB). `brew test local/lobotest/lobo` succeeded. `/opt/homebrew/bin/lobo version` printed the exact snapshot above. Task formula and tap were removed afterward. The existing `~/.local/bin/lobo` was not changed.
+
+B-01–B-04: passed. Snapshot architecture/file checks validate cross-built Linux and Intel Mac artifacts; execution on those hosts remains CI/live acceptance, not a local packaging claim.
 
 ---
 
@@ -999,7 +1010,7 @@ P4 needs the P3 plan's additions 1–7 and 9–11 as written there (Wiring, test
 
 ## P4 acceptance evidence — current implementation
 
-Named tests below supersede the task drafts' proposed test paths. Packaging rows B-01–B-04 remain open until the spike and Homebrew checks finish.
+Named tests below supersede the task drafts' proposed test paths. Packaging rows B-01–B-04 passed; see Spike result. Historical unchecked task bullets describe proposed granularity, not the current progress counter. The acceptance table and final phase evidence are authoritative.
 
 | Inventory rows | Evidence |
 |---|---|
@@ -1023,3 +1034,13 @@ Named tests below supersede the task drafts' proposed test paths. Packaging rows
 The external review remains scheduled once, in P6. Local checks do not establish live provider or app acceptance.
 
 - Acceptance audit added explicit completion smoke coverage for bash/zsh/fish/PowerShell and a CLI-to-store candidate publication test. Both candidate and ordinary publication paths are exercised against loopback HTTP only.
+
+
+## Final P4 acceptance — 2026-09-30
+
+- All CLI handlers are implemented. 51 CLI tests pass with `test-fakes`: 53 Go command replay cases, 17 help paths, eight Go dashboard goldens, ten terminal snapshots, cancellation/cleanup ownership, logs, streamed API checks, completions and isolated candidate publication.
+- Actual terminal smoke used managed pseudo-terminals: wizard Save/Escape; ready/quit/Ctrl-C, status quit and viewport resize. The planned throwaway `tui_demo` and subjective manual terminal watch were replaced by these executable checks plus TestBackend snapshots. No separate visual terminal inspection is claimed.
+- Default-feature release binary ignores `LOBO_TEST_SCENARIO`; no fake-provider selector string is present. `make rust-build-lobo` produces `bin/lobo-rs`. Packaging and local Homebrew checks passed above.
+- Runtime/package source commit `fcb8aff`: Rust CI 36662757471 passed protocol, core-macos and agent-musl. Pod image CI 36662757454 passed. Actionlint and GoReleaser config validation pass.
+- Thirty Go test functions are mapped in the table. Generated fixtures stay checked against Go until P6. `master` merge is already up to date; Go remains the installed default until cutover.
+- No cloud boot, paid GPU, R2 publication or app E2E is claimed. P5 app and P6 live acceptance continue under full-auto authorization.

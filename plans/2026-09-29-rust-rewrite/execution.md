@@ -10,8 +10,8 @@ Authorization: the user said, "when plan is fixed start implementation in full a
 | P1 | [Workspace and protocol](plan-p1-v1.1.md) | done: 5dfe9ab, CI 36557109125 |
 | P2 | [Pod agent](plan-p2-v1.2.md) | code/CI done at ed65ecc; live E2E pending P6 |
 | P3 | [Core](plan-p3-v1.2.md) | code/CI done at 2884464; live inference pending P6 |
-| P4 | [CLI](plan-p4-v1.2.md) | handlers implemented; packaging and phase checks pending |
-| P5 | [App](plan-p5-v1.2.md) | pending P4 |
+| P4 | [CLI](plan-p4-v1.2.md) | done; CLI and packaging acceptance at fcb8aff, live checks P6 |
+| P5 | [App](plan-p5-v1.2.md) | in progress; baseline saved, app scaffold and shared APIs underway |
 | P6 | [Cutover](plan-p6-v1.2.md) | pending P5 |
 
 [contracts.md](contracts.md) v1.2 defines shared APIs. This record defines execution and delivery decisions.
@@ -189,3 +189,5 @@ The user said "continue". Resume the authorized full-auto implementation and del
 - P4 packaging spike: all four Rust CLI targets and archives built. GoReleaser 2.13.3 requires `--package=lobo-cli` for package detection. The first archive run then failed at formula generation because `HOMEBREW_TAP_KEY` was absent. Snapshot target now supplies an empty key and limits builds to one at a time. No release was published. A clean-revision snapshot and local formula install remain required.
 
 - Pod image CI 36661673515 also passed at 57caf1a. Sent the CI-repair QA notification with the green Rust run and remaining app/live-test limits.
+
+- P4 complete at runtime/package revision fcb8aff. All six packaging criteria, temporary Homebrew install/test, default-feature seam check and 51 CLI tests pass. Rust CI 36662757471 and pod image 36662757454 are green. Final live checks remain P6. P5 shared config/protocol and separate app workspace implementation started.
