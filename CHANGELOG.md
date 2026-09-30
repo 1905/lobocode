@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add app-scoped runtime operations in the shared core. Match provider, instance and boot identity before cleanup; preserve unrelated pending operations and connections. App integration is in progress.
+- Core checks pass on Dell: 74 control tests, 19 local-provider tests and the scoped connection fixture. Final discovery fixes pass 24 scoped tests. Native E2E remains deferred; no inference or provider requests ran.
+- Correct the native memory probe test for macOS runners without Metal. Require the exact unavailable error on those runners; keep startup admission unchanged. Hosted retest is pending.
+
 - Fix app fixtures rejected by macOS CI: remove a redundant default initializer and give the ready fake GPU its agent/API addresses.
 
 - Remove package-generated SSH host keys from the GPU image during the install layer. Each cloud instance keeps its own pinned key. Final image verification is still running on Dell.

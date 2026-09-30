@@ -136,33 +136,33 @@ Use explicit remote commands below; do not reuse another task's directory. Nativ
 
 Files: Modify `crates/lobo-core/src/control/testkit.rs`; Create `control/app_scope.rs`, `control/app_scope/tests.rs`; Modify `control/mod.rs`.
 
-- [ ] Add recording local/runpod/vast fakes and foreign pending/saved-connection fixtures. Tests fail because the app-scoped API is absent.
-- [ ] Lock tests: Local discovery/status/Stop call zero cloud methods; cloud Stop deletes only recorded instance; foreign pending records survive; reused local identity is untouched.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core control::app_scope::"'`. Expect named red tests before implementation.
+- [x] Add recording local/runpod/vast fakes and foreign pending/saved-connection fixtures. Tests fail because the app-scoped API is absent.
+- [x] Lock tests: Local discovery/status/Stop call zero cloud methods; cloud Stop deletes only recorded instance; foreign pending records survive; reused local identity is untouched.
+- [x] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core control::app_scope::"'`. Expect named red tests before implementation.
 
 ## Task 2: Implement selected-provider discovery and owned status
 
 Files: Modify `control/app_scope.rs`, `control/agent_http.rs`, `control/mod.rs`; Test `control/app_scope/tests.rs`.
 
-- [ ] Implement `RuntimeTarget`, selected-provider discovery and identity-checked `snapshot_app`. Ambiguous discovery fails; never choose first across providers.
-- [ ] Add `sample_app` direct-agent read with boot validation and no provider/connection calls.
-- [ ] Repeat Task 1's exact Dell command; discovery/status/fast-sample tests pass. Keep Stop red until Task 3.
+- [x] Implement `RuntimeTarget`, selected-provider discovery and identity-checked `snapshot_app`. Ambiguous discovery fails; never choose first across providers.
+- [x] Add `sample_app` direct-agent read with boot validation and no provider/connection calls.
+- [x] Repeat Task 1's exact Dell command; discovery/status/fast-sample tests pass. Keep Stop red until Task 3.
 
 ## Task 3: Implement identity-scoped Stop
 
 Files: Modify `control/app_scope.rs`, `control/cleanup.rs`, `control/operation_state.rs`, `connection.rs`, `local/provider.rs`; Test `control/app_scope/tests.rs`, `tests/cloud_connection.rs`, `tests/local_provider.rs`.
 
-- [ ] Add failing identity tests at the last signal/delete boundary, including PID reuse and a new local boot at the same port.
-- [ ] Implement `down_app` with exact owner matching, scoped verification and no global cleanup fallback. Already absent succeeds; unrelated connections/pending records remain unchanged.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core control::app_scope:: && cargo test --locked -p lobo-core --test local_provider"'`. Expect zero unrelated calls and all targeted tests green.
+- [x] Add failing identity tests at the last signal/delete boundary, including PID reuse and a new local boot at the same port.
+- [x] Implement `down_app` with exact owner matching, scoped verification and no global cleanup fallback. Already absent succeeds; unrelated connections/pending records remain unchanged.
+- [x] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core control::app_scope:: && cargo test --locked -p lobo-core --test local_provider"'`. Expect zero unrelated calls and all targeted tests green.
 
 ## Task 4: Scope app Start without changing CLI
 
 Files: Modify `control/up.rs`, `control/app_scope.rs`, `control/cleanup.rs`; Test `control/up_tests.rs`, `control/app_scope/tests.rs`.
 
-- [ ] Add failing tests for Local Start with broken cloud keys, foreign pending operation, cancellation before/after rent, panic and owner-record failure.
-- [ ] Implement explicit internal operation scope and `up_app`. Persist boot ownership before rent, then instance/endpoints. Existing CLI `up` retains its global behavior.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core control::"'`. Both existing CLI-contract tests and new scope tests pass; no cloud create occurs.
+- [x] Add failing tests for Local Start with broken cloud keys, foreign pending operation, cancellation before/after rent, panic and owner-record failure.
+- [x] Implement explicit internal operation scope and `up_app`. Persist boot ownership before rent, then instance/endpoints. Existing CLI `up` retains its global behavior.
+- [x] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core control::"'`. Both existing CLI-contract tests and new scope tests pass; no cloud create occurs.
 
 ## Task 5: Wire app ownership and generation guards
 

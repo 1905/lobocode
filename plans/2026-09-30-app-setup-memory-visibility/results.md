@@ -15,3 +15,15 @@ Read-only diagnosis found that case 6 assigns a replacement to Tauri 2.12.0's no
 The denial notification arrived at 09:54:32.073Z. The task app PID 46560 exited with status 0 at 09:54:35.566Z; WebDriver disconnected at 09:54:35.688Z. No crash report or recorded initiating exit command exists. Add test-only quit/ExitRequested and child-exit tracing before the deferred rerun. Do not report the normal exit as a crash or infer user action.
 
 Cloud recovery limit: provider Instance metadata has no boot identity. After an uncertain create, the app must retain unresolved ownership unless an exact local boot or saved cloud connection proves the candidate. It must not delete an unproven instance or rent again. Live cloud acceptance remains held.
+
+## Hosted baseline fb6e0bf
+
+Run `36702647743` uses `native_e2e=false`. Protocol/Linux checks and static agent build pass. App lint, tests, fixture generation and native bundle pass; the native E2E step is skipped. Core macOS: 226 tests passed, one ignored, one failed. `native_snapshot_reads_without_loading_a_model` unconditionally unwraps the probe; the runner returns `Mac memory measurement unavailable: Metal device unavailable`. Production startup refusal is correct. Commit `fb0489b` independently checks Metal availability and requires that exact error when no device exists. Hosted retest is pending.
+
+## Core ownership batch
+
+Commits `d4b5c6c` and `ee60fbf` implement Tasks 1–4. The core app APIs use immutable runtime identity for discovery, status, sampling, Start and Stop. They preserve foreign pending records and saved connections. Local actions do not call cloud providers. CLI behavior is unchanged.
+
+Dell validation passes: 74 control tests, 19 local-provider tests, one scoped connection fixture and Clippy with warnings denied. Final review corrections pass 24 app-scope tests. The native app build check passes on this Mac; no backend tests ran here.
+
+Parent review found and corrected an unchecked adjacent saved port and unproven cloud discovery through a shared domain. Invalid ports preserve saved bytes; a domain reporting another runtime cannot establish instance ownership. Parent compliance and quality review pass for this batch. App wiring is next; E2E and final acceptance remain pending.
