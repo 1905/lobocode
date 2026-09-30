@@ -198,7 +198,6 @@ fn boot(local: bool, verify: bool) -> Store {
                     "Docker image"
                 }
                 .into(),
-                ..Default::default()
             }),
             ..Default::default()
         },

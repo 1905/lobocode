@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove a redundant default initializer from an app fixture that failed the macOS CI lint check.
+
 - Remove package-generated SSH host keys from the GPU image during the install layer. Each cloud instance keeps its own pinned key. Final image verification is still running on Dell.
 
 - Plan only: specify a Mac memory check before local Start, with model/context estimates and blocked startup on insufficient or unknown memory. Approval and implementation are pending.
