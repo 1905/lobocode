@@ -1,7 +1,11 @@
 # Public Docker distribution
 
-Status: planned before implementation on 2026-09-30. Supersedes the bucket
-dependency in the domain-free cloud plan. No push, publication or GPU rental.
+**Status:** earlier plan; written spec pending review as of 2026-09-30.
+
+This plan preceded the partial implementation. The new mandatory `spec` workflow
+is recorded in [the written spec](2026-09-30-public-pod-images/spec.md).
+Existing source changes are unfinished and preserved. No push, publication or
+GPU rental. This plan superseded the bucket dependency in the domain-free plan.
 
 ## Required behavior
 
