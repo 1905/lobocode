@@ -261,3 +261,7 @@ below. It does not lift the release hold or the Mac testing limit.
 - At the user's request, recorded the mistakes and their actual status in
   [implementation-mistakes.md](../../docs/implementation-mistakes.md). The Docker
   replacement is planned, not yet implemented or accepted. Release remains held.
+- Further correction: every new app cloud start must use the latest public image
+  for the selected model. Resolve its tag again and pass the current digest to
+  the provider. No DMG-version pin or silent cached-image fallback. Saved in both
+  global memory and repository `AGENTS.md`; implementation remains pending.

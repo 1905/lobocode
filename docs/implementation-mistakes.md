@@ -52,6 +52,11 @@ Status: [plan written](../plans/2026-09-30-public-pod-images.md); implementation
 and image acceptance are pending. Do not present the planned Docker packaging
 as an available public release.
 
+The first replacement plan also tied image selection to the app release. The
+user corrected that: each new cloud start must resolve the latest public image
+for the selected model. The app must not silently fall back to an older cached
+image. Latest-image resolution is still planned, not verified behavior.
+
 ## 4. The DMG and CLI delivery paths were confused
 
 The user requested a fresh Mac install. The app was rebuilt from `3dec9ad` and
@@ -82,6 +87,8 @@ handoffs merely because a local build passes.
 - Enter only a GPU provider key for cloud setup. Generate the client API key automatically.
 - Select the correct public Q8 or Q6 image without a bucket or image field in normal setup.
 - Pull both complete images anonymously and verify their contents and model hashes.
+- Move the public image tag and verify the next start uses the new digest. If the
+  registry cannot resolve it, fail before renting instead of using a stale image.
 - Start each supported model on RunPod and Vast. Verify streaming, tool calls,
   reconnect, Stop, cancellation, failed-boot cleanup and automatic shutdown.
 - Verify actual native window movement, rounded corners and every view without scrolling.

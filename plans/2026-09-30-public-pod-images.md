@@ -16,9 +16,11 @@ bucket, storage credentials, private hosts or personal configuration.
   SSH daemon and selected model weights. Q8 and Q6 use separate image tags.
 - Cloud boot must not fetch agent zips, install OS packages or download models.
   Missing or mismatched image contents fail through the existing cleanup path.
-- The image version follows the app release. Explicit image overrides remain
-  available for development. Existing private storage settings must not become
-  an automatic download source.
+- Every new cloud start resolves the latest public image for the selected model.
+  Query the public registry again, resolve the current tag to a digest, and pass
+  that digest to the GPU provider. A cached older image is not a fallback when
+  resolution fails. Do not tie the selected version to the installed DMG.
+- Existing private storage settings must not become an automatic download source.
 
 ## Implementation order
 
@@ -28,8 +30,10 @@ bucket, storage credentials, private hosts or personal configuration.
 2. Verify and load the model already in the image. Preserve GPU checks, API
    authentication, shutdown timers and failed-boot deletion. Do not fall back to
    network downloads when bundled content is missing or invalid.
-3. Default cloud launches to the matching public image. Remove bucket/release
-   lookup and private model-source selection from normal startup and readiness.
+3. Resolve the latest public Q8/Q6 tag before each cloud start. Use its current
+   digest for the provider create request. Fail before renting if the registry
+   cannot resolve it. Remove bucket/release lookup and private model-source
+   selection from normal startup and readiness.
 4. Remove bucket, image and download-source details from normal app setup. Update
    the CLI wizard, fixtures, native smoke, README, assets and changelog.
 5. Run backend and container fixture checks on Dell only. Run native UI checks
@@ -39,8 +43,10 @@ bucket, storage credentials, private hosts or personal configuration.
 
 Before publication, build both complete images on a host with enough disk space.
 Verify anonymous pulls, image contents, and live RunPod/Vast startup for each
-model. Publish the images before distributing a DMG/Homebrew release which uses
-them. No new image is currently published; keep that limit explicit.
+model. Verify that moving the public tag changes the image used on the next start
+and that a registry failure does not rent with a stale image. Publish the images
+before distributing a DMG/Homebrew release which uses them. No new image is
+currently published; keep that limit explicit.
 
 ## Sources
 
