@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { PanelState } from '../gen/PanelState';
 import type { Target } from '../gen/Target';
+import type { OpenCodeInfo } from '../gen/OpenCodeInfo';
+import type { OpenCodeResult } from '../gen/OpenCodeResult';
 import type { ConfigShow } from '../proto/ConfigShow';
 import type { Listing } from '../proto/Listing';
 import type { Model } from '../proto/Model';
@@ -30,6 +32,10 @@ export const api = {
   genApiKey: () => call<string>('gen_api_key'),
   chooseWeights: (start: string) =>
     call<string | null>('choose_weights', { start }),
+  opencodeInfo: (path?: string) => call<OpenCodeInfo>('opencode_info', { path }),
+  chooseOpencodeConfig: () => call<string | null>('choose_opencode_config'),
+  configureOpencode: (path: string, makeDefault: boolean) =>
+    call<OpenCodeResult>('configure_opencode', { path, makeDefault }),
   openSettings: () => call<void>('open_settings'),
   revealConfig: () => call<void>('reveal_config'),
   openConfig: () => call<void>('open_config'),

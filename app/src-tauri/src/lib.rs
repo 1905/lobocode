@@ -6,6 +6,7 @@ mod e2e_memory;
 pub mod fmt;
 pub mod icons;
 pub mod notify;
+mod opencode;
 pub mod prefs;
 pub mod store;
 pub mod supervisor;
@@ -45,6 +46,9 @@ pub fn run() {
             commands::free_bytes,
             commands::gen_api_key,
             commands::choose_weights,
+            commands::opencode_info,
+            commands::choose_opencode_config,
+            commands::configure_opencode,
             commands::open_settings,
             commands::reveal_config,
             commands::open_config,

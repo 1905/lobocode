@@ -1,13 +1,17 @@
-use crate::types::AppError;
+pub use crate::opencode::PreparedOpenCode;
+use crate::{
+    opencode,
+    types::{AppError, OpenCodeResult},
+};
 use async_trait::async_trait;
 use lobo_core::{config, control, local};
 use lobo_proto::{ConfigShow, Listing, Readiness, Snap, Status, UpRequest};
 use local::memory::{self, MemoryAssessment, MemoryProbe};
 use std::{
     collections::BTreeMap,
-    io::Write,
-    os::unix::fs::PermissionsExt,
-    path::PathBuf,
+    io::{Read, Write},
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 use tokio_util::sync::CancellationToken;
@@ -21,6 +25,21 @@ pub struct PreparedUp {
 #[async_trait]
 pub trait Backend: Send + Sync {
     fn config_path(&self) -> PathBuf;
+    fn opencode_path(&self) -> Result<PathBuf> {
+        opencode::discover()
+    }
+    async fn prepare_opencode(&self, owner: control::RuntimeTarget) -> Result<PreparedOpenCode> {
+        opencode::prepare(self, owner, &opencode::client()?).await
+    }
+    fn configure_opencode(
+        &self,
+        path: &Path,
+        prepared: &PreparedOpenCode,
+        make_default: bool,
+        validate: &dyn Fn() -> Result<()>,
+    ) -> Result<OpenCodeResult> {
+        opencode::configure(self, path, prepared, make_default, validate)
+    }
     async fn config(&self) -> Result<(ConfigShow, Readiness)>;
     async fn models(&self) -> Result<Listing>;
     #[allow(dead_code)] // Rust convenience API; app polling needs the paired private owner.
@@ -63,6 +82,7 @@ pub struct CoreBackend {
     pub wiring: control::Wiring,
     memory: MemoryProbe,
     owner_lock: Arc<Mutex<()>>,
+    setup_client: reqwest::Client,
 }
 impl CoreBackend {
     pub fn new(path: PathBuf) -> std::io::Result<Self> {
@@ -74,6 +94,7 @@ impl CoreBackend {
             wiring,
             memory: std::sync::Arc::new(memory::snapshot),
             owner_lock: Arc::new(Mutex::new(())),
+            setup_client: opencode::client().map_err(std::io::Error::other)?,
         })
     }
     pub fn configured_path() -> PathBuf {
@@ -132,11 +153,29 @@ fn owner_error(error: impl std::fmt::Display) -> AppError {
     }
 }
 fn read_owner(path: &std::path::Path) -> Result<Option<control::RuntimeTarget>> {
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
+    const OWNER_LIMIT: u64 = 64 << 10;
+    let file = match std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+    {
+        Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(owner_error(e)),
     };
+    let metadata = file.metadata().map_err(owner_error)?;
+    if !metadata.is_file() || metadata.len() > OWNER_LIMIT {
+        return Err(owner_error(
+            "ownership file must be regular and below 64 KiB",
+        ));
+    }
+    let mut bytes = Vec::new();
+    file.take(OWNER_LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(owner_error)?;
+    if bytes.len() as u64 > OWNER_LIMIT {
+        return Err(owner_error("ownership file exceeds 64 KiB"));
+    }
     let target: control::RuntimeTarget = serde_json::from_slice(&bytes).map_err(owner_error)?;
     if target.boot_id.is_empty() || target.provider.is_empty() {
         return Err(owner_error("runtime identity is missing"));
@@ -168,6 +207,9 @@ fn write_owner(path: &std::path::Path, target: &control::RuntimeTarget) -> Resul
 impl Backend for CoreBackend {
     fn config_path(&self) -> PathBuf {
         self.path.clone()
+    }
+    async fn prepare_opencode(&self, owner: control::RuntimeTarget) -> Result<PreparedOpenCode> {
+        opencode::prepare(self, owner, &self.setup_client).await
     }
     async fn config(&self) -> Result<(ConfigShow, Readiness)> {
         Ok((config::show(&self.path)?, config::readiness(&self.path)))
@@ -339,6 +381,19 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"broken ownership");
         assert!(write_owner(&path, &target("")).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"broken ownership");
+    }
+    #[test]
+    fn owner_read_is_bounded_and_rejects_links_or_special_files() {
+        let (_root, backend) = memory_backend(0);
+        let path = backend.owner_path();
+        std::fs::write(&path, vec![b'x'; (64 << 10) + 1]).unwrap();
+        assert!(backend.load_owner().is_err());
+        std::fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink(&backend.path, &path).unwrap();
+        assert!(backend.load_owner().is_err());
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        assert!(backend.load_owner().is_err());
     }
     fn memory_backend(mode: usize) -> (tempfile::TempDir, CoreBackend) {
         let root = tempfile::tempdir().unwrap();

@@ -1,7 +1,7 @@
 //! Generate UI data without running backend or lifecycle tests.
 #[path = "../tests/fixtures.rs"]
 mod fixtures;
-use lobocode_app::types::{AppError, PanelState};
+use lobocode_app::types::{AppError, OpenCodeInfo, OpenCodeResult, PanelState};
 use ts_rs::TS;
 fn main() {
     fixtures::write_render_fixtures();
@@ -9,4 +9,6 @@ fn main() {
     let config = ts_rs::Config::default().with_out_dir(ui.join("proto"));
     PanelState::export_all(&config).unwrap();
     AppError::export_all(&config).unwrap();
+    OpenCodeInfo::export_all(&config).unwrap();
+    OpenCodeResult::export_all(&config).unwrap();
 }
