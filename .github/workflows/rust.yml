@@ -23,6 +23,12 @@ on:
       - ".github/workflows/rust.yml"
   pull_request:
   workflow_dispatch:
+    inputs:
+      native_e2e:
+        description: Run native end-to-end checks
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: read
@@ -144,6 +150,7 @@ jobs:
           path: bin/lobocode-macos-arm64.zip
           retention-days: 7
       - name: Native startup and settings smoke
+        if: github.event_name != 'workflow_dispatch' || inputs.native_e2e
         env:
           CARGO_BUILD_JOBS: "2"
         run: |
