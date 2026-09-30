@@ -491,7 +491,7 @@ pub fn parse_set_json(r: impl Read) -> anyhow::Result<BTreeMap<String, String>>;
 pub fn show_config_text(w: &mut dyn Write, cfg_path: &Path, cur: &BTreeMap<String, String>) -> io::Result<()>;
 ```
 Text masks with `config::masked`; group titles from `config::LAYOUT`. JSON = `config::show(path)` + `serde_json::to_writer` + `\n`.
-- [ ] Failing tests: `show_text_masks` (the TestMaskedUnknownKeys keys in a file → text shows clear/masked as the Go table says); `show_text_layout` (groups, `# other` sorted, empty file line); `tests/cli_config.rs::show_json_masks` (assert_cmd, file with `RUNPOD_API_KEY=rpa_SECRETSECRETSECRET`, `LOBO_DOMAIN=lobo.x.cc`, `LOBO_CTX=`): no `SECRETSECRET`, `"LOBO_DOMAIN":"lobo.x.cc"`, `"LOBO_CTX":false`, `"exists":true`; missing file → `"exists":false`, `"values":{}`.
+- [ ] Failing tests: `show_text_masks` (the TestMaskedUnknownKeys keys in a file → text shows clear/masked as the Go table says); `show_text_layout` (groups, `# other` sorted, empty file line); `cli_go_replay::replay_go_cli` (show JSON cases) (assert_cmd, file with `RUNPOD_API_KEY=rpa_SECRETSECRETSECRET`, `LOBO_DOMAIN=lobo.x.cc`, `LOBO_CTX=`): no `SECRETSECRET`, `"LOBO_DOMAIN":"lobo.x.cc"`, `"LOBO_CTX":false`, `"exists":true`; missing file → `"exists":false`, `"values":{}`.
 - [ ] Verify: `cargo test -p lobo-cli config` → ok.
 - [ ] Commit: `lobo-cli: config show text and --json`.
 
@@ -774,7 +774,7 @@ pub fn agent_build_command(top: &Path, ver: &str) -> std::process::Command;   //
 pub fn release_manifest(ver: &str, sha: &str, dirty: bool, built_at: DateTime<Utc>, built_by: &str) -> Manifest;
 ```
 - [ ] Failing tests: `git_info` on a temp `git init` repo with one commit → 7-char sha, clean; after touching a file → dirty; outside a repo → `git rev-parse: …`. `agent_build_command` program/args/env/cwd exact. `release_manifest` truncates to the second and uses the P1 pins. Command order: missing R2 → gate error before any store call (store is never built in tests).
-- [x] Verify: `cargo test --locked -p lobo-cli cmd::release` → two tests pass. No test runs the real publish. Await the build child and any started publication; cancellation is checked before publication. Explicit target-dir prevents inherited CARGO_TARGET_DIR from changing the binary path.
+- [x] Verify: `cargo test --locked -p lobo-cli cmd::release` → three tests pass, including a loopback store check that parses --no-promote and rejects any latest write. No test runs a live publish. Await the build child and any started publication; cancellation is checked before publication. Explicit target-dir prevents inherited CARGO_TARGET_DIR from changing the binary path.
 - [ ] Commit: `lobo-cli: release command (agent via cargo zigbuild)`.
 
 ## Task 44 — completion + SIGINT
@@ -823,7 +823,7 @@ builds:
     builder: rust
     binary: lobo
     dir: .
-    flags: [--release, --locked, -p, lobo-cli]
+    flags: [--release, --locked, --package=lobo-cli]
     env: [LOBO_VERSION={{.Version}}, LOBO_COMMIT={{.ShortCommit}}, LOBO_DATE={{.Date}}]
     targets: [x86_64-apple-darwin, aarch64-apple-darwin, x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
 ```
@@ -848,7 +848,7 @@ Fail on any → try B with the same six checks (build step: `cargo zigbuild --re
 
 For A:
 - `.goreleaser.yaml`: `builds:` replaced by the spike block; header comment updated (`Release the Rust lobo CLI …`); rest unchanged.
-- `release.yml` job `release`: `runs-on: macos-15` (native Apple SDK for the darwin targets; cargo-zigbuild for linux musl); steps: checkout (fetch-depth 0) → `dtolnay/rust-toolchain@stable` reading `rust-toolchain.toml`, targets the four triples → `mlugg/setup-zig@v2` → `taiki-e/install-action@v2` with `tool: cargo-zigbuild` → `Swatinem/rust-cache@v2` → `goreleaser/goreleaser-action@v6` (`version: "~> v2"`, `args: release --clean`, same env). `setup-go` removed from this job. The `dmg` job is unchanged (P5 owns it).
+- `release.yml` job `release`: `runs-on: macos-15` (native Apple SDK for the darwin targets; cargo-zigbuild for linux musl); steps: checkout (fetch-depth 0) → `dtolnay/rust-toolchain@master` with explicit 1.98.1 (same pin as `rust-toolchain.toml`), targets the four triples → `mlugg/setup-zig@v2` with version 0.16.0 → `taiki-e/install-action@v2` with `tool: cargo-zigbuild@0.23.4` → `Swatinem/rust-cache@v2` → `goreleaser/goreleaser-action@v6` (`version: "v2.13.3"`, `args: release --clean`, same env). `setup-go` removed from this job. The `dmg` job is unchanged (P5 owns it).
 - [ ] Verify locally: `goreleaser check` → exit 0; `actionlint .github/workflows/release.yml` if installed, else say not run.
 - [ ] Commit: `release: goreleaser builds the Rust lobo (rust builder, zigbuild)`.
 
@@ -901,36 +901,36 @@ rust-release-snapshot:
 
 | Go test (file:line) | Rust home of the Go assertions | P4 CLI-boundary test | Task |
 |---|---|---|---|
-| TestApplyDefaults (cmd/lobo/defaults_test.go:12) | P3 `control::precheck::tests::apply_defaults_table` | `cmd::up::tests::defaults::{changed_names_match_go, q6_false_keeps_config_model_out, q6_true_sets_model, flag_beats_bad_config_ctx}` | 16 |
-| TestMaskedUnknownKeys (defaults_test.go:62) | P3 `config::show::tests::masked_unknown_keys` | `cmd::config::tests::show_text_masks` | 21 |
-| TestParseSetArgs (defaults_test.go:72) | `cmd::config::tests::parse_set_args` | — | 20 |
-| TestShowConfigJSONMasks (defaults_test.go:84) | P3 `config::show::tests::show_masks_secrets` | `tests/cli_config.rs::show_json_masks` | 21 |
-| TestParseSetJSON (defaults_test.go:96) | `cmd::config::tests::parse_set_json` | — | 20 |
+| TestApplyDefaults (cmd/lobo/defaults_test.go:12) | P3 `control::precheck::tests::apply_defaults_table` | `cli::tests::explicit_flag_names_and_globals`; `cli_boundary::defaults_keep_explicit_false_and_flag_precedence` | 16 |
+| TestMaskedUnknownKeys (defaults_test.go:62) | P3 `config::show::tests::masked_unknown_keys` | `cli_go_replay::replay_go_cli` (show text cases) | 21 |
+| TestParseSetArgs (defaults_test.go:72) | `cmd::config::tests::parse_set` (argv rows) | — | 20 |
+| TestShowConfigJSONMasks (defaults_test.go:84) | P3 `config::show::tests::show_masks_secrets` | `cli_go_replay::replay_go_cli` (show JSON cases) | 21 |
+| TestParseSetJSON (defaults_test.go:96) | `cmd::config::tests::parse_set` (stdin rows) | — | 20 |
 | TestRootHelpGolden (help_test.go:15) | `help::tests::root_help_golden` | — | 13 |
-| TestLocalRunFlags (local_test.go:16) | P3 `local::supervise::tests::run_config_from_args_table` | `cmd::local::tests::local_run_flags` (7 rows through clap + the "local is hidden" assert) | 29 |
+| TestLocalRunFlags (local_test.go:16) | P3 `local::supervise::tests::run_config_from_args_table` | `cli_boundary::local_run_flags_and_config_forwarding` (7 rows through clap + the "local is hidden" assert) | 29 |
 | TestModelsOutput (local_test.go:58) | `cmd::models::tests::models_output` | — | 28 |
-| TestCheckTarget (target_test.go:25) | P3 `control::precheck::tests::check_target_table` | `cmd::tests::gates` (up row) | 15 |
-| TestCheckProviders (target_test.go:51) | P3 `control::precheck::tests::check_providers_table` | `cmd::tests::gates` (down, status rows) | 15 |
-| TestCheckRelease (target_test.go:75) | P3 `control::precheck::tests::check_release_table` | `cmd::tests::gates` (release row) | 15 |
-| TestProviders (target_test.go:96) | P3 `control::wiring::tests::providers_from_config_table` | `app::tests::wiring::{wiring_abs_config_path, wiring_spawner_is_cli, wiring_passes_supported_seam}` | 17 |
+| TestCheckTarget (target_test.go:25) | P3 `control::precheck::tests::check_target_table` | `cli_boundary::gates_reject_before_dependencies` (up row) | 15 |
+| TestCheckProviders (target_test.go:51) | P3 `control::precheck::tests::check_providers_table` | `cli_boundary::gates_reject_before_dependencies` (down, status rows) | 15 |
+| TestCheckRelease (target_test.go:75) | P3 `control::precheck::tests::check_release_table` | `cli_boundary::gates_reject_before_dependencies` (release row) | 15 |
+| TestProviders (target_test.go:96) | P3 `control::wiring::tests::providers_from_config_table` | `cli_boundary::local_run_flags_and_config_forwarding`; P3 `deps_from_config_sample` | 17 |
 | TestLocalInstanceURLs (target_test.go:140) | P3 `control::wiring::tests::local_instance_urls_from_state` | — (no CLI logic) | — |
-| TestWriteOpencode (target_test.go:152) | P3 `genkey::tests::write_opencode_table` | `cmd::genkey::tests` (key keep/rotate, messages, file mode) | 27 |
-| TestUpBootContainerHintAndReRentReset (internal/tui/tui_test.go:59) | `tui::up::tests::boot_container_hint` + `tui::up::tests::re_rent_resets_later_timers` | — | 31, 32 |
-| TestUpGolden (tui_test.go:75) | `tui::up::tests::up_golden` (3 goldens) | — | 32 |
-| TestStatusGolden (tui_test.go:96) | `tui::status::tests::status_golden` (5 goldens) | — | 33 |
-| TestUpStateErr (tui_test.go:120) | `tui::up::tests::up_state_err` | — | 31 |
-| TestStatusModelKeepsLastSnapOnError (tui_test.go:129) | `tui::status::tests::status_model_keeps_last_snap_on_error` | — | 34 |
-| TestMask (internal/configtui/configtui_test.go:8) | `wizard::validate::tests::mask` (calls `lobo_core::config::mask`) | — | 23 |
+| TestWriteOpencode (target_test.go:152) | P3 `genkey::tests::write_opencode_table` | `cli_boundary::gen_key_reuse_rotate_and_permissions` (key keep/rotate, messages, file mode) | 27 |
+| TestUpBootContainerHintAndReRentReset (internal/tui/tui_test.go:59) | `tui_parity::up_goldens` + `tui_parity::up_state_timers_and_terminal_events` | — | 31, 32 |
+| TestUpGolden (tui_test.go:75) | `tui_parity::up_goldens` (3 goldens) | — | 32 |
+| TestStatusGolden (tui_test.go:96) | `tui_parity::status_goldens` (5 goldens) | — | 33 |
+| TestUpStateErr (tui_test.go:120) | `tui_parity::up_state_timers_and_terminal_events` | — | 31 |
+| TestStatusModelKeepsLastSnapOnError (tui_test.go:129) | `tui_parity::models_keep_errors_and_handle_keys` | — | 34 |
+| TestMask (internal/configtui/configtui_test.go:8) | P3 `config::show::tests::masked_unknown_keys`; P4 `wizard::state::tests::summary_masks_secrets_and_local_rows` | — | 23 |
 | TestResultKeepClearAndDefaults (configtui_test.go:16) | `wizard::state::tests::result_keep_clear_and_defaults` | — | 22 |
-| TestNewStateFreshFile (configtui_test.go:39) | `wizard::state::tests::new_state_fresh_file` | — | 22 |
+| TestNewStateFreshFile (configtui_test.go:39) | `wizard::state::tests::new_state_fresh_file_and_local` | — | 22 |
 | TestValidators (configtui_test.go:49) | `wizard::validate::tests::validators` | — | 23 |
-| TestSummaryMasksSecrets (configtui_test.go:64) | `wizard::state::tests::summary_masks_secrets` | — | 24 |
-| TestNewStateLocal (configtui_test.go:72) | `wizard::state::tests::new_state_local` | — | 22 |
+| TestSummaryMasksSecrets (configtui_test.go:64) | `wizard::state::tests::summary_masks_secrets_and_local_rows` | — | 24 |
+| TestNewStateLocal (configtui_test.go:72) | `wizard::state::tests::new_state_fresh_file_and_local` | — | 22 |
 | TestResultLocal (configtui_test.go:94) | `wizard::state::tests::result_local` | — | 22 |
-| TestLocalValidation (configtui_test.go:124) | `wizard::validate::tests::local_validation` | — | 23 |
-| TestSummaryLocalRows (configtui_test.go:159) | `wizard::state::tests::summary_local_rows` | — | 24 |
-| TestProviderOptions (configtui_test.go:169) | `wizard::validate::tests::provider_options` | — | 23 |
-| TestFormBuilds (configtui_test.go:181) | `wizard::flow::tests::form_builds` | — | 25 |
+| TestLocalValidation (configtui_test.go:124) | `wizard::validate::tests::local_validation_and_options` | — | 23 |
+| TestSummaryLocalRows (configtui_test.go:159) | `wizard::state::tests::summary_masks_secrets_and_local_rows` | — | 24 |
+| TestProviderOptions (configtui_test.go:169) | `wizard::validate::tests::local_validation_and_options` | — | 23 |
+| TestFormBuilds (configtui_test.go:181) | `wizard::flow::tests::flow_order_cloud_and_local` | — | 25 |
 
 30 Go tests (measured: `grep -c '^func Test'` = 14 + 5 + 11), none dropped: 21 ported in P4, 9 ported in P3 (+ the TestLocalRunFlags rows), with P4 boundary tests for 8 of those 9. Go lines: cmd/lobo tests 450, internal/tui 144, internal/configtui 187 = 781. New Rust-only tests (help facts, Go replay, JSON on fakes, TUI TestBackend, log format, duration, boot report) sit in Tasks 6–46.
 
@@ -994,3 +994,32 @@ P4 needs the P3 plan's additions 1–7 and 9–11 as written there (Wiring, test
 - Prompt errors now distinguish user cancellation from terminal failures. Inquire 0.9 Password requires a static validator; the adapter checks borrowed form state after each masked prompt and re-prompts without printing the secret. Text validators remain in inquire.
 - Wizard prices reject non-finite values, matching core validation. App carries a CancellationToken so main and tests own cancellation explicitly.
 - Live control commands, terminal dashboards, release packaging and fake-provider binary tests remain pending. Those command handlers currently return explicit implementation-pending errors after prechecks. This batch is not a replacement for the Go CLI.
+
+- GoReleaser 2.13.3 Rust builder checks only `-p=` or `--package=` in a virtual workspace. The first spike failed before compiling. Use `--package=lobo-cli`, verified against https://github.com/goreleaser/goreleaser/blob/v2.13.3/internal/builders/rust/build.go#L210. Four-target archive validation remains pending.
+
+## P4 acceptance evidence — current implementation
+
+Named tests below supersede the task drafts' proposed test paths. Packaging rows B-01–B-04 remain open until the spike and Homebrew checks finish.
+
+| Inventory rows | Evidence |
+|---|---|
+| G-01–G-06, G-09, G-11–G-12, V-01 | `cli_go_replay::replay_go_cli` (53 Go cases), `help_parity::{help_facts_match_go, help_snapshots}`, `cli_boundary::run_errors_and_root_help`, `help::tests::root_help_golden` |
+| G-07 | `cli_control::{cancel_awaits_a_121_second_create_and_reports_cleanup_failure, down_keeps_issued_deletes_owned_after_ctrl_c}`; `agent_commands::cancelling_read_only_commands_stops_pending_http`; isolated Ctrl-C PTY run |
+| G-08 | `cli_boundary::completion_emits_scripts_for_all_supported_shells` |
+| G-10 | `cli::tests::{tree_and_booleans, explicit_flag_names_and_globals}`; `cli_boundary::defaults_keep_explicit_false_and_flag_precedence` |
+| G-13 | `logfmt` unit test; `cli_control::consumers_match_go`; `cli_fakes::executable_plain_output_and_unknown_scenario` |
+| C-01–C-09, J-03 | Go replay config cases; `cmd::config::tests::parse_set`; `cli_boundary::config_wizard_save_abort_discard_and_failure` |
+| K-01, W-07 | `cli_boundary::gen_key_reuse_rotate_and_permissions`; P3 API-key tests |
+| R-01–R-03 | `cli_boundary::gates_reject_before_dependencies`; `cmd::release::tests::{git_info_clean_dirty_and_missing, build_command_and_manifest, candidate_flag_never_writes_latest}`; P3 store tests cover candidate isolation and failed publication. Live publication remains P6. |
+| U-01–U-09, J-01 | Help facts, Go replay, all eight `cli_control` tests, `cli_fakes::executable_json_outputs_match_go`; ready/q/Ctrl-C/resize PTY runs |
+| D-01–D-02, J-05 | `cli_control::{status_and_down_commands_match_go, down_keeps_issued_deletes_owned_after_ctrl_c}`; executable JSON replay |
+| S-01–S-02, J-02 | `cli_control::status_and_down_commands_match_go`; `tui_parity::{status_goldens, models_keep_errors_and_handle_keys}`; executable JSON replay; status-q PTY run |
+| L-01, E-01 | Four `agent_commands` loopback HTTP tests |
+| M-01, J-04 | `cmd::models::tests::models_output`; Go replay models cases |
+| LR-01–LR-03 | `cli_boundary::local_run_flags_and_config_forwarding`; P3 supervisor tests |
+| T-01–T-05 | All five `tui_parity` tests (eight Go goldens, ten snapshots); `tui::styles::tests::durations_numbers_and_bars` |
+| W-01–W-06 | Four `wizard::state` tests, two `wizard::validate` tests, three `wizard::flow` tests; isolated Save/Escape PTY runs |
+
+The external review remains scheduled once, in P6. Local checks do not establish live provider or app acceptance.
+
+- Acceptance audit added explicit completion smoke coverage for bash/zsh/fish/PowerShell and a CLI-to-store candidate publication test. Both candidate and ordinary publication paths are exercised against loopback HTTP only.

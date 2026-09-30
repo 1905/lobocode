@@ -116,6 +116,21 @@ async fn run_errors_and_root_help() {
         );
     }
 }
+
+#[tokio::test]
+async fn completion_emits_scripts_for_all_supported_shells() {
+    for (shell, marker) in [
+        ("bash", "complete -F"),
+        ("zsh", "#compdef lobo"),
+        ("fish", "complete -c lobo"),
+        ("powershell", "Register-ArgumentCompleter"),
+    ] {
+        let (code, out, err) = run(&App::real(), &["completion", shell]).await;
+        assert_eq!(code, 0, "{shell}: {err}");
+        assert!(err.is_empty());
+        assert!(out.contains(marker), "{shell}: {out}");
+    }
+}
 #[tokio::test]
 async fn local_run_flags_and_config_forwarding() {
     let seen = Arc::new(Mutex::new(None));

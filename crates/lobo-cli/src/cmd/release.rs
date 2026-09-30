@@ -95,6 +95,20 @@ pub fn release_manifest(
         defaults: release::DEFAULT_DEFAULTS,
     }
 }
+
+async fn publish(
+    store: &Store,
+    args: &ReleaseArgs,
+    zip: &Path,
+    resolved: &Resolved,
+) -> lobo_core::Result<()> {
+    if args.no_promote {
+        store.publish_version(zip, resolved).await
+    } else {
+        store.publish(zip, resolved).await
+    }
+}
+
 pub async fn run(app: &App, args: &ReleaseArgs, path: &Path, io: &mut Io) -> anyhow::Result<()> {
     let cfg = load_cfg(path)?;
     control::check_release(&cfg)?;
@@ -140,11 +154,7 @@ pub async fn run(app: &App, args: &ReleaseArgs, path: &Path, io: &mut Io) -> any
     };
     // Once publication starts, await its result. Dropping a PUT future cannot
     // establish whether the object was written. Candidate mode never moves latest.
-    if args.no_promote {
-        store.publish_version(&zip, &resolved).await?;
-    } else {
-        store.publish(&zip, &resolved).await?;
-    }
+    publish(&store, args, &zip, &resolved).await?;
     tracing::info!(
         version = version.as_str(),
         git_sha = sha.as_str(),
@@ -162,6 +172,65 @@ pub async fn run(app: &App, args: &ReleaseArgs, path: &Path, io: &mut Io) -> any
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn candidate_flag_never_writes_latest() {
+        use clap::Parser;
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
+        for candidate in [false, true] {
+            let server = MockServer::start().await;
+            Mock::given(method("HEAD"))
+                .respond_with(ResponseTemplate::new(404))
+                .mount(&server)
+                .await;
+            Mock::given(method("PUT"))
+                .respond_with(ResponseTemplate::new(200))
+                .mount(&server)
+                .await;
+            let store = Store::with_endpoint_for_test(
+                &lobo_core::config::R2Creds {
+                    account_id: "fixture".into(),
+                    endpoint: server.uri(),
+                    access_key: "fixture".into(),
+                    secret_key: "fixture".into(),
+                },
+                lobo_core::http::client(std::time::Duration::from_secs(3)),
+            )
+            .unwrap();
+            let mut argv = vec!["lobo", "release"];
+            if candidate {
+                argv.push("--no-promote");
+            }
+            let Some(crate::cli::Cmd::Release(args)) =
+                crate::cli::Cli::try_parse_from(argv).unwrap().cmd
+            else {
+                panic!()
+            };
+            let zip = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(zip.path(), b"fixture zip").unwrap();
+            let resolved = Resolved {
+                manifest: release_manifest("candidate", "abc1234", false, Utc::now(), "fixture"),
+                zip_key: release::zip_key("candidate"),
+                zip_sha256: "fixture".into(),
+            };
+            publish(&store, &args, zip.path(), &resolved).await.unwrap();
+            let requests = server.received_requests().await.unwrap();
+            let puts: Vec<_> = requests.iter().filter(|r| r.method == "PUT").collect();
+            assert_eq!(puts.len(), if candidate { 2 } else { 3 });
+            assert_eq!(
+                puts.iter()
+                    .filter(|r| r.url.path().ends_with("/latest.json"))
+                    .count(),
+                usize::from(!candidate)
+            );
+            for put in puts
+                .iter()
+                .filter(|r| !r.url.path().ends_with("/latest.json"))
+            {
+                assert_eq!(put.headers.get("If-None-Match").unwrap(), "*");
+            }
+        }
+    }
+
     #[test]
     fn git_info_clean_dirty_and_missing() {
         let tmp = tempfile::tempdir().unwrap();

@@ -179,3 +179,13 @@ The user said "continue". Resume the authorized full-auto implementation and del
 - Candidate d4ed8c4 fixed the HTTP regression, but Mac CI exposed another local-process port collision at 10022. The test helper forks via pre_exec while other fixtures probe ports. Child processes can inherit those descriptors until exec, so distinct port ranges alone do not isolate concurrent fixtures. Added a fixture-lifetime async mutex around all real-process tests, keeping their startup/cancellation/cleanup assertions intact. This is an inferred race mechanism from the code and Unix fork behavior; repeated local runs and corrected CI are the verification.
 
 - Mac process fixture fix: all 13 lifecycle tests passed ten consecutive local runs; focused clippy passed. Ubuntu and agent-musl succeeded on d4ed8c4. The next commit reruns all jobs with process isolation. Official pre_exec documentation confirms child descriptor duplication: https://doc.rust-lang.org/std/os/unix/process/trait.CommandExt.html#tymethod.pre_exec.
+
+- CI repair verified at 57caf1a: Rust run 36661673477 passed protocol, core-macos and agent-musl. No retries or test removal were used to get this result. Pod-image publishing is still running.
+
+- P5 preparation while the four-target P4 packaging spike runs: the Swift source is unchanged from baseline 3117f9b. Rebuilding and saving its fixed-state renders before replacement. This does not claim P4 packaging or P5 acceptance.
+
+- P5 baseline preparation complete: rebuilt unchanged Swift source, saved 10 panel renders, 10 tray renders, settings and icon under p5-baseline/. All 17 Swift tests pass. Inspected ready/settings references. The Rust app is not implemented yet.
+
+- P4 packaging spike: all four Rust CLI targets and archives built. GoReleaser 2.13.3 requires `--package=lobo-cli` for package detection. The first archive run then failed at formula generation because `HOMEBREW_TAP_KEY` was absent. Snapshot target now supplies an empty key and limits builds to one at a time. No release was published. A clean-revision snapshot and local formula install remain required.
+
+- Pod image CI 36661673515 also passed at 57caf1a. Sent the CI-repair QA notification with the green Rust run and remaining app/live-test limits.
