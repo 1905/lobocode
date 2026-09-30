@@ -6,8 +6,8 @@
 - Package the agent, CUDA runtime, SSH server and selected GGUF shards together. Verify model hashes offline; remove agent/model downloads from image startup.
 - Remove bucket and image fields from setup. Show SHA-256 verification in the app and TUI. Update help, README, cloud docs and screenshots.
 - Extend startup limits to 40 minutes, with a 30-minute image deadline and maximum-lifetime cleanup during startup. Require both complete image jobs before app/CLI release jobs.
-- Dell agent/core/CLI checks and clippy pass in focused runs. Nine frontend tests, 23 browser layouts and native fresh-config setup pass. Full image builds are still running. Native drag automation failed to observe movement; manual drag acceptance remains open.
-- No public release, image publication, GPU rental or CLI installation. Live provider and published-image acceptance remain pending.
+- Dell workspace: 434 tests pass; clippy passes. Both opt-in checks (SSH integration and runtime archive) and all three explicit Go interoperability checks also pass. Nine frontend tests, 23 browser layouts and native fresh-config setup pass. Full image builds are still running. Native drag automation failed to observe movement; manual drag acceptance remains open.
+- Install local app build `2bd9538` and verify the matching standalone DMG. Preserve CLI, config and model files. No public release, image publication or GPU rental; live provider acceptance remains pending.
 
 - Add automatic private SSH connections for cloud instances. New setups need no domain, Cloudflare account or tunnel subscription. OpenCode uses `http://127.0.0.1:8933/v1`; GPU and provider charges still apply.
 - Pin a fresh server key for each instance, restrict forwarding to the inference/control APIs, and reconnect through a detached helper. Stop closes the owned connection and removes its keys. Preserve existing complete Cloudflare configurations.

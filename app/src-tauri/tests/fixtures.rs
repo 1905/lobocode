@@ -192,7 +192,12 @@ fn boot(local: bool, verify: bool) -> Store {
                 total: 28_595_762_272,
                 mbps: if local { 88.0 } else { 0.0 },
                 verifying: !local,
-                source: if local { "Hugging Face" } else { "Docker image" }.into(),
+                source: if local {
+                    "Hugging Face"
+                } else {
+                    "Docker image"
+                }
+                .into(),
                 ..Default::default()
             }),
             ..Default::default()
