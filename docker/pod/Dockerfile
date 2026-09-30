@@ -31,6 +31,7 @@ RUN printf '{"version":"%s","git_sha":"%s","built_by":"github-actions","llama_im
 FROM ${LLAMA_IMAGE}
 USER root
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-server ca-certificates curl jq \
+    && rm -f /etc/ssh/ssh_host_* \
     && rm -rf /var/lib/apt/lists/* && mkdir -p /run/sshd
 COPY --from=build /out/lobo-agent /lobo/lobo-agent
 COPY --from=build /out/release.json /lobo/release.json

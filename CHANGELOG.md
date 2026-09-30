@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove package-generated SSH host keys from the GPU image during the install layer. Each cloud instance keeps its own pinned key. Final image verification is still running on Dell.
+
 - Plan only: specify a Mac memory check before local Start, with model/context estimates and blocked startup on insufficient or unknown memory. Approval and implementation are pending.
 
 - Resolve the current public Q6/Q8 image digest on every new cloud start. Ignore old bucket/image settings and fail before rental if the registry cannot resolve the image.

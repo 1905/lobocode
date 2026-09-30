@@ -132,3 +132,63 @@ fix. This Mac remains limited to UI checks with no inference.
 
 Backend/container acceptance must run away from the development Mac. Publication
 and GPU rental require the release hold to be lifted; these checks are pending.
+
+## Research: desktop updates through GitHub — 2026-09-30
+
+Status: researched, not implemented or tested. No release was published.
+
+The public `1905/lobocode` repository can host desktop updates without a private
+server. The app already uses Tauri 2.12.0. It has no updater dependency or
+configuration. The current release workflow runs GoReleaser before the DMG job.
+The published `v0.1.0` assets currently contain CLI archives and checksums only.
+
+Use Tauri's official updater with a static manifest at
+`https://github.com/1905/lobocode/releases/latest/download/latest.json`.
+Enable `bundle.createUpdaterArtifacts`, embed the updater public key, and keep
+`TAURI_SIGNING_PRIVATE_KEY` and its password in GitHub Actions secrets.
+Keep a secure backup of the signing key. macOS updates use a signed `.app.tar.gz`
+archive; the DMG remains the first-install download.
+See the [Tauri updater guide](https://v2.tauri.app/plugin/updater/).
+
+Proposed implementation:
+
+- Add `tauri-plugin-updater` to `app/src-tauri/Cargo.toml` and register it in
+  `lib.rs`. Keep update operations in Rust alongside the existing controller.
+- Add automatic checks after launch and every six hours, plus a manual check.
+  Show version, download progress, retry and an install/restart action in a
+  compact native view. Preserve the no-scrolling requirement.
+- Serialize installation against Start, Stop and Quit. Defer installation while
+  a runtime is active or startup/cleanup is pending. The existing controller's
+  successful `quit()` cancels its polling loops; installation failure must not
+  leave the open app in that state.
+- Extend `.github/workflows/release.yml` to assemble a draft release first.
+  Publish it only after the CLI, DMG, update archive, signature and manifest are
+  complete. Coordinate Homebrew publication with that final step.
+- Use `tauri-apps/tauri-action` to generate and upload `latest.json`. Set the
+  actual release tag so archive URLs point to that version. Match its draft
+  setting to the existing release. Pin the chosen action revision.
+  These options are documented in the [official action](https://github.com/tauri-apps/tauri-action).
+- Build an explicit Apple Silicon target. Add an Intel manifest entry only if
+  an Intel app is also built and validated. Keep the tag, app version and
+  manifest version consistent; retain the Makefile's version override.
+
+Every release selected as Latest must contain the desktop update assets.
+GitHub's [latest-asset URL](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases)
+does not search older releases for a missing file. Publish a higher patch version
+for a corrective update instead of relying on automatic downgrades.
+
+Updater signatures do not replace Apple Developer ID signing and notarization.
+The current app uses `signingIdentity: "-"`. Ad-hoc signing still requires users
+to allow installation in macOS security settings. Use Developer ID and
+notarization for public distribution without those warnings.
+See [Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/).
+
+Acceptance remains pending: signed version A to B, wrong signature, interrupted
+download, unavailable GitHub, wrong architecture, installation failure and
+restart. Native UI checks may run on this Mac. Installation/lifecycle acceptance
+needs an authorized remote macOS host; Linux Dell fixtures cannot prove macOS
+bundle replacement. Existing builds need one manual install to gain an updater.
+
+The updater replaces only the standalone desktop app. Homebrew continues to own
+the optional CLI. Each new cloud start must independently resolve and pull the
+latest public image for its selected model, as required by the image plan.
