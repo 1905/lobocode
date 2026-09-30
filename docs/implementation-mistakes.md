@@ -254,3 +254,7 @@ remain pending. Do not start a model or infer GPU-rental permission.
 ### Memory feature validation checkpoint
 
 The memory guard is implemented through `b9a1966`; it is not installed in the user's production app yet. Native fixture E2E passed five cases, then the app disconnected during denied Start. Cleanup passed and no model started. Preserve the failed run at `bin/app-e2e/lobo-native-e2e-zlqngx7s`; do not report complete native acceptance. The user deferred further E2E while the approved app setup, live memory/activity, native activation and scoped Stop fixes are implemented.
+
+### Direct comparison stopped by real memory admission
+
+The later explicit request authorized one 47,000-input-token direct test without OpenCode. The isolated supervisor from hosted build `b5617ae` rejected Q6/65,536 context: 26.7 GiB required, 9.4 GiB available after reserves. Zero models or generation requests started. The supervisor stopped with zero errors and no remaining task processes. Do not report this as either a model failure or a successful reply test. The original title completion still does not establish the main request can finish.

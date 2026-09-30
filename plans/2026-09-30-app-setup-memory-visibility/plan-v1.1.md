@@ -1,7 +1,7 @@
-# App Setup and Runtime Visibility Implementation Plan v1.0
+# App Setup and Runtime Visibility Implementation Plan v1.1
 
 **Date:** 2026-09-30
-**Status:** superseded by v1.1
+**Status:** in-progress
 **Spec:** ./spec.md (approved)
 **Authorization:** The user approved implementation and testing in the expanded spec. Prior full-auto delivery authorization persists. Parent self-review completed. Execute under the approved implementation and testing instruction; no new scope permission is needed.
 **Goal:** Safely operate the app-owned runtime, configure OpenCode, and show accurate memory/activity in a normal native Mac app.
@@ -10,11 +10,23 @@
 
 > For agentic workers: use superpowers:subagent-driven-development to implement task-by-task. Checkbox syntax tracks completion.
 
+## Priority diagnostic — latest user instruction
+
+The user explicitly requested a direct comparison without OpenCode using the same input size. This narrow authorization supersedes the earlier inference hold and 64-token input cap for one diagnostic. All other deferred work remains held. Existing Tasks 1–23 and their completed evidence remain unchanged below.
+
+File map: create `tools/same_prompt_runtime_e2e.py`; modify only required transport seams in `tools/bounded_runtime_e2e.py`, this feature's evidence/docs, project memory and changelog. Use no new runtime feature or dependencies.
+
+- [x] D1: Implement one-request Q6/65,536-context diagnostic with exactly 47,000 synthetic input IDs, at most 32 output tokens, no retries and a 30-minute generation limit. Keep the existing short harness defaults. Verify exact construction, bounds and failure handling with fake-only checks on Dell.
+- [ ] D2: Retrieve hosted artifact `11095757309` from successful run `36713757006`, revision `b5617ae`. Verify bundle identity/signature. Prepare private task config/state using existing model/runtime. Start only its normal supervisor and require the production memory guard to pass. Run the diagnostic once; preserve numerical timing and token evidence. Stop the owned runtime and verify cleanup.
+- [ ] D3: Record admission, exact input/output counts, time to first output, processing/generation rates, memory observations and comparison limits. If it succeeds, inspect OpenCode request construction/stream handling next. Do not launch OpenCode automatically. Keep native E2E/install/release deferred.
+
+D1 completed: parent source review plus Dell Python compilation, existing HTTP fake suite and 12 new diagnostic scenarios pass. D2 attempted: verified hosted artifact and normal supervisor admission. Actual guard blocked at 26.7 GiB required / 9.4 GiB available after reserves. Zero model loads/generations; owned cleanup passed. D2 remains incomplete until a same-size request can run. D3 evidence is recorded in `results.md`; model throughput and the conditional OpenCode investigation remain pending. No admission override or smaller substitute test was used.
+
 ## Execution boundaries
 
-- Latest host constraint: the user reported no available Mac memory. Keep this Mac to code edits for now. Run compilation and tests on Dell or hosted macOS. Local build/install/UI-check commands below remain pending until memory is available; do not start an app or model. E2E remains deferred.
+- Earlier host constraint (overridden only by D1–D3 above): the user reported no available Mac memory. Keep this Mac to code edits for now. Run compilation and tests on Dell or hosted macOS. Local build/install/UI-check commands below remain pending until memory is available; do not start an app or model. E2E remains deferred.
 
-- Latest instruction: E2E comes later, after fixes. Do not run native fixtures or scripted inference during implementation, and do not merge unverified memory code into master first.
+- Earlier instruction (all other E2E remains deferred): E2E comes later, after fixes. Do not run native fixtures or scripted inference during implementation, and do not merge unverified memory code into master first.
 - Create `/Users/kass/dev/lobocode-app-runtime` on `fix/app-setup-memory-visibility` from clean `master`, then merge memory checkpoint `597fb1c` into this isolated branch. Its code is `b9a1966`; native E2E remains pending. Preserve primary checkout and unrelated work. Do not restart image jobs or the updater.
 - Use `/storage/lobocode-app-runtime` on Dell, copied to `/app-runtime` in the existing `lobo-public-image-check` container. Reuse `/memory-target` with two Cargo jobs; do not alter the image-job checkout or container lifecycle. App Rust and native adapter suites run on hosted macOS through normal Rust CI.
 - During implementation this Mac runs only UI unit checks and builds. Native fixture/visual E2E and the explicitly authorized bounded live E2E are deferred until fixes are complete. Do not run `make app-test`, `make rust-test`, lifecycle suites, Docker or broad benchmarks here.

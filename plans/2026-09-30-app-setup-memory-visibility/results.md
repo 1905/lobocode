@@ -1,8 +1,8 @@
 # Implementation and validation results
 
-Status: implementation in progress. E2E deferred at the user's request. The Mac currently has no available memory for builds or app testing; continue source edits here and use remote builds/tests.
+Status: implementation in progress. Native E2E remains deferred. The separately authorized 47,000-token diagnostic was blocked by actual memory admission before model launch. Builds and unit checks remain remote.
 
-Task20 source is prepared: two sequential fixed prompts, exact tokenizer arrays, hard token/request limits, owned existing-runtime checks and numeric-only private evidence. It starts nothing. Parent source review corrected a FIFO-read risk, fake identity-change case and a fragile privacy assertion; the child process receives a minimal environment. No script import, syntax compilation, self-test or real request has run. An EOS-only result can validate protocol/counts while `content_seen=false`; it does not prove a visible reply. Acceptance remains pending in Task21.
+Task20 source is prepared: two sequential fixed prompts, exact tokenizer arrays, hard token/request limits, owned existing-runtime checks and numeric-only private evidence. It starts nothing. Parent source review corrected a FIFO-read risk, fake identity-change case and a fragile privacy assertion; the child process receives a minimal environment. The original and same-size script syntax checks and HTTP fake self-tests now pass on Dell. No real generation request has run. An EOS-only result can validate protocol/counts while `content_seen=false`; it does not prove a visible reply. Acceptance remains pending in Task21.
 
 - Base: master `ddd1d6a`; memory implementation `b9a1966`; docs `597fb1c`; isolated merge `e84e56f`.
 - Earlier native memory run passed five cases, then its app exited normally at forced-denied Start. The WebDriver connection failed. The initiating exit cause remains unknown; this is not passing acceptance.
@@ -71,3 +71,32 @@ Run `36712619930` at `18c010e`: Linux protocol/workspace, core-macos and static-
 Commit `fe54faf` implements Tasks9–10. Parent source review passes path/checkbox retention, runtime-change invalidation, duplicate prevention, safe errors and durable Settings-tab delivery. Review corrections retain useful sanitized authentication errors and preserve pending success when the user changes tabs. The native app uses Regular activation and no longer declares LSUIElement. Actual Dock, Command-Tab, drag, corner and picker acceptance remains deferred.
 
 Dell UI checks pass: 19 tests, zero Svelte errors/warnings, Vite build with 189 modules, and the full UI formatting check. These checks include the Task8 API formatting correction. No Node process, build, app launch or test ran on the memory-constrained Mac. Hosted native compilation, app tests and bundle verification are next. README now describes the app-owned setup flow and marks the old screenshots and pending native acceptance.
+
+## Hosted app artifact b5617ae
+
+Run `36713757006` passed all jobs at `b5617ae6e4a44f7deada77dbeeff4f60f68c4aa1`: protocol/Linux, core-macos, agent-musl and app. App lint/tests, generated TypeScript/fixtures, bundle and signature checks pass. Native E2E was disabled. Artifact `11095757309` was downloaded into a private temporary directory; local `codesign --verify --deep --strict` passes. The actual bundle declares neither `LSUIElement` nor `LSBackgroundOnly`. The installed app remains unchanged.
+
+## Direct same-size diagnostic — blocked before inference
+
+The user requested a direct comparison without OpenCode. Plan v1.1 fixes one Q6 request at exactly 47,000 synthetic input tokens, context 65,536 and at most 32 output tokens. The script uses the model template and native completion endpoint, with a 30-minute deadline and no retry. This is a size comparison, not a replay of the private original request.
+
+Dell validation: both Python files compile; the original HTTP fake suite and 12 new diagnostic scenarios pass. These cover exact input construction, large request bounds, changed model/context/identity, missing content, wrong counts, cached input, truncation, authentication, answer-match reporting and no retries. Parent source review passes.
+
+The actual hosted app binary was run only as its normal headless supervisor, using isolated private config/state, a task-only key, existing Q6 weights and existing llama.cpp b11118. Production memory admission remained active. No GUI was launched or installed.
+
+| Measurement | Result |
+|---|---:|
+| Physical Mac memory | 64 GiB |
+| Available before startup | 13.36 GiB |
+| Guard-required model/context budget | 26.7 GiB |
+| Guard-available budget after reserves | 9.4 GiB |
+| Model loads | 0 |
+| Generation requests | 0 |
+| Observed stages | tunnel → gpu → failed |
+| Supervisor exit | 0 |
+| Stop errors | 0 |
+| Task processes remaining | 0 |
+| Task state file removed | yes |
+| Available after cleanup | 13.47 GiB |
+
+The memory guard blocked startup correctly on the real Mac. This does **not** verify local generation, throughput or peak memory. The model-versus-OpenCode comparison remains pending, so the conditional OpenCode investigation has not resumed. At this snapshot, approximately 17.3 GiB more available memory is needed for the same configuration. Personal settings, installed app, Homebrew CLI and weights are unchanged.

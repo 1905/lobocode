@@ -2,12 +2,15 @@
 
 ## Unreleased
 
+- Prepare a separate one-request Q6 diagnostic with exactly 47,000 synthetic input tokens and at most 32 output tokens. Dell HTTP fake checks pass. Actual Mac startup was blocked by normal memory admission: 26.7 GiB required, 9.4 GiB available after reserves. No model loaded or generation ran; speed and model acceptance remain unverified.
+- Hosted app checks and bundle verification pass at `b5617ae`. Native Dock, window and app-flow acceptance remain deferred; the installed app is unchanged.
+
 - Add a compact OpenCode Clients tab and Ready shortcut. Show the selected file and running model before repair; preserve default choice, prevent duplicate writes and retain safe setup errors. Dell: 19 UI tests, Svelte checks, build and formatting pass. Native visual acceptance is deferred.
-- Use regular macOS activation and remove the agent-app bundle setting. Preserve tray, background launch and hide/reopen behavior. Hosted native build, Dock/Cmd+Tab and actual window acceptance remain pending.
+- Use regular macOS activation and remove the agent-app bundle setting. Preserve tray, background launch and hide/reopen behavior. Hosted native build passes; Dock/Cmd+Tab and actual window acceptance remain pending.
 
-- Prepare an explicit bounded runtime-check script with two fixed short requests and private numeric evidence. It never starts a runtime or downloads models. Execution, speed measurements and E2E acceptance remain deferred.
+- Prepare an explicit bounded runtime-check script with two fixed short requests and private numeric evidence. It never starts a runtime or downloads models. Dell fake-only execution passes. Real generation, speed measurements and E2E acceptance remain pending.
 
-- Add app-owned OpenCode setup commands. Authenticate the exact Ready runtime with bounded model discovery; reject stale ownership, settings and key revisions before repair. Preserve provider restrictions and keep keys out of app metadata. Hosted app validation and native E2E remain pending.
+- Add app-owned OpenCode setup commands. Authenticate the exact Ready runtime with bounded model discovery; reject stale ownership, settings and key revisions before repair. Preserve provider restrictions and keep keys out of app metadata. Hosted app validation passes; native E2E remains pending.
 
 - Add the core OpenCode repair writer. Preserve JSONC comments and unrelated settings, use private key files and backups, reject concurrent changes, and avoid file churn on unchanged repairs. App controls are in progress. Dell: 15 repair fixtures, six unchanged CLI fixtures and Clippy pass.
 - Wire the app to its recorded runtime for Start, status and Stop. Capture Start before queuing memory admission; reject changed settings after the check. Guard discovered ownership against stale replies and clear old runtime status after Stop. Hosted app lint, units and generated-file checks pass; E2E is deferred.

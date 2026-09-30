@@ -49,3 +49,11 @@ The pinned `jsonc-parser` defaults accept extra syntax beyond JSONC. Disable loo
 These are source-verified implementation findings, not live runtime acceptance.
 
 Pinned llama.cpp b11118 `/slots` reports active slots but no queue count. A slot query can run before pending work because it is high priority. `/health` and `/props` do not fill this gap. Show `No active request` for inactive slots with unknown queue state. Keep queued count null. Do not add another metrics scrape. Sources: [server routes](https://github.com/ggml-org/llama.cpp/blob/b11118/tools/server/server-context.cpp), [server documentation](https://github.com/ggml-org/llama.cpp/blob/b11118/tools/server/README.md). The current shared startup flags do not disable slots.
+
+## Same-size direct diagnostic — 2026-09-30
+
+The user asked to isolate the model using a direct request with the same input size before investigating OpenCode. A script now prepares exactly 47,000 synthetic input tokens for Q6 at context 65,536, capped at 32 output tokens. Dell fake-only checks pass. The original request's total remains approximate; no private prompt was copied.
+
+The successful hosted app build `b5617ae` ran its production memory guard through an isolated headless supervisor. It reported 26.7 GiB required and 9.4 GiB available after reserves. It failed before model loading. Zero inference requests were sent. Cleanup exited normally with zero errors; no task processes or state file remain.
+
+This establishes real insufficient-memory rejection, not model-generation success or failure. The comparison and conditional OpenCode investigation remain pending. See [results.md](results.md) for measurements.

@@ -30,7 +30,12 @@
 **What:** Scope app Start, status and Stop to its target; fix the Vast error on Local Stop.
 **Why:** Current cleanup scans all providers and can delete unrelated cloud instances.
 **Your action:** Approve this expanded spec; then implement and test with scripts, without OpenCode.
-**Limits:** Two sequential short requests, at most 64 input and 32 output tokens each. No admission bypass, publication or GPU rental.
+**Limits:** The original short test remains available. The later same-size diagnostic below supersedes its input cap for one request only. No admission bypass, publication or GPU rental.
+
+**What:** Run one direct local Q6 request with exactly 47,000 synthetic input tokens and at most 32 output tokens.
+**Why:** Determine whether the model can finish an input as large as the stalled OpenCode request.
+**Your action:** Nothing; the user explicitly requested this diagnostic on 2026-09-30.
+**Limits:** Normal memory admission, 65,536 context, no OpenCode, no private prompts, no retries. Other E2E remains deferred.
 
 ## Problem(s)
 
@@ -187,6 +192,16 @@ Normal launch appears in the Dock and Cmd+Tab. `--background` may suppress initi
 
 Keep the existing Quit implementation and cleanup ownership. These UI changes must not start, stop or restart a model. Apple documents the agent-app exclusion in its [Launch Services reference](https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/LaunchServicesKeys.html#//apple_ref/doc/uid/20001431-108256).
 
+## Same-size local diagnostic — authorized 2026-09-30
+
+The latest user instruction explicitly resumes only a direct real-model comparison. The observed original request had approximately 47,000 input tokens and reached 28,672 processed tokens (61%) before cancellation. Its exact total and output limit are unknown. Use exactly 47,000 synthetic input IDs, Q6, context 65,536 and a 32-token output cap. This proves only whether a synthetic input of this size can finish on the same model and host.
+
+Use the successful hosted macOS artifact from revision `b5617ae` without installing it. Run its normal headless supervisor with isolated private configuration/state and the existing weights/runtime. Both production memory checks remain active. If admission fails, record it and stop. Do not terminate unrelated applications, download weights, rent a GPU, or bypass admission.
+
+Apply the model's chat template to a fixed synthetic message with thinking disabled. Tokenize its template prefix, neutral repeated filler and final question, then send exactly 47,000 token IDs to the native completion endpoint. Use one generation, no retry, a 30-minute deadline and a 32-token output cap. Require exact evaluated input count, no truncation, the expected model/boot identity, and nonempty output. Preserve numerical counters, timing and outcome only. Stop only the task-owned supervisor and verify its child exits.
+
+A successful result permits the next OpenCode investigation. It does not establish full compatibility or justify restarting OpenCode. Native GUI E2E, broad local tests, app installation and release remain deferred.
+
 ## File-level changes
 
 | File path | Change |
@@ -211,6 +226,8 @@ Keep the existing Quit implementation and cleanup ownership. These UI changes mu
 | `app/ui/src/proto/`, `app/ui/src/gen/` and `app/ui/src/fixtures/` | Regenerate types and add loading, processing, unavailable, stale and old-agent fixtures. |
 | `app/e2e/` and existing core/agent test modules | Cover config setup, zero-rate active processing, process identity, protocol compatibility and native app behavior. |
 | `README.md`, `CHANGELOG.md` and `docs/implementation-mistakes.md` | Document in-app setup, exact memory meanings and validation limits. Record unfinished acceptance until it passes. |
+
+Diagnostic file-map addition: create `tools/same_prompt_runtime_e2e.py`; extend only the transport seams in `tools/bounded_runtime_e2e.py` needed for a larger bounded request and `/apply-template`. Update this spec, `plan-v1.1.md`, `results.md`, `investigation.md`, project memory and `CHANGELOG.md` with measured results and limits.
 
 Implementation file-map detail from the approved plan: create `crates/lobo-core/src/control/app_scope.rs` and `app_scope/tests.rs`, `crates/lobo-core/src/local/process_memory.rs` and its tests, `crates/lobo-proto/src/telemetry.rs`, `crates/lobo-agent/src/telemetry.rs`, `app/e2e/runtime.spec.js`, `tools/bounded_runtime_e2e.py`, and this feature's `results.md`. Modify their module registrations, Cargo manifests/locks, `connection.rs`, local provider identity checks, existing control/connection test modules, `app/src-tauri/examples/generate_ui.rs`, `app/src-tauri/tests/fixtures.rs`, `e2e_memory.rs`, `app/e2e/{fixture.py,wdio.conf.js,app.spec.js}`, `tools/native_app_e2e.py`, `Makefile`, and `.github/workflows/rust.yml`. The workflow adds an explicit dispatch switch to defer native E2E without skipping unit/build checks. These files implement the approved contracts; they add no user-facing scope.
 
