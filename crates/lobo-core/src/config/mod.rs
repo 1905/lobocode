@@ -1,6 +1,8 @@
 pub mod dotenv;
 pub mod envfile;
 pub use envfile::{save, set_env_value, values};
+mod readiness;
+pub use readiness::{readiness, validate_set};
 
 use crate::{Error, Result};
 use std::{

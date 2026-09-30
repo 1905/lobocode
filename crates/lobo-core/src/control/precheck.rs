@@ -1,5 +1,40 @@
 use super::{Error, Laptop, Result, UpOpts};
 use std::{path::Path, time::Duration};
+pub fn resolve_up(
+    cfg: &Laptop,
+    cfg_path: &Path,
+    req: &lobo_proto::UpRequest,
+    supported: fn() -> Result<()>,
+) -> Result<UpOpts> {
+    let mut o = UpOpts {
+        provider: req.provider.clone().unwrap_or_default(),
+        model: req.model.clone().unwrap_or_default(),
+        ctx: req.ctx.unwrap_or_default(),
+        source: req.source.clone().unwrap_or_default(),
+        cloud: req.cloud.clone().unwrap_or_else(|| "community".into()),
+        ..Default::default()
+    };
+    if !matches!(o.cloud.as_str(), "secure" | "community") {
+        return Err(Error::Config(format!(
+            "--cloud: want secure or community, got {:?}",
+            o.cloud
+        )));
+    }
+    apply_defaults(
+        &mut o,
+        cfg,
+        &|flag| match flag {
+            "provider" => req.provider.is_some(),
+            "q6" => req.model.is_some(),
+            "ctx" => req.ctx.is_some(),
+            "cloud" => req.cloud.is_some(),
+            _ => false,
+        },
+        cfg_path,
+    )?;
+    check_target(cfg, &o.provider, supported)?;
+    Ok(o)
+}
 pub fn check_target(cfg: &Laptop, provider: &str, supported: fn() -> Result<()>) -> Result<()> {
     if provider == "local" {
         supported()
@@ -90,6 +125,69 @@ pub fn apply_defaults(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn resolve_up_composes_cli_defaults_and_precheck() {
+        use lobo_proto::UpRequest;
+        let cfg = Laptop {
+            model: "q6".into(),
+            ctx: "8192".into(),
+            idle_min: "10".into(),
+            max_hours: "2".into(),
+            min_mbps: "150".into(),
+            ..cloud()
+        };
+        let o = resolve_up(&cfg, Path::new("/config"), &UpRequest::default(), || Ok(())).unwrap();
+        assert_eq!(
+            (o.provider.as_str(), o.model.as_str(), o.cloud.as_str()),
+            ("runpod", "q6", "community")
+        );
+        assert_eq!((o.ctx, o.idle_min, o.min_mbps), (8192, 10, 150));
+        assert_eq!(o.max_life, Duration::from_secs(7200));
+        let r = UpRequest {
+            model: Some("q8".into()),
+            ctx: Some(4096),
+            ..Default::default()
+        };
+        let bad = Laptop {
+            ctx: "bad".into(),
+            ..cfg.clone()
+        };
+        let o = resolve_up(&bad, Path::new("/config"), &r, || Ok(())).unwrap();
+        assert_eq!(o.model, "q8");
+        assert_eq!(o.ctx, 4096);
+        for (provider, cfg, expected) in [
+            ("local", cfg.clone(), "unsupported"),
+            (
+                "vast",
+                cfg.clone(),
+                "no VASTAI_API_KEY in /config. Run `lobo config` to add it",
+            ),
+            (
+                "x",
+                cfg,
+                "--provider: want runpod, vast or local, got \"x\"",
+            ),
+            (
+                "runpod",
+                Laptop {
+                    runpod_api_key: "r".into(),
+                    ..Default::default()
+                },
+                "config: cloud needs CF_TUNNEL_TOKEN, LOBO_DOMAIN, LOBO_BUCKET_URL",
+            ),
+        ] {
+            let req = UpRequest {
+                provider: Some(provider.into()),
+                ..Default::default()
+            };
+            assert_eq!(
+                resolve_up(&cfg, Path::new("/config"), &req, unsupported)
+                    .unwrap_err()
+                    .to_string(),
+                expected
+            );
+        }
+    }
     fn unsupported() -> Result<()> {
         Err(Error::Local("unsupported".into()))
     }

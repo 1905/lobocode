@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rust P5 shared app APIs: config readiness, settings validation, explicit startup overrides and free-space checks for unsaved folders. The desktop app is still in progress.
+- Shared protocol/core checks pass: 255 tests, one network test ignored; clippy passes. Native app E2E remains pending.
+
 - Rust CLI packaging now builds macOS and static Linux archives for Intel and ARM. Release CI pins Rust, Zig, cargo-zigbuild and GoReleaser. Snapshot builds do not need tap credentials.
 - All four archives, a clean snapshot and temporary Homebrew installation/test pass. App E2E remains pending. All 51 CLI tests pass, including completion output and candidate publication without changing `latest.json`.
 - Rust and pod-image CI passed at fcb8aff, including the HTTP pool and process-fixture fixes.

@@ -1,4 +1,12 @@
 use super::*;
+
+#[test]
+fn free_bytes_nearest_missing_and_home() {
+    let dir = tempfile::tempdir().unwrap();
+    assert!(free_bytes_nearest(&dir.path().join("missing/nested/weights")).is_some());
+    assert!(free_bytes_nearest(Path::new("~/")).is_some());
+    assert!(!dir.path().join("missing").exists());
+}
 use std::fs::FileTimes;
 
 #[test]

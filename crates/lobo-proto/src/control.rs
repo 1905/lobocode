@@ -3,6 +3,19 @@ use crate::{DownloadProgress, Manifest, Status, Timings};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// App overrides. None uses the same config defaults as an unset CLI flag.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
+#[serde(default)]
+#[ts(export)]
+pub struct UpRequest {
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    #[ts(type = "number | null")]
+    pub ctx: Option<i64>,
+    pub source: Option<String>,
+    pub cloud: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
 #[serde(default)]
 #[ts(export)]
