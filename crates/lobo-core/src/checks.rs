@@ -76,7 +76,7 @@ pub fn validate_tool_call(body: &[u8]) -> Result<()> {
 #[derive(Deserialize, Default)]
 #[serde(default)]
 struct Delta {
-    content: String,
+    content: Option<String>,
 }
 #[derive(Deserialize, Default)]
 #[serde(default)]
@@ -120,7 +120,9 @@ pub async fn read_stream<R: AsyncBufRead + Unpin>(mut r: R) -> Result<String> {
             return Err(Error::Other(format!("chat: error event {}", chunk.error)));
         }
         if let Some(choice) = chunk.choices.and_then(|v| v.into_iter().next()) {
-            text.push_str(&choice.delta.content);
+            if let Some(content) = choice.delta.content {
+                text.push_str(&content);
+            }
             if let Some(reason) = choice.finish_reason {
                 finish = reason;
             }

@@ -55,6 +55,15 @@ fn end() -> &'static str {
 async fn read_stream_table() {
     for (input, error) in [
         (chunk("hel") + &chunk("lo") + end(), ""),
+        (
+            "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":null},\"finish_reason\":null}]}\n\n".to_owned()
+                + &chunk("hello") + end(),
+            "",
+        ),
+        (
+            "data: {\"choices\":[{\"delta\":{\"content\":42}}]}\n\n".into(),
+            "malformed",
+        ),
         (chunk("hi"), "without [DONE]"),
         (
             chunk("hi") + "data: {\"error\":{\"message\":\"boom\"}}\n\n",

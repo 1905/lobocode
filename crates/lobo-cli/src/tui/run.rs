@@ -46,6 +46,7 @@ impl Inline {
         })
     }
     fn draw(&mut self, mut text: Text<'static>) -> std::io::Result<()> {
+        text = fit_height(text, terminal::size()?.1);
         let height = u16::try_from(text.lines.len()).unwrap_or(u16::MAX).max(1);
         if self.terminal.is_none() || self.height != height {
             if let Some(mut old) = self.terminal.take() {
@@ -95,13 +96,34 @@ impl Drop for Inline {
     }
 }
 pub fn draw_up(frame: &mut Frame, model: &UpModel) {
-    frame.render_widget(model.view(), frame.area());
+    frame.render_widget(fit_height(model.view(), frame.area().height), frame.area());
 }
 pub fn draw_status<Tz: TimeZone>(frame: &mut Frame, model: &StatusModel, tz: &Tz)
 where
     Tz::Offset: Display,
 {
-    frame.render_widget(model.view(tz), frame.area());
+    frame.render_widget(
+        fit_height(model.view(tz), frame.area().height),
+        frame.area(),
+    );
+}
+
+fn fit_height(mut text: Text<'static>, rows: u16) -> Text<'static> {
+    if text.lines.len() <= usize::from(rows) {
+        return text;
+    }
+    // Keep all values and the quit hint. Section spacing is optional on short terminals.
+    text.lines.retain(|line| {
+        !line.spans.iter().all(|span| span.content.trim().is_empty())
+            && !(line.spans.len() == 1 && line.spans[0].style == super::styles::TITLE)
+    });
+    if text.lines.len() > usize::from(rows) {
+        return Text::from(format!(
+            "Resize terminal to at least {} rows.\nq quit",
+            text.lines.len()
+        ));
+    }
+    text
 }
 
 pub async fn run_up(
