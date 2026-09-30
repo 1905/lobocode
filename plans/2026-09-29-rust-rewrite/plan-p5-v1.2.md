@@ -877,3 +877,7 @@ Contract alignment (contracts v1.1):
 - Tauri commands run from `app/`. Bundle output is `app/src-tauri/target/release/bundle/macos/lobocode.app`. Do not set a shared target directory. Pin pnpm and Node versions; both CI jobs install with the frozen UI lockfile.
 - Task 36 also runs `make mac`, validates the bundle binary, runs TS export for proto and app types, and checks generated files. CI must trigger on UI-only changes. Rebuild the pod image after introducing the app workspace.
 - App TS export uses an explicit absolute export directory for each crate, so root `.cargo/config.toml` does not send app types into `src/proto`. Check generated types from a clean tree without pre-existing output.
+
+## Baseline preparation — 2026-09-30
+
+While P4 release packaging runs, saved the unchanged Swift app’s 22 reference renders in `p5-baseline/`. Release build and all 17 Swift tests pass. No live config or provider was used. P4 completion and the Tauri scaffold remain pending.
