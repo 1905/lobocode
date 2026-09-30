@@ -1,0 +1,14 @@
+---
+source: crates/lobo-cli/tests/tui_parity.rs
+expression: text
+---
+lobo up  ·  Qwen3.5-27B on a rented RTX 5090
+
+ ✓ rent pod        7s     runpod pod1, COMMUNITY, host ≥10000 Mbps, $0.69/h, release 2026.09.23-1, q8 ctx 8192
+ ✓ boot container  7s     
+ ✓ tunnel          7s     
+ ✓ gpu check       
+ * download model  0:05   ██████████░░░░░░░░░░░░░░  43.2%  12.4 GB / 28.6 GB  51 MB/s  ETA 5m17s
+ · sha256 verify   
+ · load model      
+ · ready

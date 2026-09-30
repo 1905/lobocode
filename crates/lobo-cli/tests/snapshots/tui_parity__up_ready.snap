@@ -1,0 +1,23 @@
+---
+source: crates/lobo-cli/tests/tui_parity.rs
+expression: text
+---
+lobo up  ·  Qwen3.5-27B on a rented RTX 5090
+
+ ✓ rent pod        7s     runpod pod1, COMMUNITY, host ≥10000 Mbps, $0.69/h, release 2026.09.23-1, q8 ctx 8192
+ ✓ boot container  7s     
+ ✓ tunnel          7s     
+ ✓ gpu check       
+ ✓ download model  7s     
+ ✓ sha256 verify   
+ ✓ load model      7s     
+ ✓ ready           
+
+╭───────────────────────────────────────────╮
+│ ✓ lobo is up                              │
+│ endpoint      https://lobo.example.com/v1 │
+│ release       2026.09.23-1 (abc1234)      │
+│ cost          $0.69/h                     │
+│ boot time     15s                         │
+│ lobo status · lobo test · lobo down       │
+╰───────────────────────────────────────────╯

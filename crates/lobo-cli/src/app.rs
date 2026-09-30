@@ -45,6 +45,7 @@ pub struct App {
     pub clock: Arc<dyn Clock>,
     pub term: Term,
     pub exe: PathBuf,
+    pub boot_log: PathBuf,
     /// Main owns signal handling; tests can cancel without changing process-global handlers.
     pub cancel: CancellationToken,
 }
@@ -57,6 +58,7 @@ impl App {
             prompter: Arc::new(|| Box::new(crate::wizard::InquirePrompter)),
             clock: Arc::new(SystemClock),
             exe: std::env::current_exe().unwrap_or_else(|_| PathBuf::from("lobo")),
+            boot_log: PathBuf::from("boots.jsonl"),
             cancel: CancellationToken::new(),
             term: Term {
                 stdout_tty: std::io::stdout().is_terminal(),
