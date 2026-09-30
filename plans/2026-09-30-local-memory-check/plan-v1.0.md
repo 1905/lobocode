@@ -70,28 +70,28 @@ Requirement: catalog weights + padded context * 34,816 bytes + 4 GiB runtime res
 
 - [x] Existing branch ancestry and worktree ownership inspected. All previous feature branches are ancestors of merged `master`.
 - [x] Existing exact backend source passed 434 workspace tests and clippy on Dell; two opt-in checks and three Go interop checks also passed. `d2557c3` changes Docker/docs only after that source validation.
-- [ ] Confirm focused local baseline on Dell, using the task-owned test container. Do not alter the image build source tree.
+- [x] Confirm existing-source baseline by source identity and prior Dell results; reproduce new failures before implementation in the separate memory test tree.
 - [x] UI baseline: frozen install, type check (zero errors/warnings) and all nine tests pass.
 
 ## Task 1: Snapshot and calculator
 
 Files: new memory module/tests, `local/mod.rs`, native bindings in core Cargo and lockfiles if needed.
 
-- [ ] Add tests for Q6/Q8 requirement, context padding/max/invalid, Metal versus physical limit, exact boundary, malformed stats and overflow.
-- [ ] On Dell run `cargo test --locked -p lobo-core local::memory::`. Observe named failures before implementation.
-- [ ] Implement checked arithmetic and the locked interfaces. Use Mach statistics and Metal recommendation directly; release native handles correctly.
-- [ ] Keep macOS bindings target-specific. Do not use `os_proc_available_memory`, `llama-server`, shell probes, model reads or sysctl writes.
-- [ ] Rerun the focused tests; expect nonzero test count and all pass. Check the native adapter compiles through app build/hosted macOS CI.
+- [x] Add tests for Q6/Q8 requirement, context padding/max/invalid, Metal versus physical limit, exact boundary, malformed stats and overflow.
+- [x] On Dell run `cargo test --locked -p lobo-core local::memory::`. Observe named failures before implementation.
+- [x] Implement checked arithmetic and the locked interfaces. Use Mach statistics and Metal recommendation directly; release native handles correctly.
+- [x] Keep macOS bindings target-specific. Do not use `os_proc_available_memory`, `llama-server`, shell probes, model reads or sysctl writes.
+- [x] Rerun focused tests: 58 local unit tests and 14 provider integration tests pass on Dell. Native adapter compilation and read-only execution remain in Task 5.
 
 ## Task 2: Enforce before local side effects and inference
 
 Files: `local/{provider,deps}.rs`, their tests and `tests/local_provider.rs`.
 
-- [ ] Add provider tests proving low/unknown memory creates no weights directory, runtime request, log or supervisor.
-- [ ] Add MacDeps tests proving rejected GPU checks do not invoke the device probe, and declining memory after preparation prevents the inference process.
-- [ ] Run `cargo test --locked -p lobo-core --test local_provider` and `cargo test --locked -p lobo-core local::deps::tests` on Dell, first failing then passing.
-- [ ] Replace the fixed-budget decision with fresh `MemoryProbe` checks. Keep Metal-device detection for valid starts and all existing cleanup behavior.
-- [ ] Self-review and commit this core batch in the feature worktree; do not push until app wiring uses the same contract.
+- [x] Add provider tests proving low/unknown memory creates no weights directory, runtime request, log or supervisor.
+- [x] Add MacDeps tests proving rejected GPU checks do not invoke the device probe, and declining memory after preparation prevents the inference process.
+- [x] Run `cargo test --locked -p lobo-core --test local_provider` and `cargo test --locked -p lobo-core local::deps::tests` on Dell, first failing then passing.
+- [x] Replace the fixed-budget decision with fresh `MemoryProbe` checks. Keep Metal-device detection for valid starts and all existing cleanup behavior.
+- [x] Self-review and commit this core batch in the feature worktree; do not push until app wiring uses the same contract.
 
 ## Task 3: Native app state and controls
 
@@ -120,7 +120,7 @@ Files: app E2E-only fixture adapter, native driver scripts, Makefile, CI.
 
 Files: affected tests, evidence and targeted fixes only.
 
-- [ ] On Dell run `cargo test --locked --workspace --all-features` and `cargo clippy --locked --workspace --all-targets --all-features -- -D warnings` with two build jobs. Do not rerun unchanged optional network checks.
+- [x] Dell workspace tests:449 passed,2 existing opt-in tests ignored. `cargo clippy --locked --workspace --all-targets --all-features -- -D warnings` passes with two build jobs. Unchanged optional network checks were not repeated.
 - [ ] Push the feature branch through explicit SSH credentials. Watch normal Rust CI for that exact revision; it includes macOS core/app tests and E2E.
 - [ ] Run `pnpm -C app/ui check`, `pnpm -C app/ui test`, production UI build and formatting checks. Inspect new layouts and actual native read-only memory state.
 - [ ] Build/install the local standalone app and DMG after smoke checks. Preserve CLI/config/models. Notify QA readiness with exact revision and remaining validation.
@@ -141,3 +141,14 @@ Files: docs/assets/changelog/memory and this feature's planning records.
 
 - 2026-09-30: user explicitly made memory a new feature after the existing-work merge. User then requested E2E, merge, and sequential updater implementation in full auto.
 - Public-image full builds remain an independent active task on Dell. Do not sync this worktree over their source or BuildKit cache.
+
+- Core batch6422173: 58 local unit tests pass, one existing optional network test ignored; 14 provider integration tests pass. Red checks first reproduced six calculator, three pre-load and one provider denial failure. Native binding validation remains pending in Task5.
+- Merge a6ffe6e includes master0c9090d license-packaging fix and app fixture baseline fixes. App Tasks3–4 now active; parent owns full Dell checks and native E2E.
+
+## Execution checkpoint — 2026-09-30
+
+- App implementation committed at `b9a1966`: 11 frontend tests pass, type/style checks pass, and the native E2E bundle builds. The implementation report is in `.superpowers/sdd/plan-v1.0/task-app-report.md`.
+- One native memory fixture run completed five cases, then lost the app connection during the denied-Start case. The final read-only probe case could not connect. Artifact directory: `bin/app-e2e/lobo-native-e2e-zlqngx7s`. Cleanup passed; no model started. This is a failure, not completed acceptance.
+- User then requested “e2e test later.” Do not rerun E2E during implementation. Hosted Rust run `36699136623` was cancelled to defer its native E2E step.
+- Complete the approved app setup/memory visibility/targeted Stop fixes in their new isolated worktree, integrating this branch there. Do not merge unverified memory code into master merely to create a baseline. Final integrated E2E and merge remain pending.
+- The updater and public-image jobs remain paused.

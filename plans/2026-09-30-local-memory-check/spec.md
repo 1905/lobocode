@@ -51,7 +51,8 @@ system reserve = 4 GiB
 budget = min(available now - system reserve, Metal recommended working set)
 ```
 
-Subtractions saturate at zero. Do not add inactive pages, file cache, speculative pages or purgeable pages again.
+The system-reserve subtraction saturates at zero. Inconsistent native page counters fail closed.
+Do not add inactive pages, file cache, speculative pages or purgeable pages again.
 In particular, `free_count` already includes speculative pages in Apple's VM statistics.
 Compression and swap do not create additional capacity in this calculation.
 This is an estimate of reclaimable physical memory, not a promise that all cache pages can be reclaimed immediately.
@@ -170,3 +171,15 @@ P1: Implement and verify the shared memory guard plus compact app UI; commit loc
 P2: Update assets/docs and build/install the local app/DMG; record exact validation limits in the delivery commit.
 Public release remains held. Normal branch pushes and CI are authorized by the user's full-auto instruction.
 The separate approved public-image plan continues independently. After this feature passes E2E and is merged, execute the GitHub app-updates feature from the merged baseline.
+
+## As-built notes
+
+- Core commit `6422173` adds `inspect_with(model, ctx, &MemoryProbe)` for deterministic probes and contextual errors. The production probe remains native and read-only.
+- `platform::usable_mib` stays exported for compatibility. Local admission no longer uses it.
+- Invalid native counters reject the assessment. Only subtracting the system reserve clamps to zero; this clarifies the calculation text above.
+- Dell verification: 449 workspace tests pass, with two existing opt-in tests ignored. The previously verified Go interoperability checks were not re-enabled in this run. Native adapter and app E2E verification remain pending.
+- The 4 GiB runtime reserve remains a conservative policy. No model inference or peak-memory calibration ran on this Mac.
+
+- App commit `b9a1966` implements the state/UI and seven native fixture cases. Eleven frontend tests and UI/native builds pass.
+- Native fixture execution passed five cases, then disconnected during denied Start; the final case could not run. Cleanup passed and no inference started. The user deferred E2E until the later validation stage.
+- Integrate this implemented guard into the approved app setup/visibility feature branch; final hosted checks, E2E and master merge are still required.
