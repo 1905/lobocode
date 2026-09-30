@@ -5,6 +5,7 @@
 - Fix app fixtures rejected by macOS CI: remove a redundant default initializer and give the ready fake GPU its agent/API addresses.
 
 - Remove package-generated SSH host keys from the GPU image during the install layer. Each cloud instance keeps its own pinned key. Final image verification is still running on Dell.
+- Bundle the model license in the Docker build context. A license download timeout previously discarded completed model packaging; rebuilding now reuses the verified source cache.
 
 - Plan only: specify a Mac memory check before local Start, with model/context estimates and blocked startup on insufficient or unknown memory. Approval and implementation are pending.
 
