@@ -38,16 +38,16 @@ brew install 1905/tap/lobo
 **Rust development build** (Rust from `rust-toolchain.toml`; Node.js and pnpm for the app):
 
 ```sh
-git clone --branch feat/rust https://github.com/1905/lobocode && cd lobocode
+git clone https://github.com/1905/lobocode && cd lobocode
 make rust-build-lobo # → bin/lobo-rs; does not replace the installed CLI
 make install-mac    # optional: the menu bar app → /Applications/lobocode.app
 ```
 
-The Go CLI remains in `master` and the legacy `make install` target until the Rust cutover. Use `bin/lobo-rs` to test this branch.
+The source retains the legacy Go CLI and `make install` target until the Rust release. Use `bin/lobo-rs` to test the Rust CLI.
 
 ## What you need
 
-**On this Mac** (Apple Silicon, 32 GB+): nothing else. See [Run on this Mac](#run-on-this-mac).
+**On this Mac:** Apple Silicon with enough available memory for the selected model and context. See [Run on this Mac](#run-on-this-mac).
 
 **In the cloud:**
 - A **RunPod** or **Vast.ai** API key. One is enough.
@@ -82,6 +82,12 @@ The terminal dashboard updates in place. Press `q` to leave status; press `q` or
 ## Run on this Mac
 
 Apple Silicon only. Same llama.cpp build and flags as the pod, Metal instead of CUDA, no rent.
+
+The Rust candidate checks current memory before local startup. The app shows the required memory and usable budget. Start stays disabled while checking, when memory is insufficient, or when the measurement fails. Close other applications or select Cloud, then check again.
+
+At the default 65,536-token context, Q6 requires about 26.7 GiB and Q8 about 32.8 GiB. These estimates include weights, context cache and a 4 GiB runtime reserve. The usable budget leaves another 4 GiB for the system and respects Metal's recommended limit. Installed RAM and downloaded weights alone do not establish that a model fits. Swap does not count as available memory.
+
+The shared core checks again at Start and immediately before model load. A passing check is an estimate; memory pressure can change afterward. The optional Rust CLI uses the same guard.
 
 - Set `LOBO_WEIGHTS_DIR` to a folder with room for the GGUF (Q6 22 GB, Q8 29 GB). `lobo models` shows what is there.
 - `lobo up --provider local` downloads llama.cpp and the model from Hugging Face (resumable, sha256-checked), then serves `http://127.0.0.1:8931/v1` with your `LOBO_API_KEY`.
