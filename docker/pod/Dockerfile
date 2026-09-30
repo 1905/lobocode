@@ -6,7 +6,8 @@ ARG SPLIT_IMAGE=ghcr.io/ggml-org/llama.cpp:full-cuda-b11118
 FROM ${SPLIT_IMAGE} AS model
 ARG MODEL=q8
 COPY crates/lobo-proto/catalog.json /build/catalog.json
-COPY docker/pod/build_model.py /build/build_model.py
+# License text from https://www.apache.org/licenses/LICENSE-2.0.txt is bundled.
+COPY docker/pod/build_model.py docker/pod/Apache-2.0.txt /build/
 # Retain verified upstream bytes across packaging fixes. This cache is build-only.
 RUN --mount=type=cache,id=lobo-model-sources,target=/model-cache,sharing=locked \
     python3 /build/build_model.py "$MODEL" /out

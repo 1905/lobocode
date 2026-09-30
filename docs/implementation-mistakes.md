@@ -93,6 +93,13 @@ unchanged. Cloud image publication and live acceptance are still pending.
 
 ## 5. Local completion was not public release readiness
 
+The full Q8 build verified and split the model, then failed while downloading
+the Apache license text. The license is now bundled in the build context and
+copied before model processing. Its canonical ASF source has SHA-256
+`cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`.
+The rebuild reuses the verified original model bytes. Full image validation
+remains in progress; this fix does not establish public release readiness.
+
 “Implemented” described local source changes and fixture checks. It did not mean
 that a new user could download a public DMG and start a cloud model. The installed
 app, published GPU image, model distribution and release artifacts must agree.
