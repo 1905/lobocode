@@ -1,7 +1,7 @@
-# App Setup and Runtime Visibility Implementation Plan v1.1
+# App Setup and Runtime Visibility Implementation Plan v1.3
 
 **Date:** 2026-09-30
-**Status:** superseded by v1.2
+**Status:** superseded by v1.4
 **Spec:** ./spec.md (approved)
 **Authorization:** The user approved implementation and testing in the expanded spec. Prior full-auto delivery authorization persists. Parent self-review completed. Execute under the approved implementation and testing instruction; no new scope permission is needed.
 **Goal:** Safely operate the app-owned runtime, configure OpenCode, and show accurate memory/activity in a normal native Mac app.
@@ -10,7 +10,26 @@
 
 > For agentic workers: use superpowers:subagent-driven-development to implement task-by-task. Checkbox syntax tracks completion.
 
-## Priority diagnostic — latest user instruction
+## Priority cloud E2E — latest user instruction
+
+The user now defers local tests and explicitly requests cloud E2E after asking about both TUI and Mac. RunPod rental and cloud-client checks are authorized. Preserve all previous implementation work; no local inference, OpenCode launch, app installation or app/CLI public release.
+
+File map: create `tools/cloud_runtime_e2e.py`, `.github/workflows/cloud-e2e-image.yml`, and an optional small `tools/verify_cloud_candidate.py`;  update this plan, spec, results/investigation, AGENTS.md and CHANGELOG.md. Reuse bounded HTTP and synthetic-token code. No new UI or provider feature is planned.
+
+- [ ] C1: Verify RunPod credentials, account inventory and current public image tags. Prepare one complete Q6 image on Dell with catalog hashes, offline image validation, exact source revision and digest. Preserve paused jobs and document any necessary resume. Do not rent until image access succeeds. Resolve public publication/promotion hold only after the concrete image is ready.
+- [ ] C1a: Prepare `.github/workflows/cloud-e2e-image.yml` with a read-only candidate verification default. Use a temporary isolated Dell runner, pinned official runner image and ORAS. Require exact source/image digests and verify OCI hashes/config. Keep `publish` and `promote_latest` false by default; promotion requires successful immutable publication and anonymous digest verification. No app/CLI release or latest-q8 changes. Run static checks and a verification-only CI job before requesting image publication/promotion approval.
+- [x] C2: Add CloudRuntime adapter for expected RunPod instance/boot and private saved SSH connection. Require Q6/65,536 context, authenticated model metadata and unchanged identity. Run fake-only checks on Dell. No local weights, retry or arbitrary prompts.
+- [ ] C3: Build the current CLI on Dell. Run real startup and status TUI under a PTY with isolated config/state. Resolve latest-q6 normally, then send one direct 47,000-input/32-output request. Capture time to first content, rates and exact counters. Delete only the task-owned pod and verify cleanup.
+- [ ] C4: Run the verified hosted Mac app against RunPod with isolated provider config/state and safely preserved preferences. Check visible Cloud selection, Start, loading, Ready, short streamed response, scoped Stop and final Off without scrolling. No local model. Verify the exact cloud pod and tunnel are gone.
+- [ ] C5: Record actual passed/failed checks, cloud cost and remaining limits. Update changelog and saved memory. Keep release/updater/local-model acceptance held. Do not infer model success from fake checks or provider creation alone.
+
+C1 preflight: direct authenticated REST v1/v2 and GraphQL pod inventory all pass, zero pods. An initial urllib check returned 403; direct requests did not reproduce it. Anonymous latest-q6/latest-q8 manifests return 404. No rental has started.
+
+Cloud checkpoint: C2 parent review and Dell fake-only checks pass. Actual Mac production artifact and Dell 80×24 TUI both fail cleanly at latest-q6 HTTP 404, before rental. Account remains empty. Task Mac app was quit and original target preference restored. Q6 build preparation is active in an isolated Dell worker; old paused image jobs are untouched. CLI binary 528322e is ready. Local GHCR upload capability probe returned 403 DENIED, so CI publication preparation is required before live provisioning can proceed.
+
+Publication checkpoint: the direct GHCR upload-session probe returned 403 DENIED. Existing `1905/lobocode` is already public, so no new package or visibility change is planned. C1a adds a normal repository CI path using a temporary isolated runner; no registry write is authorized by this preparation alone.
+
+## Earlier local diagnostic — now deferred
 
 The user explicitly requested a direct comparison without OpenCode using the same input size. This narrow authorization supersedes the earlier inference hold and 64-token input cap for one diagnostic. All other deferred work remains held. Existing Tasks 1–23 and their completed evidence remain unchanged below.
 

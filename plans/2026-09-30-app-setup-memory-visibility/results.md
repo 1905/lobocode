@@ -100,3 +100,19 @@ The actual hosted app binary was run only as its normal headless supervisor, usi
 | Available after cleanup | 13.47 GiB |
 
 The memory guard blocked startup correctly on the real Mac. This does **not** verify local generation, throughput or peak memory. The model-versus-OpenCode comparison remains pending, so the conditional OpenCode investigation has not resumed. At this snapshot, approximately 17.3 GiB more available memory is needed for the same configuration. Personal settings, installed app, Homebrew CLI and weights are unchanged.
+
+## Cloud E2E preflight — 2026-09-30
+
+The user explicitly requested cloud E2E for TUI and Mac, leaving local inference for later. Plan v1.4 is current. Direct authenticated RunPod REST v1/v2 and GraphQL inventory pass with zero pods. An initial urllib request returned 403; direct requests did not reproduce it. RunPod's live GPU catalog lists RTX 5090 Secure Cloud at USD 0.99/hour, availability LOW. No rental has started.
+
+Anonymous `latest-q6` and `latest-q8` manifest requests return 404. The existing legacy `sha-914ac19` image is a runtime-only image without weights or `/lobo/start`; it is not a valid replacement. An isolated Q6 build is being prepared on Dell from committed `528322e`, using the existing model copied read-only from the Mac and independently hashed on Dell. Old paused Q8 workers/drivers remain preserved.
+
+Real Mac cloud preflight: launched hosted production artifact `b5617ae` with task-only provider config and state. Used Computer Use to select Cloud/Q6 and press Start. Observed Boot then Fail with `cannot resolve latest q6 GPU image: HTTP 404 Not Found; no GPU was rented`. No scrolling; controls and full primary error fit. Provider inventory remained empty; no app owner or tunnel state was created. Quit the task app through its visible control and restored the unchanged original Local target preference. Installed app and personal provider config were preserved. Screenshot is retained in the private cloud-E2E task directory.
+
+Real TUI preflight: compiled CLI `528322e468deeab23f8c0b74e804510d98cca071` on Dell, one job, 1 CPU / 2 GiB, 55.06 seconds. Binary SHA256 `d5091722248f3cba8f8fc549ed425098c90a20d09e666eb9e4cd1f103e1f0ea6`. Ran cloud Up under an 80×24 PTY with isolated config/state. The actual TUI displayed the same missing-image error and exited 1. This verifies failure handling, not successful cloud provisioning or inference.
+
+Cloud harness source is prepared. Parent review and Dell Python compilation/fake checks pass: inherited bounded HTTP checks, 12 same-size scenarios, cloud state/owner/expiry/privacy cases, exactly one request and changed remote boot rejection. No live completion request has run.
+
+The GitHub CLI token has `gist, read:org, repo` scopes. A zero-byte GHCR upload-session probe returned 403 `DENIED`; no upload session or image was created. A repository CI publication path is needed. Public image promotion is still held until the concrete candidate is ready and publication scope is resolved.
+
+The existing `Pod image` workflow now has a prepared candidate mode. Its default verifies a read-only OCI export without publishing. The verifier checks blob hashes, graph references, source/model labels and Linux AMD64 runtime configuration. Dell validation passed: 18 fake cases, Python compilation, actionlint and shell syntax. Actual candidate verification and CI execution remain pending. Optional publication uses pinned ORAS 1.3.4. Existing conflicting tags cause failure; the registry offers no atomic compare-and-swap guarantee against an unrelated simultaneous publisher.

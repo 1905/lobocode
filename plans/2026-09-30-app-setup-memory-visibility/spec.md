@@ -37,6 +37,11 @@
 **Your action:** Nothing; the user explicitly requested this diagnostic on 2026-09-30.
 **Limits:** Normal memory admission, 65,536 context, no OpenCode, no private prompts, no retries. Other E2E remains deferred.
 
+**What:** Run cloud E2E on RunPod through the TUI and the native Mac app, with direct scripted inference.
+**Why:** Local inference is blocked by Mac memory, and live cloud acceptance is still unverified.
+**Your action:** Nothing for test preparation or GPU rental; the user explicitly requested cloud E2E.
+**Limits:** Q6, one GPU at a time, bounded requests, exact cleanup. Local inference, OpenCode and app/CLI release remain deferred. Public image promotion still requires resolving the earlier publication hold.
+
 ## Problem(s)
 
 1. OpenCode setup requires a CLI-generated file and manual merging. The generator fixes the model at Q8 and truncates its output file. It cannot safely repair a real user config unchanged. Evidence: `README.md:118`, `crates/lobo-core/src/genkey.rs:28`, `crates/lobo-core/src/genkey.rs:60`.
@@ -202,6 +207,24 @@ Apply the model's chat template to a fixed synthetic message with thinking disab
 
 A successful result permits the next OpenCode investigation. It does not establish full compatibility or justify restarting OpenCode. Native GUI E2E, broad local tests, app installation and release remain deferred.
 
+## Cloud E2E — authorized 2026-09-30
+
+The latest instruction is “local test later. do cloud e2e”. It authorizes RunPod test rentals and the required cloud-client checks. Local inference stays deferred. Test Q6 with context 65,536. Use one GPU at a time and at most two sequential client lifecycles. Only one request uses exactly 47,000 synthetic input tokens with at most 32 output tokens; the other client uses a short bounded smoke request. OpenCode stays closed.
+
+Normal starts must resolve the current public model tag. Read-only checks found no complete candidate image and HTTP 404 for both public latest tags. Finish a complete Q6 image on Dell, verify its model manifest and offline startup requirements, and record its immutable digest. Do not rent while the image cannot be pulled. The earlier public-publication hold remains separate from the newly authorized rental: prepare the actual image before resolving publication/promotion approval. Do not substitute a runtime-only image, private developer bucket or boot-time model download.
+
+Use the actual CLI under a PTY and the verified hosted Mac app artifact. Preserve installed app/CLI and personal provider settings. Keep test config, API key, cloud connection and operation state private and isolated. A shared target preference may be backed up and restored only without concurrent writes; do not add a production feature solely to make this test easier.
+
+Capture the created RunPod ID, boot ID, image digest, hourly rate and creation time. Require those identities before direct inference and cleanup. Record streaming, exact token counts, first-content latency, prompt/generation speeds, agent readiness and visible client state. Delete only the test pod and verify provider absence plus tunnel cleanup. CLI global Down is unsuitable if any unrelated runtime exists. Use the app's scoped Stop or exact owned provider deletion for recovery.
+
+Cloud harness reuses the bounded HTTP and synthetic-token helpers. Its CloudRuntime adapter validates the private saved connection against the expected instance/boot receipt and verifies the remote agent/model/context. It does not inspect local model files. Numeric evidence must identify a cloud runtime, never a local supervisor.
+
+### Candidate publication through repository CI
+
+The saved GitHub CLI token cannot open a GHCR upload session (HTTP403). Use a narrowly scoped manual GitHub Actions workflow with `packages: write`, running on a task-owned ephemeral Dell runner. Mount only the verified OCI candidate read-only; expose no host Docker socket, personal home or old build storage. Pin the official runner image and ORAS release. The runner handles one job and is removed afterward.
+
+Verification is the default. Validate the requested source revision, image digest, OCI content hashes and complete-image configuration before any registry write. Publication and `latest-q6` promotion are separate explicit workflow inputs, both false by default. Publish the immutable source tag first, verify anonymous digest access, then allow the separately approved latest tag promotion. Record the exact resulting digest. Do not create an app/CLI release or modify latest-q8. The existing public package can be reused; do not change unrelated permissions.
+
 ## File-level changes
 
 | File path | Change |
@@ -226,6 +249,10 @@ A successful result permits the next OpenCode investigation. It does not establi
 | `app/ui/src/proto/`, `app/ui/src/gen/` and `app/ui/src/fixtures/` | Regenerate types and add loading, processing, unavailable, stale and old-agent fixtures. |
 | `app/e2e/` and existing core/agent test modules | Cover config setup, zero-rate active processing, process identity, protocol compatibility and native app behavior. |
 | `README.md`, `CHANGELOG.md` and `docs/implementation-mistakes.md` | Document in-app setup, exact memory meanings and validation limits. Record unfinished acceptance until it passes. |
+
+Cloud CI file-map addition: extend the existing `.github/workflows/pod-image.yml` with a prebuilt-candidate dispatch mode for verification and gated publication; preserve its normal image/release paths. Create `tools/verify_cloud_candidate.py` for the small offline verifier. Keep temporary runner provisioning scripts, credentials and image files outside tracked source.
+
+Cloud diagnostic file-map addition: create `tools/cloud_runtime_e2e.py` with a private saved-connection identity adapter and cloud-specific numeric evidence. Update this feature’s `plan-v1.2.md`, evidence, spec, changelog and project memory. Build artifacts and task credentials stay outside tracked source.
 
 Diagnostic file-map addition: create `tools/same_prompt_runtime_e2e.py`; extend only the transport seams in `tools/bounded_runtime_e2e.py` needed for a larger bounded request and `/apply-template`. Update this spec, `plan-v1.1.md`, `results.md`, `investigation.md`, project memory and `CHANGELOG.md` with measured results and limits.
 
