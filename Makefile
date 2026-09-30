@@ -81,11 +81,11 @@ rust-build:
 	cargo build --workspace --locked
 
 rust-test:
-	cargo test --workspace --locked
+	cargo test --workspace --locked --features lobo-cli/test-fakes
 
 rust-lint:
 	cargo fmt --all --check
-	cargo clippy --workspace --all-targets --locked -- -D warnings
+	cargo clippy --workspace --all-targets --locked --features lobo-cli/test-fakes -- -D warnings
 
 proto-fixtures:
 	go run ./tools/protofixtures crates/lobo-proto/fixtures crates/lobo-proto/catalog.json
@@ -108,11 +108,16 @@ cli-fixtures:
 	python3 tools/clifixtures/capture.py all crates/lobo-cli/tests/fixtures/go
 	TZ=UTC go test -tags capture -run TestCapture ./cmd/lobo/ -args -out $(CURDIR)/crates/lobo-cli/tests/fixtures/go/text
 
-.PHONY: rust-build-lobo rust-install
+.PHONY: rust-build-lobo rust-install rust-release-snapshot
 rust-build-lobo:
 	LOBO_VERSION=$(VERSION) LOBO_COMMIT=$(COMMIT) LOBO_DATE=$(DATE) cargo build --release --locked -p lobo-cli
+	install -d $(BIN)
+	install -m 0755 target/release/lobo $(BIN)/lobo-rs
 
 rust-install: rust-build-lobo
 	install -d $(PREFIX)/bin
-	install -m 0755 target/release/lobo $(PREFIX)/bin/lobo-rs
+	install -m 0755 $(BIN)/lobo-rs $(PREFIX)/bin/lobo-rs
 	@echo "installed $(PREFIX)/bin/lobo-rs ($(VERSION))"
+
+rust-release-snapshot:
+	HOMEBREW_TAP_KEY= CARGO_BUILD_JOBS=1 goreleaser release --snapshot --clean --skip=publish --parallelism=1

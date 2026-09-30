@@ -1,4 +1,4 @@
-# Release the `lobo` CLI (not the pod agent: that ships to the bucket via `make release`).
+# Release the Rust `lobo` CLI (not the pod agent: that ships to the bucket via `make release`).
 # CI (.github/workflows/release.yml) runs this on a v* tag push.
 project_name: lobo
 version: 2
@@ -9,18 +9,20 @@ release:
     name: lobocode
 
 builds:
-  - main: ./cmd/lobo
+  - id: lobo
+    builder: rust
     binary: lobo
+    dir: .
+    flags: [--release, --locked, --package=lobo-cli]
     env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
-    goos:
-      - darwin
-      - linux
-    goarch:
-      - amd64
-      - arm64
+      - LOBO_VERSION={{.Version}}
+      - LOBO_COMMIT={{.ShortCommit}}
+      - LOBO_DATE={{.Date}}
+    targets:
+      - x86_64-apple-darwin
+      - aarch64-apple-darwin
+      - x86_64-unknown-linux-musl
+      - aarch64-unknown-linux-musl
 
 archives:
   - formats:

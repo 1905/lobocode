@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Rust CLI packaging now builds macOS and static Linux archives for Intel and ARM. Release CI pins Rust, Zig, cargo-zigbuild and GoReleaser. Snapshot builds do not need tap credentials.
+- All four archive builds pass. Final snapshot, formula installation and app E2E remain pending. All 51 CLI tests pass, including completion output and candidate publication without changing `latest.json`.
+- Rust and pod-image CI passed at 57caf1a after the HTTP pool and process-fixture fixes.
+
 - Serialize local process fixtures so a concurrent fork cannot temporarily inherit another test’s port probes. The earlier port-range change alone did not prevent Mac CI collisions. All 13 process tests pass ten consecutive local runs.
 
 - Fix a cross-runtime HTTP connection pool that could stall or fail downloads. Repeated model requests keep their own client for connection reuse.
