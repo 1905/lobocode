@@ -2,6 +2,8 @@
 
 Your own uncensored coding model, on demand. `lobo up` rents one RTX 5090, serves **Qwen3.5-27B Uncensored** (HauhauCS Aggressive, Q8 GGUF) as an OpenAI-compatible API, and deletes the GPU when you stop using it.
 
+**Development status:** this branch contains the unreleased Rust rewrite. Release is on hold for manual testing. Homebrew installs the published version. Screenshots below show the Rust app with sample data.
+
 <p align="center">
   <img src="docs/img/panel_boot.png" width="340" alt="booting: rent, container, tunnel, gpu, model download at 713 MB/s">
   <img src="docs/img/panel_ready.png" width="340" alt="ready: endpoint, api key, 45 tok/s, VRAM, idle-kill timer, stop">
@@ -29,13 +31,15 @@ lobo down       # or just walk away
 brew install 1905/tap/lobo
 ```
 
-**From source** (Go 1.26+):
+**Rust development build** (Rust from `rust-toolchain.toml`; Node.js and pnpm for the app):
 
 ```sh
-git clone https://github.com/1905/lobocode && cd lobocode
-make install        # → ~/.local/bin/lobo
+git clone --branch feat/rust https://github.com/1905/lobocode && cd lobocode
+make rust-build-lobo # → bin/lobo-rs; does not replace the installed CLI
 make install-mac    # optional: the menu bar app → /Applications/lobocode.app
 ```
+
+The Go CLI remains in `master` and the legacy `make install` target until the Rust cutover. Use `bin/lobo-rs` to test this branch.
 
 ## What you need
 
@@ -48,6 +52,8 @@ make install-mac    # optional: the menu bar app → /Applications/lobocode.app
 
 `lobo config` asks for what your choice needs and writes `~/.config/lobo/config.env`.
 
+The current cloud connection requires a domain because it uses a named Cloudflare tunnel. A domain-free SSH connection is [proposed](docs/cloud-without-domain.md); it is not implemented yet. Local mode needs no domain or Cloudflare account.
+
 ## Use
 
 | Command | What it does |
@@ -59,6 +65,8 @@ make install-mac    # optional: the menu bar app → /Applications/lobocode.app
 | `lobo down` | Delete every `lobo` pod on every configured provider. Nothing else. |
 
 Useful flags for `lobo up`: `--provider vast`, `--q6`, `--ctx 16384`, `--idle-min 10`, `--max-life 4h`.
+
+The terminal dashboard updates in place. Press `q` to leave status; press `q` or Ctrl-C during startup to cancel and wait for cleanup. Short terminals use a compact layout that retains metrics, shutdown timers and the quit hint.
 
 ## Run on this Mac
 
@@ -75,15 +83,17 @@ Apple Silicon only. Same llama.cpp build and flags as the pod, Metal instead of 
 
 Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. The app uses the same Rust core and config file as the CLI. It runs local models directly. Opening the app shows a native window, so it works when a full menu bar hides the item behind the notch.
 
-Windows fit their content without scrolling. Settings groups controls into Local, Cloud and Defaults tabs.
+Windows use native macOS title bars and rounded corners. Each view fits without scrolling. Settings groups controls into Local, Cloud and Defaults tabs.
 
-Install: download `lobocode.dmg` from the release, open it, drag **lobocode** to **Applications**. Or build it with `make install-mac` (`make dmg` builds the image).
+Build the Rust candidate with `make install-mac`. `make dmg` creates `bin/lobocode.dmg`: open it and drag **lobocode** to **Applications**. The Rust candidate is not published as a release yet.
 
-- The app is not notarized. The first open says it can't be opened: go to System Settings → Privacy & Security → **Open Anyway**. Or run `xattr -dr com.apple.quarantine /Applications/lobocode.app`.
-- With the weights on an external drive, macOS asks once to allow access to a removable volume. Allow it, or the app can't see your models.
+- The app is not notarized. If macOS blocks the first open, go to System Settings → Privacy & Security → **Open Anyway**. Or run `xattr -dr com.apple.quarantine /Applications/lobocode.app`.
+- With the weights on an external drive, macOS asks once to allow access to a removable volume. The app needs this permission to read the models.
 
-<details><summary>Settings window</summary>
-<img src="docs/img/settings.png" width="420" alt="settings: provider keys, access, defaults for lobo up">
+<details><summary>Settings: Local, Cloud and Defaults</summary>
+<p><img src="docs/img/settings.png" width="520" alt="Local settings: weights folder and API port"></p>
+<p><img src="docs/img/settings_cloud.png" width="520" alt="Cloud settings: provider keys, API key, tunnel, domain and model bucket"></p>
+<p><img src="docs/img/settings_defaults.png" width="520" alt="Defaults: model, context size, shutdown limits and provider options"></p>
 </details>
 
 ## OpenCode
@@ -127,4 +137,14 @@ Without it, the pod starts from the plain llama.cpp image and downloads the agen
 
 ## Development
 
-`make test` · `make lint` · `make e2e` (live API suite, needs `lobo up`) · `make release` (agent zip to the bucket). Layout: `cmd/lobo` CLI, `cmd/lobo-agent` pod agent, `internal/*`, `macos/` app, `plans/` specs and measured results.
+| Area | Source | Checks |
+|---|---|---|
+| Shared protocol | `crates/lobo-proto` | `make proto-ts` |
+| Pod agent and shared core | `crates/lobo-agent`, `crates/lobo-core` | `make rust-test rust-lint` on CI or a test host |
+| Rust CLI and TUI | `crates/lobo-cli` | `cargo test -p lobo-cli --test tui_parity` |
+| Native app | `app/src-tauri`, `app/ui` | `make app-lint`, `pnpm -C app/ui test` |
+| Native UI smoke | `app/e2e` | `make app-e2e` (setup and Settings only) |
+
+The app calls the shared Rust core directly and does not bundle the CLI. Go source and frozen compatibility fixtures remain until cutover. Plans and validation limits are recorded in [execution.md](plans/2026-09-29-rust-rewrite/execution.md).
+
+On the development Mac, run UI checks only. Run model inference and backend/lifecycle suites on an authorized remote host. Live checks can rent GPUs. `make release` publishes an agent; it is not a local build command.

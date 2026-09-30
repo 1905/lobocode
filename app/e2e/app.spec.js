@@ -31,8 +31,9 @@ async function fits() {
         const doc = document.documentElement;
         const surface = document
           .querySelector(".surface")
-          .getBoundingClientRect();
+          ?.getBoundingClientRect();
         return (
+          !!surface &&
           doc.scrollWidth <= doc.clientWidth &&
           doc.scrollHeight <= doc.clientHeight &&
           surface.bottom <= innerHeight + 1 &&

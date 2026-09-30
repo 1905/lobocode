@@ -87,7 +87,7 @@ app-e2e-build:
 	cd app && ui/node_modules/.bin/tauri build --ci --debug --features e2e --bundles app --config e2e/tauri.conf.json -- --locked
 
 app-e2e: app-e2e-build
-	python3 tools/native_app_e2e.py
+	python3 tools/native_app_e2e.py --setup-only
 
 # Drag-to-install disk image: lobocode.app next to an Applications shortcut. Unsigned (ad-hoc).
 DMG := $(BIN)/lobocode.dmg

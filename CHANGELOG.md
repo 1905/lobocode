@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Refresh native UI assets and Rust branch instructions. Release remains on hold for manual testing.
+- Fit the TUI status values and quit hint into 80×20 and 80×24 terminals. Show a resize hint in smaller terminals. Six layout tests and five fixture-only terminal checks pass.
+- Accept the initial streaming chat chunk with null content. Reject malformed numeric content. Focused regression checks passed before local backend testing was stopped.
+- Restrict the Mac native smoke target to UI setup. Further backend and lifecycle tests must run on Dell or authorized cloud hosts.
+
 - Fix native app startup by keeping tray changes on the main thread. Add standard macOS title bars, rounded panel corners and Settings tabs without scrolling.
 - Size windows for their actual webview content, including the measured macOS title-bar inset. Long config paths wrap without forcing horizontal overflow.
 - Enable native dragging from the panel and Settings headers. Native movement verification remains in progress.

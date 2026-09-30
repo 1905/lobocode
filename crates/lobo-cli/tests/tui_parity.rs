@@ -75,6 +75,50 @@ async fn terminal_buffers() {
         .unwrap();
     insta::assert_snapshot!("status_ready_terminal", terminal.backend());
 }
+
+#[test]
+fn short_terminal_keeps_metrics_watchdog_and_quit_visible() {
+    use lobo_cli::tui::run::draw_status;
+    use ratatui::{Terminal, backend::TestBackend};
+    let mut model = StatusModel::default();
+    model.update(StatusMsg::Snap(Ok(snap())));
+    for rows in [24, 20] {
+        let mut terminal = Terminal::new(TestBackend::new(80, rows)).unwrap();
+        terminal
+            .draw(|frame| draw_status(frame, &model, &Utc))
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        for label in [
+            "cost",
+            "tokens in",
+            "tokens out",
+            "auto-kill",
+            "expires",
+            "q quit",
+        ] {
+            assert!(content.contains(label), "{rows} rows lost {label}");
+        }
+    }
+    let mut terminal = Terminal::new(TestBackend::new(80, 10)).unwrap();
+    terminal
+        .draw(|frame| draw_status(frame, &model, &Utc))
+        .unwrap();
+    let content: String = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect();
+    assert!(content.contains("Resize terminal"));
+    assert!(content.contains("q quit"));
+}
 fn snap() -> Snap {
     let at: DateTime<Utc> = "2026-09-23T12:00:00Z".parse().unwrap();
     Snap {

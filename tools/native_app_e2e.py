@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--setup-only", action="store_true", help="native startup/settings smoke without model memory requirements")
     parser.add_argument("--check-drag", action="store_true", help="wait for a native title-bar drag and verify the window position changes")
     args = parser.parse_args()
+    if sys.platform == "darwin" and not args.setup_only:
+        parser.error("UI-only tests on this Mac: use --setup-only; model and lifecycle tests must run on an authorized remote host")
     root = Path(tempfile.mkdtemp(prefix="lobo-native-e2e-"))
     spec = importlib.util.spec_from_file_location("fixture", REPO / "app/e2e/fixture.py")
     fixture = importlib.util.module_from_spec(spec)
