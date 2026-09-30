@@ -18,11 +18,9 @@ pub fn get_state(c: C<'_>) -> PanelState {
 #[tauri::command]
 pub async fn start(c: C<'_>) -> Result<()> {
     let controller = c.inner().clone();
-    let worker = controller.clone();
-    // The fresh admission read belongs on a blocking worker, not the UI thread.
-    let result = tauri::async_runtime::spawn_blocking(move || worker.start())
-        .await
-        .map_err(error)?;
+    // Reserve and capture before the first await or blocking-worker queue.
+    let reply = controller.submit_start()?;
+    let result = reply.await.map_err(error)?;
     controller.refresh_memory().await;
     result
 }
@@ -67,9 +65,13 @@ pub async fn config_show(c: C<'_>) -> Result<lobo_proto::ConfigShow> {
 #[tauri::command]
 pub async fn config_save(c: C<'_>, set: BTreeMap<String, String>) -> Result<()> {
     // Saving changes the context even while an earlier measurement is pending.
-    c.invalidate_memory();
-    c.backend.save(set).await?;
-    c.load_config(true).await;
+    c.begin_config_write();
+    let result = c.backend.save(set).await;
+    if result.is_ok() {
+        c.load_config(true).await;
+    }
+    c.end_config_write();
+    result?;
     c.refresh(false).await;
     Ok(())
 }

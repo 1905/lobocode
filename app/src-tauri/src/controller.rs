@@ -6,7 +6,10 @@ use crate::{
     store::Store,
     types::*,
 };
-use lobo_core::clock::Clock;
+use lobo_core::{
+    clock::Clock,
+    control::{OwnerSink, RuntimeTarget},
+};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -21,6 +24,8 @@ struct Active {
     up: Option<JoinHandle<Result<()>>>,
     cancel: Option<CancellationToken>,
     stop: Option<JoinHandle<()>>,
+    submission_id: u64,
+    config_writes: usize,
 }
 
 #[cfg(test)]
@@ -47,11 +52,13 @@ impl Controller {
         runtime: tokio::runtime::Handle,
         emit: Arc<dyn Fn(PanelState) + Send + Sync>,
     ) -> Arc<Self> {
+        let mut store = Store::new(prefs.target, lobo_core::local::supported().is_ok());
+        match backend.load_owner() {
+            Ok(owner) => store.set_runtime(owner),
+            Err(e) => store.poll_failed(e.message),
+        }
         Arc::new(Self {
-            store: Mutex::new(Store::new(
-                prefs.target,
-                lobo_core::local::supported().is_ok(),
-            )),
+            store: Mutex::new(store),
             backend,
             notifier,
             clock,
@@ -77,11 +84,25 @@ impl Controller {
     pub fn state(&self) -> PanelState {
         self.store.lock().unwrap().view(self.clock.now())
     }
-    pub fn invalidate_memory(&self) {
-        self.change(|s| {
-            s.invalidate_memory();
-            vec![]
-        });
+    pub fn begin_config_write(&self) {
+        let mut active = self.active.lock().unwrap();
+        active.config_writes += 1;
+        self.store.lock().unwrap().invalidate_config();
+    }
+    pub fn end_config_write(&self) {
+        let mut active = self.active.lock().unwrap();
+        active.config_writes = active.config_writes.saturating_sub(1);
+    }
+    fn runtime_target(&self) -> Result<RuntimeTarget> {
+        self.store
+            .lock()
+            .unwrap()
+            .runtime()
+            .filter(|target| !target.boot_id.is_empty())
+            .ok_or_else(|| AppError {
+                kind: "ownership".into(),
+                message: "Runtime ownership is missing. Refresh before retrying.".into(),
+            })
     }
     pub fn spawn_loops(self: &Arc<Self>) {
         let c = self.clone();
@@ -106,10 +127,13 @@ impl Controller {
     }
     pub async fn load_config(&self, models: bool) {
         match self.backend.config().await {
-            Ok((cfg, r)) => self.change(|s| {
-                s.apply_config(cfg, r);
-                vec![]
-            }),
+            Ok((cfg, r)) => {
+                let _active = self.active.lock().unwrap();
+                self.change(|s| {
+                    s.apply_config(cfg, r);
+                    vec![]
+                });
+            }
             Err(e) => self.change(|s| {
                 s.poll_failed(e.message);
                 vec![]
@@ -129,10 +153,13 @@ impl Controller {
             return;
         }
         match self.backend.models().await {
-            Ok(m) => self.change(|s| {
-                s.apply_models(m);
-                vec![]
-            }),
+            Ok(m) => {
+                let _active = self.active.lock().unwrap();
+                self.change(|s| {
+                    s.apply_models(m);
+                    vec![]
+                });
+            }
             Err(e) => self.change(|s| {
                 s.set_warning(Some(e.message));
                 vec![]
@@ -151,20 +178,63 @@ impl Controller {
             self.refresh_memory().await;
             return;
         }
-        match self.backend.snapshot().await {
-            Ok(snap) => {
-                let down = snap.down;
-                self.change(|s| {
-                    if !s.stop_running {
-                        s.set_warning(None);
+        let (provider, owner, generations) = {
+            let s = self.store.lock().unwrap();
+            if s.up_running || s.stop_running {
+                return;
+            }
+            let view = s.view(self.clock.now());
+            let provider = s.runtime().map_or_else(
+                || {
+                    if view.target == Target::Local {
+                        "local".into()
+                    } else {
+                        view.provider
                     }
-                    s.apply_snap(snap, self.clock.now())
-                });
+                },
+                |owner| owner.provider,
+            );
+            (provider, s.runtime(), s.generations())
+        };
+        match self.backend.snapshot_owned(&provider, owner.clone()).await {
+            Ok((candidate, snap)) => {
+                let down = snap.down;
+                {
+                    let _active = self.active.lock().unwrap();
+                    {
+                        let s = self.store.lock().unwrap();
+                        if s.generations() != generations || s.up_running || s.stop_running {
+                            return;
+                        }
+                    }
+                    if let Some(candidate) = &candidate
+                        && let Err(e) = self.backend.adopt_owner(owner, candidate.clone())
+                    {
+                        self.change(|s| {
+                            s.poll_failed(e.message);
+                            vec![]
+                        });
+                        return;
+                    }
+                    self.change(|s| {
+                        if s.generations() != generations || s.up_running || s.stop_running {
+                            return vec![];
+                        }
+                        s.set_runtime(candidate);
+                        if !s.stop_running {
+                            s.set_warning(None);
+                        }
+                        s.apply_snap(snap, self.clock.now())
+                    });
+                }
                 if models && down {
                     self.load_models().await;
                 }
             }
             Err(e) => self.change(|s| {
+                if s.generations() != generations || s.up_running || s.stop_running {
+                    return vec![];
+                }
                 s.poll_failed(e.message);
                 vec![]
             }),
@@ -202,50 +272,43 @@ impl Controller {
             c.refresh_memory().await;
         });
     }
-    pub fn start(self: &Arc<Self>) -> Result<()> {
+    // Reserve synchronously. The returned receiver reports admission, not completion.
+    pub fn submit_start(self: &Arc<Self>) -> Result<tokio::sync::oneshot::Receiver<Result<()>>> {
         let mut active = self.active.lock().unwrap();
-        let req = {
+        let (reply, response) = tokio::sync::oneshot::channel();
+        let (submission, previous) = {
             let mut s = self.store.lock().unwrap();
             let v = s.view(self.clock.now());
             if active.quitting
+                || active.config_writes > 0
                 || self.shutdown.is_cancelled()
                 || s.up_running
                 || s.stop_running
                 || !matches!(v.phase, Phase::Off | Phase::Failed { .. })
             {
-                return Ok(());
+                let _ = reply.send(Ok(()));
+                return Ok(response);
             }
-            s.begin_up(self.clock.now())
+            (s.submit(self.clock.now()), s.runtime())
         };
+        active.submission_id = active.submission_id.wrapping_add(1);
+        let id = active.submission_id;
+        self.store.lock().unwrap().set_submission_id(id);
         let cancel = CancellationToken::new();
-        let _runtime = self.runtime.enter();
-        let operation = self.backend.up(req, cancel.clone());
-        let mut operation = match operation {
-            Ok(o) => o,
-            Err(e) => {
-                drop(active);
-                self.change(|s| {
-                    s.invalidate_memory();
-                    s.up_ended(Some(&e.message))
-                });
-                return Err(e);
-            }
-        };
-        let mut events = operation.take_events().expect("new up has events");
+        active.cancel = Some(cancel.clone());
         let c = self.clone();
-        active.cancel = Some(cancel);
         active.up = Some(self.runtime.spawn(async move {
-            while let Some(ev) = events.recv().await {
-                c.change(|s| s.handle_event(&ev, c.clock.now()));
-            }
-            let result = operation.wait().await.map_err(AppError::from);
+            let result = c.run_start(id, submission, previous, cancel, reply).await;
             c.change(|s| {
+                if !s.owns_submission(id) {
+                    return vec![];
+                }
                 let notes = s.up_ended(result.as_ref().err().map(|e| e.message.as_str()));
                 if let Err(e) = &result
                     && e.kind != "cancelled"
                     && !s.stop_running
+                    && s.operation_launched()
                 {
-                    // A ready event must not conceal a failed owned completion.
                     s.stop_failed(e.message.clone());
                 }
                 notes
@@ -257,18 +320,111 @@ impl Controller {
         }));
         drop(active);
         (self.emit)(self.state());
+        Ok(response)
+    }
+    fn check_submission(
+        &self,
+        active: &Active,
+        id: u64,
+        submission: &StartSubmission,
+        cancel: &CancellationToken,
+    ) -> Result<()> {
+        if cancel.is_cancelled() || active.quitting || self.shutdown.is_cancelled() {
+            return Err(AppError::from(lobo_core::Error::Cancelled));
+        }
+        if active.submission_id != id
+            || active.config_writes > 0
+            || !self.store.lock().unwrap().submission_valid(submission)
+        {
+            return Err(AppError {
+                kind: "stale".into(),
+                message: "Start settings changed before admission. Retry Start.".into(),
+            });
+        }
         Ok(())
+    }
+    async fn run_start(
+        self: &Arc<Self>,
+        id: u64,
+        submission: StartSubmission,
+        previous: Option<RuntimeTarget>,
+        cancel: CancellationToken,
+        reply: tokio::sync::oneshot::Sender<Result<()>>,
+    ) -> Result<()> {
+        let admitted = async {
+            {
+                let active = self.active.lock().unwrap();
+                self.check_submission(&active, id, &submission, &cancel)?;
+            }
+            let backend = self.backend.clone();
+            let request = submission.request.clone();
+            let prepared = tokio::task::spawn_blocking(move || backend.prepare_up(request))
+                .await
+                .map_err(|e| AppError {
+                    kind: "app".into(),
+                    message: format!("Start admission worker: {e}"),
+                })??;
+            let active = self.active.lock().unwrap();
+            self.check_submission(&active, id, &submission, &cancel)?;
+            let c = self.clone();
+            let owner: OwnerSink = Arc::new(move |target| {
+                // No Active lock: core invokes this callback from its owned worker.
+                c.change(|s| {
+                    if s.owns_submission(id) {
+                        s.set_runtime(Some(target));
+                    }
+                    vec![]
+                });
+                Ok(())
+            });
+            let operation = self.backend.up(prepared, previous, cancel, owner)?;
+            self.store.lock().unwrap().mark_launched();
+            Ok(operation)
+        }
+        .await;
+        let mut operation = match admitted {
+            Ok(operation) => {
+                let _ = reply.send(Ok(()));
+                operation
+            }
+            Err(e) => {
+                let _ = reply.send(Err(AppError {
+                    kind: e.kind.clone(),
+                    message: e.message.clone(),
+                }));
+                self.change(|s| {
+                    s.invalidate_memory();
+                    vec![]
+                });
+                return Err(e);
+            }
+        };
+        let mut events = operation.take_events().expect("new up has events");
+        while let Some(ev) = events.recv().await {
+            self.change(|s| {
+                if s.owns_submission(id) {
+                    s.handle_event(&ev, self.clock.now())
+                } else {
+                    vec![]
+                }
+            });
+        }
+        operation.wait().await.map_err(AppError::from)
     }
     pub fn stop(self: &Arc<Self>) {
         let mut active = self.active.lock().unwrap();
-        let (local, was_up) = {
+        let captured = self.runtime_target().ok();
+        let (owner, was_up) = {
             let mut s = self.store.lock().unwrap();
             if s.stop_running {
                 return;
             }
             let up = s.up_running;
-            (s.begin_stop(), up)
+            let owner = captured;
+            s.begin_stop();
+            (owner, up)
         };
+        let id = active.submission_id;
         if let Some(cancel) = active.cancel.take() {
             cancel.cancel();
         }
@@ -287,7 +443,13 @@ impl Controller {
                     }
                 };
                 let error = match result {
-                    Ok(Err(e)) if was_up && e.kind != "cancelled" => Some(e.message),
+                    Ok(Err(e))
+                        if was_up
+                            && e.kind != "cancelled"
+                            && c.store.lock().unwrap().operation_launched() =>
+                    {
+                        Some(e.message)
+                    }
                     Err(e) => Some(format!("up worker: {e}")),
                     _ => None,
                 };
@@ -299,23 +461,53 @@ impl Controller {
                     return;
                 }
             }
+            // A cancelled create can publish ownership after Stop captured it.
+            // Startup remains reserved until this task completes, so this is the same job.
+            let target = if c.active.lock().unwrap().submission_id == id {
+                c.store.lock().unwrap().runtime().or(owner)
+            } else {
+                owner
+            };
             let result = async {
-                c.backend.down().await?;
-                if !local {
-                    tokio::time::sleep(Duration::from_secs(10)).await;
-                    c.backend.down().await?;
+                let mut final_snap = lobo_proto::Snap {
+                    down: true,
+                    ..Default::default()
+                };
+                if let Some(target) = &target {
+                    c.backend.down(target.clone()).await?;
+                    if target.provider != "local" {
+                        tokio::time::sleep(Duration::from_secs(10)).await;
+                        c.backend.down(target.clone()).await?;
+                    }
+                    let (_, snap) = c
+                        .backend
+                        .snapshot_owned(&target.provider, Some(target.clone()))
+                        .await?;
+                    if !snap.down {
+                        return Err(AppError {
+                            kind: "cleanup".into(),
+                            message: "Runtime is still running after Stop.".into(),
+                        });
+                    }
+                    final_snap = snap;
                 }
-                Ok::<_, AppError>(())
+                Ok::<_, AppError>(final_snap)
             }
             .await;
             c.change(|s| {
                 match result {
-                    Ok(()) => s.stop_done(),
+                    Ok(snap) => {
+                        if s.runtime() == target {
+                            s.set_runtime(None);
+                        }
+                        s.apply_snap(snap, c.clock.now());
+                        s.stop_done();
+                    }
                     Err(e) => s.stop_failed(format!("down: {}", e.message)),
                 }
                 vec![]
             });
-            c.refresh(true).await;
+            // Do not discover the UI-selected provider during Stop's final refresh.
         }));
         drop(active);
         (self.emit)(self.state());
@@ -387,6 +579,7 @@ impl Controller {
         });
     }
     pub fn choose(self: &Arc<Self>, t: Target) {
+        let _active = self.active.lock().unwrap();
         self.change(|s| {
             s.choose(t);
             vec![]
@@ -405,12 +598,14 @@ impl Controller {
         }
     }
     pub fn set_provider(&self, p: String) {
+        let _active = self.active.lock().unwrap();
         self.change(|s| {
             s.set_provider(p);
             vec![]
         });
     }
     pub fn set_model(self: &Arc<Self>, m: String) {
+        let _active = self.active.lock().unwrap();
         self.change(|s| {
             s.set_model(m);
             vec![]

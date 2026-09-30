@@ -18,6 +18,12 @@ pub struct Store {
     local_supported: bool,
     memory_generation: u64,
     memory_request: u64,
+    runtime: Option<lobo_core::control::RuntimeTarget>,
+    runtime_generation: u64,
+    config_generation: u64,
+    selection_generation: u64,
+    submission_id: u64,
+    operation_launched: bool,
 }
 impl Store {
     pub fn new(saved_target: Option<Target>, local_supported: bool) -> Self {
@@ -41,9 +47,18 @@ impl Store {
             local_supported,
             memory_generation: 0,
             memory_request: 0,
+            runtime: None,
+            runtime_generation: 0,
+            config_generation: 0,
+            selection_generation: 0,
+            submission_id: 0,
+            operation_launched: false,
         }
     }
     pub fn is_local(&self) -> bool {
+        if let Some(runtime) = &self.runtime {
+            return runtime.provider == "local";
+        }
         self.state
             .snap
             .as_ref()
@@ -133,6 +148,17 @@ impl Store {
                 }
             }
         };
+        // Keep process and boot identity in Rust even when a core snapshot contains them.
+        if let Some(snap) = &mut s.snap {
+            if let Some(pod) = &mut snap.pod
+                && pod.provider == "local"
+            {
+                pod.id.clear();
+            }
+            if let Some(status) = &mut snap.status {
+                status.boot_id.clear();
+            }
+        }
         s
     }
     fn endpoint(&self) -> Option<String> {
@@ -262,7 +288,19 @@ impl Store {
         }
     }
     pub fn apply_config(&mut self, c: ConfigShow, r: Readiness) {
-        self.invalidate_memory();
+        let before = (
+            self.state.provider.clone(),
+            self.state.model.clone(),
+            self.state.target,
+        );
+        if self
+            .state
+            .config
+            .as_ref()
+            .is_none_or(|old| old.values != c.values || old.set != c.set)
+        {
+            self.invalidate_config();
+        }
         if !self.up_running && !self.stop_running && self.state.phase != Phase::Booting {
             self.state.provider = r.default_provider.clone();
             self.state.model = r.default_model.clone();
@@ -271,6 +309,15 @@ impl Store {
         self.state.config = Some(c);
         self.state.readiness = Some(r);
         self.apply_default_target();
+        if before
+            != (
+                self.state.provider.clone(),
+                self.state.model.clone(),
+                self.state.target,
+            )
+        {
+            self.selection_generation = self.selection_generation.wrapping_add(1);
+        }
     }
     pub fn apply_models(&mut self, m: Listing) {
         let before = (self.state.model.clone(), self.state.target);
@@ -297,6 +344,7 @@ impl Store {
         self.state.models = Some(m);
         self.apply_default_target();
         if before != (self.state.model.clone(), self.state.target) {
+            self.selection_generation = self.selection_generation.wrapping_add(1);
             self.invalidate_memory();
         }
     }
@@ -503,17 +551,20 @@ impl Store {
             } else {
                 Target::Cloud
             };
+            self.selection_generation = self.selection_generation.wrapping_add(1);
         }
     }
     pub fn set_provider(&mut self, p: String) {
         if !self.up_running && !self.stop_running {
             self.state.provider = p;
+            self.selection_generation = self.selection_generation.wrapping_add(1);
         }
     }
     pub fn set_model(&mut self, m: String) {
         if !self.up_running && !self.stop_running && self.state.catalog_ids.contains(&m) {
             self.invalidate_memory();
             self.state.model = m;
+            self.selection_generation = self.selection_generation.wrapping_add(1);
         }
     }
     pub fn set_warning(&mut self, w: Option<String>) {
@@ -536,6 +587,51 @@ impl Store {
     pub fn invalidate_memory(&mut self) {
         self.memory_generation = self.memory_generation.wrapping_add(1);
         self.state.local_memory = None;
+    }
+    pub fn invalidate_config(&mut self) {
+        self.config_generation = self.config_generation.wrapping_add(1);
+        self.invalidate_memory();
+    }
+    pub fn generations(&self) -> (u64, u64, u64) {
+        (
+            self.config_generation,
+            self.selection_generation,
+            self.runtime_generation,
+        )
+    }
+    pub fn runtime(&self) -> Option<lobo_core::control::RuntimeTarget> {
+        self.runtime.clone()
+    }
+    pub fn set_submission_id(&mut self, id: u64) {
+        self.submission_id = id;
+        self.operation_launched = false;
+    }
+    pub fn owns_submission(&self, id: u64) -> bool {
+        self.submission_id == id
+    }
+    pub fn operation_launched(&self) -> bool {
+        self.operation_launched
+    }
+    pub fn mark_launched(&mut self) {
+        self.operation_launched = true;
+    }
+    pub fn set_runtime(&mut self, target: Option<lobo_core::control::RuntimeTarget>) {
+        if self.runtime != target {
+            self.runtime_generation = self.runtime_generation.wrapping_add(1);
+            self.runtime = target;
+        }
+    }
+    pub fn submit(&mut self, now: DateTime<Utc>) -> StartSubmission {
+        StartSubmission {
+            request: self.begin_up(now),
+            config_generation: self.config_generation,
+            selection_generation: self.selection_generation,
+        }
+    }
+    pub fn submission_valid(&self, submission: &StartSubmission) -> bool {
+        self.config_generation == submission.config_generation
+            && self.selection_generation == submission.selection_generation
+            && !self.stop_running
     }
     pub fn begin_memory(&mut self) -> Option<(u64, u64, String)> {
         if self.state.target != Target::Local
