@@ -44,6 +44,8 @@ impl Provider for SlowProvider {
         let i = Instance {
             provider: "runpod".into(),
             id: "slow".into(),
+            agent_url: "http://127.0.0.1:8932".into(),
+            api_url: "http://127.0.0.1:8931/v1".into(),
             ..Default::default()
         };
         self.running.lock().unwrap().push(i.clone());
