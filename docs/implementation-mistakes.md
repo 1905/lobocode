@@ -16,9 +16,11 @@ mutex deadlock that earlier checks missed.
 Corrections already implemented: native title bars, measured content sizing,
 compact Settings tabs, rounded corners, and tray mutations on the main thread.
 Native setup/save and all 23 browser layouts pass. A new native drag check did
-not observe movement through the input automation. The cause is unresolved;
-manual movement acceptance remains open. Rounded corners were inspected in the
-actual native window. Do not describe all native behavior as verified.
+not observe movement through the input automation. A controlled native position
+change was measured correctly. Exact-process diagnostics found that the drag
+tool's mouse press reports `buttons: 0`, so it does not establish a normal held
+button. Manual movement acceptance remains open. Rounded corners were inspected
+in the actual native window. Do not describe all native behavior as verified.
 
 The user also limited testing on the Mac because of insufficient memory. Since
 that correction, further backend and lifecycle checks belong on Dell or an

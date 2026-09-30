@@ -127,6 +127,7 @@ Files: app settings/setup, UI tests/fixtures/assets, README, cloud docs, mistake
 - Both changed workflows pass actionlint 1.7.7. No workflow was dispatched.
 - Frontend: 9 tests, type checks and formatting passed. All 20 panels and 3 Settings tabs fit without scrolling.
 - Native fresh-config setup/save passed. Rounded corners were visually inspected. Drag automation did not report movement, so movement acceptance remains open.
+- Native drag diagnostics verified programmatic position readback and exact-process targeting. The synthetic press reports `buttons: 0`; no product change was made to compensate. Manual drag acceptance remains open.
 - Code/UI/docs saved locally in `2bd9538`. Complete Q8/Q6 image builds are running on Dell. No publication or GPU rental.
 
 ## Held release acceptance

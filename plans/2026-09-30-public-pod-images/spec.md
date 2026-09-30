@@ -106,6 +106,10 @@ Missing binaries or invalid weights must fail through the owned cleanup path. Ne
 
 Retain per-instance client/server keys, pinned server identity and API authentication. Provider credentials remain the user's credentials.
 Only build-time registry publication needs maintainer credentials. Public image pulls require no maintainer account access.
+New GHCR packages default to private. Before release acceptance, the maintainer
+must set the container package visibility to public. The workflow's anonymous
+manifest check rejects a private package. This setup is held with publication;
+it is not an end-user configuration step.
 
 Allow up to 40 minutes for startup by default, including up to 30 minutes before the agent becomes reachable during image pull.
 Retain explicit CLI timeout overrides and the maximum-lifetime limit. Timeout or cancellation must delete owned instances and report cleanup failures.
