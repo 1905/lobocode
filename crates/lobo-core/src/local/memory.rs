@@ -156,9 +156,13 @@ fn native_snapshot() -> Result<MemorySnapshot> {
 
 #[cfg(target_os = "macos")]
 fn native_snapshot() -> Result<MemorySnapshot> {
+    use objc2_metal::MTLDevice;
     use std::mem::{offset_of, size_of};
-    // libc provides the statistics layout but not these Mach entry points.
+    // These declarations match mach_init.h and mach_port.h. The task port is
+    // an exported borrowed value; the SDK's mach_task_self() is a macro for it.
     unsafe extern "C" {
+        fn mach_host_self() -> libc::mach_port_t;
+        static mut mach_task_self_: libc::mach_port_t;
         fn host_page_size(host: libc::host_t, size: *mut libc::vm_size_t) -> libc::kern_return_t;
         fn mach_port_deallocate(
             task: libc::mach_port_t,
@@ -171,13 +175,13 @@ fn native_snapshot() -> Result<MemorySnapshot> {
             // mach_host_self gives this caller a send right. Release that right,
             // including every early-return path. mach_task_self is borrowed.
             unsafe {
-                mach_port_deallocate(libc::mach_task_self(), self.0);
+                mach_port_deallocate(mach_task_self_, self.0);
             }
         }
     }
     let total = super::platform::mem_bytes()?;
     // Obtaining a send right does not change the host's memory configuration.
-    let port = unsafe { libc::mach_host_self() };
+    let port = unsafe { mach_host_self() };
     if port == libc::MACH_PORT_NULL as libc::mach_port_t {
         return Err(invalid("Mach host port unavailable"));
     }
