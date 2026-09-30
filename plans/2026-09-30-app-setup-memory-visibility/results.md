@@ -1,6 +1,6 @@
 # Implementation and validation results
 
-Status: implementation in progress. E2E deferred at the user's request.
+Status: implementation in progress. E2E deferred at the user's request. The Mac currently has no available memory for builds or app testing; continue source edits here and use remote builds/tests.
 
 - Base: master `ddd1d6a`; memory implementation `b9a1966`; docs `597fb1c`; isolated merge `e84e56f`.
 - Earlier native memory run passed five cases, then its app exited normally at forced-denied Start. The WebDriver connection failed. The initiating exit cause remains unknown; this is not passing acceptance.
@@ -27,3 +27,11 @@ Commits `d4b5c6c` and `ee60fbf` implement Tasks 1–4. The core app APIs use imm
 Dell validation passes: 74 control tests, 19 local-provider tests, one scoped connection fixture and Clippy with warnings denied. Final review corrections pass 24 app-scope tests. The native app build check passes on this Mac; no backend tests ran here.
 
 Parent review found and corrected an unchecked adjacent saved port and unproven cloud discovery through a shared domain. Invalid ports preserve saved bytes; a domain reporting another runtime cannot establish instance ownership. Parent compliance and quality review pass for this batch. App wiring is next; E2E and final acceptance remain pending.
+
+## Hosted ownership checkpoint 9ea8f6a
+
+Run `36704616125` completed. The app, core-macos and static agent jobs pass. The missing-Metal memory-test correction is verified on hosted macOS. Native E2E remains disabled.
+
+Linux lint passes, but the core library suite reports 249 passed, one ignored and one failed. `local::deps::tests::check_gpu_table` fails while executing a generated fixture with `ExecutableFileBusy` / `Text file busy`. This fixture failure is under investigation. It is not an inference run or evidence that the memory guard failed. The full workflow is not green yet.
+
+The test helper now writes its executable through a child shell with literal positional arguments, then waits for exit before execution. This removes writable fixture descriptors from the shared test process. Concurrent fork inheritance is the likely failure mechanism; the hosted run did not capture descriptor traces. No production retries or sleeps were added. Dell `cargo test --locked -p lobo-core --lib` passes 250 tests with one opt-in test ignored. Hosted Linux retest remains pending.

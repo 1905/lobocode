@@ -322,3 +322,5 @@ The runner owns sample sequence per two-second batch. It saves independent monot
 App uncertain-create recovery must verify ownership of a discovered candidate. A single ID absent from the pre-create list is not proof: another client may have created it. Require matching local boot identity or an exact saved cloud connection record for provider/instance/boot. Without proof, keep the unresolved journal, do not delete the candidate, and do not rent again. Current cloud provider Instance data has no boot metadata; app cloud uncertain-create recovery can remain unresolved. Existing CLI adoption behavior remains unchanged.
 
 Cloud app discovery also requires an exact saved provider/instance/boot connection record. A shared legacy domain response cannot prove which provider instance answered. Keep the existing CLI legacy path; app discovery fails safely when ownership cannot be proved.
+
+Latest host constraint: the user reported no available Mac memory. Continue code edits here, but run builds and unit checks remotely. Local app install and native/model E2E stay pending until the host constraint is lifted. Do not infer GPU-rental authorization.

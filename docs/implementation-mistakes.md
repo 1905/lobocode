@@ -207,6 +207,46 @@ The updater replaces only the standalone desktop app. Homebrew continues to own
 the optional CLI. Each new cloud start must independently resolve and pull the
 latest public image for its selected model, as required by the image plan.
 
+## 7. App actions used global runtime operations
+
+The app used the CLI's all-provider status and Stop operations. A Local action
+could contact a cloud provider and report its failure. The exact Vast error from
+the user's Stop was not captured; do not invent an HTTP status for that report.
+
+Core corrections `d4b5c6c` and `ee60fbf` add selected-provider discovery and
+identity-scoped actions. Dell ownership and process fixtures pass. Cleanup checks
+provider, instance and boot identity; local cleanup also checks process identity.
+An unproven cloud create remains unresolved instead of deleting another instance.
+App integration and native acceptance are still pending.
+
+The Start command also queued work before capturing the UI selection. A later
+Cloud selection could change a queued Local request. The approved app integration
+reserves Start synchronously, captures its request, and checks generations again
+after memory admission. This correction is being implemented.
+
+## 8. Zero token gauges did not explain request progress
+
+The user's main OpenCode request carried about 47,000 input tokens after its
+agent context was added. A separate short title request completed, but that did
+not prove the main request had produced an answer. Zero throughput gauges could
+still mean prompt processing. They must not be labeled Idle.
+
+The approved fix adds measured memory and request activity. Pinned llama.cpp
+slots do not expose queue length. Zero active slots will display `No active
+request`; unknown queue length stays unknown. The display must not scrape metrics
+more often because those reads affect the existing throughput counters.
+
+In-app OpenCode repair will create a lean agent only when that agent is absent.
+Existing custom agent controls stay intact. Disabling MCP resource use does not
+remove every resource schema from OpenCode's prompt. This work is in progress;
+generation speed and the complete OpenCode flow are not yet verified.
+
+### Current host limit
+
+The user now reports no available Mac memory. Keep local work to source edits.
+Run builds and unit checks on Dell or hosted macOS. Local install and all E2E
+remain pending. Do not start a model or infer GPU-rental permission.
+
 ### Memory feature validation checkpoint
 
 The memory guard is implemented through `b9a1966`; it is not installed in the user's production app yet. Native fixture E2E passed five cases, then the app disconnected during denied Start. Cleanup passed and no model started. Preserve the failed run at `bin/app-e2e/lobo-native-e2e-zlqngx7s`; do not report complete native acceptance. The user deferred further E2E while the approved app setup, live memory/activity, native activation and scoped Stop fixes are implemented.
