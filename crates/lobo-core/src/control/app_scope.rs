@@ -80,16 +80,18 @@ pub async fn discover_app(d: &Deps, name: &str) -> Result<Option<RuntimeTarget>>
         .transpose()?
         .flatten()
     {
-        i.agent_url = format!("http://127.0.0.1:{}", port + 1);
+        let agent_port = port.checked_add(1).filter(|_| port > 0).ok_or_else(|| {
+            Error::Config("Saved cloud connection has no valid adjacent agent port.".into())
+        })?;
+        i.agent_url = format!("http://127.0.0.1:{agent_port}");
         i.api_url = format!("http://127.0.0.1:{port}/v1");
         boot
     } else {
-        if i.agent_url.is_empty() {
-            return Err(Error::Other(
-                "runtime has no saved connection identity".into(),
-            ));
-        }
-        (d.new_agent)(&i.agent_url).status().await?.boot_id
+        // Legacy domains can report another provider's runtime. A domain
+        // response does not prove ownership of the listed instance ID.
+        return Err(Error::Other(
+            "Cloud runtime has no matching saved connection identity.".into(),
+        ));
     };
     let target = RuntimeTarget {
         provider: name.into(),

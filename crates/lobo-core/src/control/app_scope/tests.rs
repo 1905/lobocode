@@ -552,3 +552,57 @@ async fn matching_pending_local_owner_is_recovered_before_new_start() {
     assert!(rp.calls().is_empty());
     assert!(vast.calls().is_empty());
 }
+
+#[tokio::test]
+async fn cloud_discovery_uses_saved_identity_and_rejects_invalid_agent_port() {
+    let (mut d, local, rp, vast) = setup();
+    let tmp = tempfile::tempdir().unwrap();
+    let (path, bytes, _) = saved_connection(&mut d, tmp.path());
+    {
+        let mut s = vast.state.lock().unwrap();
+        s.broken = false;
+        s.instances.push(instance("vast", "foreign"));
+    }
+    d.new_agent = Arc::new(|_| panic!("saved discovery must not read a shared domain"));
+    let t = discover_app(&d, "vast").await.unwrap().unwrap();
+    assert_eq!(t.boot_id, "0123456789abcdef");
+    assert_eq!(t.agent_url.as_deref(), Some("http://127.0.0.1:28921"));
+    for port in [0, 65535] {
+        let mut record: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        record["port"] = port.into();
+        let invalid = serde_json::to_vec(&record).unwrap();
+        std::fs::write(&path, &invalid).unwrap();
+        assert_eq!(
+            discover_app(&d, "vast").await.unwrap_err().to_string(),
+            "Saved cloud connection has no valid adjacent agent port."
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), invalid);
+    }
+    assert!(local.calls().is_empty());
+    assert!(rp.calls().is_empty());
+}
+
+#[tokio::test]
+async fn cloud_discovery_does_not_adopt_shared_domain_owner() {
+    let (mut d, local, rp, vast) = setup();
+    {
+        let mut s = rp.state.lock().unwrap();
+        s.broken = false;
+        s.instances.push(instance("runpod", "instance-a"));
+    }
+    let domain = Arc::new(FakeAgent::new(vec![Some(Status {
+        boot_id: "runtime-b".into(),
+        ..Default::default()
+    })]));
+    let agent = domain.clone();
+    d.new_agent = Arc::new(move |_| agent.clone());
+    assert_eq!(
+        discover_app(&d, "runpod").await.unwrap_err().to_string(),
+        "Cloud runtime has no matching saved connection identity."
+    );
+    assert_eq!(domain.calls(), 0);
+    assert_eq!(rp.state.lock().unwrap().instances[0].id, "instance-a");
+    assert_eq!(rp.calls(), vec!["list"]);
+    assert!(local.calls().is_empty());
+    assert!(vast.calls().is_empty());
+}

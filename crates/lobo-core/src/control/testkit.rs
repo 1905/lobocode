@@ -398,7 +398,8 @@ impl Provider for RecordingProvider {
         Ok(())
     }
     async fn runtime_identity(&self, id: &str) -> Result<Option<(String, i32, u64)>> {
-        let s = self.state.lock().unwrap();
+        let mut s = self.state.lock().unwrap();
+        s.calls.push(format!("identity:{id}"));
         Ok(s.instances
             .iter()
             .find(|i| i.id == id)
@@ -426,6 +427,7 @@ impl Provider for RecordingProvider {
     ) -> Result<Instance> {
         let (delay, panic, uncertain, cancel_on_rent) = {
             let mut s = self.state.lock().unwrap();
+            s.calls.push("rent".into());
             s.rents += 1;
             s.created.push(opts.clone());
             (
