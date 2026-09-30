@@ -88,3 +88,9 @@ must be integrated into the new isolated feature branch without prematurely
 merging unverified code to master. Image builds and updater remain paused.
 
 Current host constraint (2026-09-30): the user reported no available Mac memory during the app-runtime fixes. Keep the Mac to code edits. Use Dell/hosted macOS for builds and unit checks. Local install and all E2E remain pending. Do not start a model or rent a GPU.
+
+## Direct model diagnostic exception — 2026-09-30
+
+Latest user instruction resumes one direct local comparison without OpenCode: exactly 47,000 synthetic input tokens, Q6, context 65,536, at most 32 output tokens. Use the hosted build's normal memory guard and isolated task-owned runtime. This supersedes the earlier 64-token input cap and E2E hold for this diagnostic only. Native UI E2E, broad local tests, installation and release remain deferred. Preserve personal config, installed app and CLI. See `plans/2026-09-30-app-setup-memory-visibility/plan-v1.1.md`.
+
+Diagnostic result: hosted build `b5617ae` failed normal memory admission before model load (26.7 GiB required, 9.4 GiB available after reserves). Zero generations. Owned cleanup passed. The same-size comparison is pending; do not claim model success or start the conditional OpenCode investigation from this result. The ready script and fake checks are recorded in the v1.1 plan and results.

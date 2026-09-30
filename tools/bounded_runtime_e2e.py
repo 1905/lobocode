@@ -234,16 +234,17 @@ class DirectHTTP:
     """Literal loopback only: no URL redirects, proxy lookup, or retries."""
 
     def __init__(self, key, run_end, metadata_seconds=PREFLIGHT_SECONDS,
-                 generation_seconds=GENERATION_SECONDS):
+                 generation_seconds=GENERATION_SECONDS, request_bytes=BODY_BYTES):
         self.key = key
         self.run_end = run_end
         self.metadata_seconds = metadata_seconds
         self.generation_seconds = generation_seconds
+        self.request_bytes = integer(request_bytes, "request_limit_invalid", 1, 1048576)
 
     def exchange(self, port, method, path, payload, consume, seconds, auth=True):
         integer(port, "state_invalid", 1, 65535)
         require(path in ("/api/status", "/api/version", "/v1/models", "/slots",
-                         "/tokenize", "/completion"), "endpoint_rejected")
+                         "/tokenize", "/apply-template", "/completion"), "endpoint_rejected")
         end = min(self.run_end, time.monotonic() + seconds)
         require(end > time.monotonic(), "timeout")
         conn = http.client.HTTPConnection("127.0.0.1", port,
@@ -271,7 +272,7 @@ class DirectHTTP:
             headers = {"Accept": "text/event-stream" if path == "/completion" else "application/json",
                        "Connection": "close"}
             if body is not None:
-                require(len(body) <= BODY_BYTES, "request_oversized")
+                require(len(body) <= self.request_bytes, "request_oversized")
                 headers["Content-Type"] = "application/json"
             if auth:
                 headers["Authorization"] = "Bearer " + self.key
@@ -338,7 +339,9 @@ class DirectHTTP:
         return self.exchange(port, "GET" if payload is None else "POST", path, payload,
                              consume, self.metadata_seconds, auth)
 
-    def completion(self, port, tokens, alias, cap):
+    def completion(self, port, tokens, alias, cap, input_limit=64, expected_content=None):
+        integer(input_limit, "input_limit_invalid", 1, 47000)
+        require(0 < len(tokens) <= input_limit, "input_limit_exceeded")
         payload = {"prompt": tokens, "stream": True, "n_predict": cap, "n_cmpl": 1,
                    "temperature": 0, "seed": 1, "cache_prompt": False,
                    "return_progress": False, "timings_per_token": False,
@@ -348,6 +351,7 @@ class DirectHTTP:
             require(response.getheader("Content-Type", "").split(";", 1)[0].strip()
                     == "text/event-stream", "sse_invalid")
             first, final, measured = None, None, None
+            observed_content = []
             size, event_size, event = 0, 0, []
             while True:
                 require(time.monotonic() < end, "timeout")
@@ -380,26 +384,32 @@ class DirectHTTP:
                 require(type(content) is str, "sse_invalid")
                 if content and first is None:
                     first = now
+                if expected_content is not None:
+                    observed_content.append(content)
                 stop = value.get("stop")
                 require(type(stop) is bool, "sse_invalid")
                 if stop:
-                    measured = validate_final(value, len(tokens), alias, cap)
+                    measured = validate_final(value, len(tokens), alias, cap, input_limit)
+                    if expected_content is not None:
+                        measured["expected_content_matched"] = "".join(observed_content).strip() == expected_content
+                        observed_content.clear()
                     final = now
                     measured.update({"content_seen": first is not None,
                                      "time_to_first_content_ms": None if first is None else (first - start) / 1000000,
                                      "stream_generation_wall_ms": None if first is None else (final - first) / 1000000,
                                      "request_wall_ms": (final - start) / 1000000})
-                # Drop every raw event, including text and token IDs, immediately.
+                # Raw events/token IDs never persist. The optional answer check
+                # retains only this size-bounded response until the final event.
                 del value, content
 
         return self.exchange(port, "POST", "/completion", payload, consume,
                              self.generation_seconds)
 
 
-def validate_final(value, count, alias, cap):
+def validate_final(value, count, alias, cap, input_limit=64):
     require(value.get("model") == alias, "response_model_mismatch")
     require(value.get("truncated") is False, "response_truncated")
-    require(integer(value.get("tokens_evaluated"), "input_count_invalid", 1, 64) == count,
+    require(integer(value.get("tokens_evaluated"), "input_count_invalid", 1, input_limit) == count,
             "input_count_mismatch")
     output = integer(value.get("tokens_predicted"), "output_count_invalid", 0, cap)
     settings = value.get("generation_settings")
@@ -451,6 +461,7 @@ class Harness:
         ids = [item.get("id") for item in models["data"] if type(item) is dict]
         require(ids == [runtime.alias], "runtime_model_mismatch")
         runtime.unchanged()
+        return status
 
     def quiet(self):
         slots = self.http.json(self.runtime.port, "/slots")
