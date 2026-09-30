@@ -328,3 +328,21 @@ Latest host constraint: the user reported no available Mac memory. Continue code
 Discovery commit clarification: `snapshot_owned` returns the candidate owner and snapshot without adopting it. Add private Rust-only `Backend::adopt_owner(expected: Option<RuntimeTarget>, target: RuntimeTarget) -> Result<()>` for an atomic on-disk identity comparison and local write. Controller validates captured generations under Active, releases Store, persists the candidate, then applies the paired owner/snapshot. Keep Active only through this short local commit, never across network requests. This prevents a discarded stale discovery reply from changing persistent ownership. Persistence still precedes Store/IPC delivery.
 
 Ownership projection clarification: keep new RuntimeTarget and model-child PID/start fields out of IPC. Preserve existing Snap instance IDs and Status.boot_id; they are existing protocol metadata and boot correlation is needed for telemetry. Do not add generic identifier redaction to legacy progress text. This narrows the plan wording to the spec's internal process measurements and preserves protocol compatibility.
+
+Setup file-map detail: `app/src-tauri/Cargo.toml` may declare the shared reqwest version/features or an HTTP fixture dependency needed for authenticated model discovery. Prefer the existing core HTTP helper where it fits; never call completion-based core checks for setup. This adds no generation request or new user-facing scope.
+
+Native sizing clarification: `windows.rs` provides initial sizes only. Existing `App.svelte` measures content with ResizeObserver and adds the native title-bar inset. Preserve fixed widths (main/panel340, Settings520) and that established height behavior; do not force content into the initial340/540 heights or add scrolling. Keep Clients and telemetry compact within their existing views.
+
+
+OpenCode metadata contract (Tasks 6–9):
+
+```rust
+ConfigRestrictions { provider_disabled: bool, provider_not_enabled: bool }
+inspect_restrictions(source: &str, provider: &str) -> Result<ConfigRestrictions>
+OpenCodeInfo { path: String, endpoint: Option<String>, provider: Option<String>, model_alias: Option<String>, context: Option<u64>, can_configure: bool, reason: Option<String>, warnings: Vec<String> }
+OpenCodeResult { path: String, provider: String, model_alias: String, changed: bool, message: String, warnings: Vec<String> }
+```
+
+The shared restriction inspector uses the same strict JSONC parser and validates string arrays. It reports existing provider restrictions without changing them. IPC warnings/reasons are bounded static messages. ConfigOutcome retains its four fields. `opencode_info` still reports the discovered config path when no Ready runtime exists, with configure disabled and a clear reason.
+
+Use a setup-specific bounded HTTP client with redirects disabled. Capture the private raw Lobocode config generation/fingerprint as well as Store generations; masked ConfigShow cannot detect external key rotation. Hold Active and Store through the bounded local configure/replace call, including its validation callback; never hold either across network awaits. Releasing guards after validate but before replacement would allow Stop to race the write. No new runtime or model request is permitted.

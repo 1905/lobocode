@@ -51,7 +51,7 @@ Modify:
 - `crates/lobo-core/src/local/{mod,deps,supervise,provider}.rs`, `crates/lobo-core/src/local/deps/tests.rs`, `crates/lobo-core/tests/local_provider.rs`
 - `crates/lobo-proto/src/{lib,agent}.rs`
 - `crates/lobo-agent/src/{lib,metrics,runner,pod,api,testutil}.rs`
-- `app/src-tauri/Cargo.lock`, `app/src-tauri/Info.plist`
+- `app/src-tauri/Cargo.toml` (authenticated setup HTTP client/test dependencies if needed), `app/src-tauri/Cargo.lock`, `app/src-tauri/Info.plist`
 - `app/src-tauri/src/{backend,commands,controller,store,types,lib,windows,tray}.rs`
 - `app/src-tauri/src/{controller,store}/tests.rs`, `app/src-tauri/src/e2e_memory.rs`
 - `app/src-tauri/examples/generate_ui.rs`, `app/src-tauri/tests/fixtures.rs`
@@ -205,7 +205,7 @@ Files: Create `settings/Clients.svelte`; Modify `Settings.svelte`, `ReadyCard.sv
 
 - [ ] Add view tests for checked-by-default option, explicit uncheck preservation, duplicate-action disable, path/model display and bounded failure text.
 - [ ] Add Clients tab and Ready shortcut. Show config path before Configure/Repair and restart/project-override caveat after success.
-- [ ] Mac: `rtk pnpm -C app/ui test`, `rtk pnpm -C app/ui check`, `rtk pnpm -C app/ui build`. All pass; every control fits fixed native sizes.
+- [ ] Mac: `rtk pnpm -C app/ui test`, `rtk pnpm -C app/ui check`, `rtk pnpm -C app/ui build`. All pass; preserve existing fixed widths and content-measured native height, with every control visible and no scrolling.
 
 ## Task 10: Restore regular native app behavior
 
@@ -355,3 +355,17 @@ The runner owns sample sequence per two-second batch. It saves independent monot
 App uncertain-create recovery must verify ownership of a discovered candidate. A single ID absent from the pre-create list is not proof: another client may have created it. Require matching local boot identity or an exact saved cloud connection record for provider/instance/boot. Without proof, keep the unresolved journal, do not delete the candidate, and do not rent again. Current cloud provider Instance data has no boot metadata; app cloud uncertain-create recovery can remain unresolved. Existing CLI adoption behavior remains unchanged.
 
 Discovery commit clarification: `snapshot_owned` returns the candidate owner and snapshot without adopting it. Add private Rust-only `Backend::adopt_owner(expected: Option<RuntimeTarget>, target: RuntimeTarget) -> Result<()>` for an atomic on-disk identity comparison and local write. Controller validates captured generations under Active, releases Store, persists the candidate, then applies the paired owner/snapshot. Keep Active only through this short local commit, never across network requests. This prevents a discarded stale discovery reply from changing persistent ownership. Persistence still precedes Store/IPC delivery.
+
+
+OpenCode metadata contract (Tasks 6–9):
+
+```rust
+ConfigRestrictions { provider_disabled: bool, provider_not_enabled: bool }
+inspect_restrictions(source: &str, provider: &str) -> Result<ConfigRestrictions>
+OpenCodeInfo { path: String, endpoint: Option<String>, provider: Option<String>, model_alias: Option<String>, context: Option<u64>, can_configure: bool, reason: Option<String>, warnings: Vec<String> }
+OpenCodeResult { path: String, provider: String, model_alias: String, changed: bool, message: String, warnings: Vec<String> }
+```
+
+The shared restriction inspector uses the same strict JSONC parser and validates string arrays. It reports existing provider restrictions without changing them. IPC warnings/reasons are bounded static messages. ConfigOutcome retains its four fields. `opencode_info` still reports the discovered config path when no Ready runtime exists, with configure disabled and a clear reason.
+
+Use a setup-specific bounded HTTP client with redirects disabled. Capture the private raw Lobocode config generation/fingerprint as well as Store generations; masked ConfigShow cannot detect external key rotation. Hold Active and Store through the bounded local configure/replace call, including its validation callback; never hold either across network awaits. Releasing guards after validate but before replacement would allow Stop to race the write. No new runtime or model request is permitted.
