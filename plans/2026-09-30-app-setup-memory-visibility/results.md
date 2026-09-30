@@ -2,6 +2,8 @@
 
 Status: implementation in progress. E2E deferred at the user's request. The Mac currently has no available memory for builds or app testing; continue source edits here and use remote builds/tests.
 
+Task20 source is prepared: two sequential fixed prompts, exact tokenizer arrays, hard token/request limits, owned existing-runtime checks and numeric-only private evidence. It starts nothing. Parent source review corrected a FIFO-read risk, fake identity-change case and a fragile privacy assertion; the child process receives a minimal environment. No script import, syntax compilation, self-test or real request has run. An EOS-only result can validate protocol/counts while `content_seen=false`; it does not prove a visible reply. Acceptance remains pending in Task21.
+
 - Base: master `ddd1d6a`; memory implementation `b9a1966`; docs `597fb1c`; isolated merge `e84e56f`.
 - Earlier native memory run passed five cases, then its app exited normally at forced-denied Start. The WebDriver connection failed. The initiating exit cause remains unknown; this is not passing acceptance.
 - Memory review found a queued-Start selection race. The approved feature plan includes its fix.
@@ -53,3 +55,11 @@ Hosted run `36708630935` at `ca76f55`: app lint, Rust/UI unit tests and generate
 ## Core OpenCode repair checkpoint
 
 Commit `739ca5b` completes Tasks 6–7. Parent source review passes strict parsing, leaf edits, unrelated-byte preservation, private key/backup files, no-op validation, rotation, and final fingerprint checks. Dell: 15 OpenCode fixtures, six unchanged CLI export fixtures and Clippy pass. Both lockfiles add only jsonc-parser 0.33.2. The final fingerprint check is optimistic; it cannot synchronize an external writer after that check. App authentication and controls remain in progress. No personal config was read or changed.
+
+Run `36708630935` completed successfully at `ca76f55`, including the native bundle and bundle verification. The native E2E step was skipped. The core OpenCode checkpoint `86bdb68` is pushed for its own hosted checks; app setup wiring is in progress.
+
+Run `36709440347` completed successfully at `86bdb68`. The new core OpenCode writer passes both Linux and macOS CI, and the app bundle passes. Native E2E was disabled. This verifies the core checkpoint, not the app setup commands still being implemented.
+
+## App OpenCode setup checkpoint
+
+Commit `bab6a73` adds Task8 commands and regression fixtures. Parent source review covers captured runtime/key validation, bounded no-redirect model discovery, final commit guards and selected-file metadata. Corrections keep commit guards alive across panic handling and parse the bounded captured config bytes instead of reopening the file. Owner reads are also bounded. App compilation and new units are pending hosted macOS. Task9 frontend and Task10 native activation are in progress; no personal config, installed app or runtime was changed.

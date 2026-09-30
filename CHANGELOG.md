@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prepare an explicit bounded runtime-check script with two fixed short requests and private numeric evidence. It never starts a runtime or downloads models. Execution, speed measurements and E2E acceptance remain deferred.
+
 - Add app-owned OpenCode setup commands. Authenticate the exact Ready runtime with bounded model discovery; reject stale ownership, settings and key revisions before repair. Preserve provider restrictions and keep keys out of app metadata. Hosted app validation is pending; UI controls and E2E remain deferred.
 
 - Add the core OpenCode repair writer. Preserve JSONC comments and unrelated settings, use private key files and backups, reject concurrent changes, and avoid file churn on unchanged repairs. App controls are in progress. Dell: 15 repair fixtures, six unchanged CLI fixtures and Clippy pass.

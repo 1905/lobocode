@@ -217,12 +217,14 @@ Core corrections `d4b5c6c` and `ee60fbf` add selected-provider discovery and
 identity-scoped actions. Dell ownership and process fixtures pass. Cleanup checks
 provider, instance and boot identity; local cleanup also checks process identity.
 An unproven cloud create remains unresolved instead of deleting another instance.
-App integration and native acceptance are still pending.
+The app now records its runtime privately and uses that same identity through
+Start, status and Stop. Hosted checks pass: 53 app tests, two fixture tests,
+11 UI tests, lint and the native bundle. Native acceptance remains pending.
 
 The Start command also queued work before capturing the UI selection. A later
-Cloud selection could change a queued Local request. The approved app integration
-reserves Start synchronously, captures its request, and checks generations again
-after memory admission. This correction is being implemented.
+Cloud selection could change a queued Local request. The app now reserves Start
+synchronously, captures its request, and checks generations again after memory
+admission. The hosted regression passes. These changes are not installed yet.
 
 ## 8. Zero token gauges did not explain request progress
 
@@ -238,8 +240,10 @@ more often because those reads affect the existing throughput counters.
 
 In-app OpenCode repair will create a lean agent only when that agent is absent.
 Existing custom agent controls stay intact. Disabling MCP resource use does not
-remove every resource schema from OpenCode's prompt. This work is in progress;
-generation speed and the complete OpenCode flow are not yet verified.
+remove every resource schema from OpenCode's prompt. The core repair writer now
+preserves JSONC and unrelated settings, with private key files and backups.
+Fifteen repair fixtures and six unchanged CLI fixtures pass on Dell. App command
+wiring is in progress. Generation speed and the complete flow remain unverified.
 
 ### Current host limit
 

@@ -16,6 +16,7 @@ on:
       - "tools/corefixtures/**"
       - "tools/clifixtures/**"
       - "tools/native_app_e2e.py"
+      - "tools/bounded_runtime_e2e.py"
       - "internal/**"
       - "cmd/**"
       - "go.mod"
