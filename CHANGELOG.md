@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Remove a redundant default initializer from an app fixture that failed the macOS CI lint check.
+- Fix app fixtures rejected by macOS CI: remove a redundant default initializer and give the ready fake GPU its agent/API addresses.
 
 - Remove package-generated SSH host keys from the GPU image during the install layer. Each cloud instance keeps its own pinned key. Final image verification is still running on Dell.
 
