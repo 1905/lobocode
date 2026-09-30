@@ -53,7 +53,9 @@ bucket, personal download server or manual agent install is part of onboarding.
 Status: implemented in the Rust source under the user's approved
 [spec](../plans/2026-09-30-public-pod-images/spec.md). The source removes private
 storage from normal startup. Settings and the wizard no longer ask for a bucket.
-Agent, core and CLI fixture checks pass on Dell; image builds are still running.
+All 434 workspace checks and clippy pass on Dell. Both opt-in checks (SSH
+integration and runtime archive) and three explicit Go interoperability checks
+also pass. Image builds are still running.
 This is not an available public release.
 
 The first replacement plan also tied image selection to the app release. The
@@ -81,6 +83,11 @@ was stopped before its install step. No CLI binary was changed.
 
 Required delivery contract: the DMG contains the standalone desktop app. It does
 not require or install the CLI. Homebrew owns the separate CLI installation.
+
+The public-image source update was installed locally from `2bd9538`. The matching
+DMG is 6,128,059 bytes; its app binary matches the installed app and its signature
+verifies. The app opens idle. CLI/config hashes and model file metadata remain
+unchanged. Cloud image publication and live acceptance are still pending.
 
 ## 5. Local completion was not public release readiness
 

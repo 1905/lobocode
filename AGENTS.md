@@ -25,8 +25,9 @@ Current state: SSH transport, complete public-image startup and fresh latest-ima
 resolution are implemented locally. Agent/core/CLI fixture checks and clippy pass
 on Dell. Native setup/save and all browser layouts pass. Native drag automation
 did not observe movement; manual acceptance remains open. Full image builds are
-still running, and images remain unpublished. The installed app is still
-`3dec9ad` until the new local bundle is installed. Live provider acceptance is held.
+still running, and images remain unpublished. The installed app and verified
+`bin/lobocode.dmg` now contain `2bd9538`.
+The CLI, config and model files remain unchanged. Live provider acceptance is held.
 The user approved the [written spec](plans/2026-09-30-public-pod-images/spec.md)
 on 2026-09-30. Continue the authorized implementation and preserve existing work.
 The [earlier plan](plans/2026-09-30-public-pod-images.md) remains as a record.

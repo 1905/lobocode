@@ -102,10 +102,10 @@ Files: Docker files, `.dockerignore`, `.github/workflows/pod-image.yml`.
 
 Files: affected tests and build evidence only, with targeted fixes where failures expose defects.
 
-- [ ] Run `cargo test --locked --workspace --all-features` on Dell; configure required fixture tools and child-process reaping.
+- [x] Run `cargo test --locked --workspace --all-features` on Dell; configure required fixture tools and child-process reaping.
 - [x] Run `cargo clippy --locked --workspace --all-targets --all-features -- -D warnings` on Dell.
 - [x] Keep conditional/live/network acceptance limits explicit. No paid instance creation.
-- [ ] Review final code against the approved spec; commit the verified backend change locally.
+- [x] Review final code against the approved spec; commit the verified backend change locally.
 
 ## Task 6: Finish native setup and local delivery
 
@@ -115,19 +115,19 @@ Files: app settings/setup, UI tests/fixtures/assets, README, cloud docs, mistake
 - [ ] Run frontend tests and production build. Verify actual native controls, dragging, rounded corners and no scrolling.
 - [x] Check TUI layout changes; all non-UI CLI suites remain on Dell.
 - [x] Update documentation and assets to reflect verified behavior, including the unpublished-image limitation.
-- [ ] Build/install the standalone app and verify local DMG contents. Preserve CLI/config/model files.
-- [ ] Commit UI/docs delivery locally after focused checks. Keep release hold active.
+- [x] Build/install the standalone app and verify local DMG contents. Preserve CLI/config/model files.
+- [x] Commit UI/docs delivery locally after focused checks. Keep release hold active.
 
 ## Validation record — 2026-09-30
 
 - Dell focused agent: 109 library and 4 binary tests passed.
 - Dell core: 212 tests passed; one network test ignored.
 - Dell CLI: 53 tests passed, including replay and seven TUI checks.
-- Dell clippy passed for all workspace targets/features. Final full workspace rerun is in progress.
+- Dell clippy passed for all workspace targets/features. Full workspace: 434 passed, zero failed, two opt-in tests ignored. The explicit SSH integration test also passed (122 seconds). The optional pinned-runtime archive check passed (18 seconds), as did all three explicit Go interoperability checks (72 seconds).
 - Both changed workflows pass actionlint 1.7.7. No workflow was dispatched.
 - Frontend: 9 tests, type checks and formatting passed. All 20 panels and 3 Settings tabs fit without scrolling.
 - Native fresh-config setup/save passed. Rounded corners were visually inspected. Drag automation did not report movement, so movement acceptance remains open.
-- Complete Q8/Q6 image builds are running on Dell. No publication or GPU rental.
+- Code/UI/docs saved locally in `2bd9538`. Complete Q8/Q6 image builds are running on Dell. No publication or GPU rental.
 
 ## Held release acceptance
 
