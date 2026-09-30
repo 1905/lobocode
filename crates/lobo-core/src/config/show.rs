@@ -1,6 +1,8 @@
 use crate::Result;
 use std::path::Path;
 pub const PLAIN_KEYS: &[&str] = &[
+    "LOBO_CONNECTION",
+    "LOBO_CLOUD_PORT",
     "LOBO_DOMAIN",
     "LOBO_BUCKET_URL",
     "LOBO_PROVIDER",

@@ -216,3 +216,30 @@ The user lost the implementation session, then said "do finish it." Continue the
 
 - Native fix verified locally: four E2E tests pass (setup/save validation, real supervisor start/copy/stop, loading cancellation, runtime failure/retry). The harness confirms every tested view fits, and checks supervisor/runtime cleanup. App Rust tests: 37 pass; UI tests: 8 pass; clippy/check clean. Browser QA also passes all 20 panels and three Settings tabs. Reopen/resume, actual notification delivery and live model inference remain pending.
 - Window sizing evidence: Tauri reported 269 logical pixels of content height while WKWebView had 241, a 28-pixel native title-bar inset. Measuring the inset before content sizing fixes clipping. Native title bars retain OS movement; transparent tray windows and 12-pixel surface clipping provide rounded corners. Research: https://v2.tauri.app/learn/window-customization/ ; local pinned Tao 0.37.1 window sizing implementation. The native build, not the documentation alone, established the fix.
+
+## Domain-free cloud — 2026-09-30
+
+The user requested a free connection without buying a domain, then said
+"plan it first. then implement. fuck domains". This authorizes the implementation
+below. It does not lift the release hold or the Mac testing limit.
+
+- Wrote [the connection plan](../2026-09-30-domain-free-cloud.md) before implementation.
+- Added shared automatic SSH forwarding with per-instance keys, pinned server
+  identity, provider TCP mappings, a detached reconnect helper and owned cleanup.
+  New cloud setups use localhost port 8933 and need no domain or Cloudflare token.
+  GPU rental, bandwidth and model storage remain separate costs.
+- Updated native Settings, CLI wizard, OpenCode configuration, README, screenshots
+  and changelog. Saved the earlier UI/TUI/documentation batch in local commit
+  `376b38c`. Neither this feature nor that batch has been pushed.
+- Backend suites and real SSH fixtures ran on Dell. Streaming, tool calls,
+  authentication, a 105-second first response, reconnect, helper crash recovery,
+  key rejection, occupied ports and cleanup pass. Workspace clippy passes.
+  Detailed run boundaries and the initial fixture failures are in the plan.
+- Mac checks were limited to UI and builds: native setup/save, frontend checks,
+  view-store tests and fixture generation pass. All 20 panel and 3 Settings
+  browser layouts fit without scrolling. TUI layout and terminal smoke checks pass.
+- Release, push, merge, GPU rental and agent publication remain on hold. The new
+  SSH mode requires the matching agent, which has not been published. Live
+  RunPod/Vast provisioning, GPU inference, real sleep/wake and native window
+  movement still need acceptance. The installed app and old DMG were not replaced
+  with this domain-free feature.

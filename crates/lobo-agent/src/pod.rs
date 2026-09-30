@@ -389,13 +389,17 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
     )
     .ok_or_else(|| Error::msg("invalid provider instance credentials"))?;
     let d = Deps {
-        tunnel: Arc::new(PodTunnel {
-            bin: PathBuf::from(BIN_DIR).join("cloudflared"),
-            url: CLOUDFLARED_URL.into(),
-            token: cfg.cf_tunnel_token,
-            env: clean.clone(),
-            logs: logs.clone(),
-        }),
+        tunnel: if cfg.connection == "ssh" {
+            Arc::new(PrivateConnection)
+        } else {
+            Arc::new(PodTunnel {
+                bin: PathBuf::from(BIN_DIR).join("cloudflared"),
+                url: CLOUDFLARED_URL.into(),
+                token: cfg.cf_tunnel_token,
+                env: clean.clone(),
+                logs: logs.clone(),
+            })
+        },
         gpu_check: Arc::new(PodGpuCheck(GpuCheckCfg::pod(
             &model,
             clean.clone(),

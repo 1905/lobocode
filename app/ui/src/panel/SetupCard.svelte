@@ -11,8 +11,8 @@
   </p>
   <p class="small dim">
     {panel.readiness?.local_supported
-      ? 'needs an api key. cloud also needs a provider key, domain, tunnel token and bucket URL.'
-      : 'needs a provider key (RunPod or Vast), domain, tunnel token and bucket URL.'}
+      ? 'needs an api key. cloud also needs a provider key and bucket URL.'
+      : 'needs a provider key (RunPod or Vast) and bucket URL.'}
   </p>
   <BracketButton label="SETUP" tone="amber" wide onclick={setup} />
 </section>

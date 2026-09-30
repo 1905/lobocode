@@ -16,6 +16,24 @@ fn write(path: PathBuf, body: impl AsRef<[u8]>) {
     f.write_all(body.as_ref()).unwrap();
 }
 fn main() {
+    let cloud_args: Vec<_> = std::env::args().collect();
+    if cloud_args
+        .get(1)
+        .is_some_and(|s| s == lobo_core::connection::HELPER_ARG)
+    {
+        let root = PathBuf::from(&cloud_args[2]);
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let source = CloudFixture(root.join("address.json"));
+        if let Err(e) = runtime.block_on(lobo_core::connection::run_with_source(root, &source)) {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let mode = std::env::var("LOBO_LOCAL_HELPER").expect("test helper requires LOBO_LOCAL_HELPER");
     let args: Vec<_> = std::env::args().skip(1).collect();
     if mode == "fail" {
@@ -88,4 +106,22 @@ fn main() {
     }
     std::thread::sleep(Duration::from_secs(60));
     std::process::exit(3);
+}
+
+struct CloudFixture(PathBuf);
+#[async_trait::async_trait]
+impl lobo_core::connection::AddressSource for CloudFixture {
+    async fn get(&self, provider: &str, id: &str) -> lobo_core::Result<lobo_proto::Instance> {
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&self.0)?)?;
+        if v["gone"] == true {
+            return Err(lobo_core::Error::NotFound);
+        }
+        Ok(lobo_proto::Instance {
+            provider: provider.into(),
+            id: id.into(),
+            ssh_host: v["host"].as_str().unwrap().into(),
+            ssh_port: v["port"].as_u64().unwrap() as u16,
+            ..Default::default()
+        })
+    }
 }

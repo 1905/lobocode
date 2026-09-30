@@ -1,7 +1,8 @@
 import type { ConfigShow } from '../proto/ConfigShow';
 import type { Readiness } from '../proto/Readiness';
 export const PLAIN_KEYS = [
-  'LOBO_DOMAIN',
+  'LOBO_CONNECTION',
+  'LOBO_CLOUD_PORT',
   'LOBO_BUCKET_URL',
   'LOBO_MIN_MBPS',
   'LOBO_CTX',
@@ -15,11 +16,7 @@ export const PLAIN_KEYS = [
   'LOBO_MODEL',
   'LOBO_CLOUD',
 ];
-export const SECRET_KEYS = [
-  'RUNPOD_API_KEY',
-  'VASTAI_API_KEY',
-  'CF_TUNNEL_TOKEN',
-];
+export const SECRET_KEYS = ['RUNPOD_API_KEY', 'VASTAI_API_KEY'];
 export type Fields = {
   secrets: Record<string, string>;
   plain: Record<string, string>;
@@ -28,7 +25,17 @@ export type Fields = {
 export function loadFields(c?: ConfigShow): Fields {
   return {
     secrets: Object.fromEntries(SECRET_KEYS.map((k) => [k, ''])),
-    plain: Object.fromEntries(PLAIN_KEYS.map((k) => [k, c?.values[k] ?? ''])),
+    plain: Object.fromEntries(
+      PLAIN_KEYS.map((k) => [
+        k,
+        c?.values[k] ||
+          (k === 'LOBO_CONNECTION'
+            ? c?.set.LOBO_DOMAIN && c?.set.CF_TUNNEL_TOKEN
+              ? 'cloudflare'
+              : 'ssh'
+            : ''),
+      ]),
+    ),
   };
 }
 export function changes(f: Fields, current: Record<string, string>) {

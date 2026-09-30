@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use std::time::Duration;
 
 pub struct AgentConfig {
+    pub connection: String,
     pub lobo_api_key: String,
     pub cf_tunnel_token: String,
     pub model: String,
@@ -45,7 +46,17 @@ impl AgentConfig {
                 .ok_or_else(|| Error::msg(format!("config: {key}: want positive int, got {v:?}")))
         };
         let lobo_api_key = required("LOBO_API_KEY")?;
-        let cf_tunnel_token = required("CF_TUNNEL_TOKEN")?;
+        let connection = value("LOBO_CONNECTION");
+        if !matches!(connection.as_str(), "" | "ssh" | "cloudflare") {
+            return Err(Error::msg(
+                "config: LOBO_CONNECTION: want ssh or cloudflare",
+            ));
+        }
+        let cf_tunnel_token = if connection == "ssh" {
+            String::new()
+        } else {
+            required("CF_TUNNEL_TOKEN")?
+        };
         let model = required("LOBO_MODEL")?;
         let model_url = required("LOBO_MODEL_URL")?;
         let url = url::Url::parse(&model_url)
@@ -102,6 +113,7 @@ impl AgentConfig {
             })?
         };
         Ok(Self {
+            connection,
             lobo_api_key,
             cf_tunnel_token,
             model,
@@ -193,6 +205,16 @@ mod tests {
     #[test]
     fn min_mbps_default_100() {
         assert_eq!(load(&vars()).unwrap().min_mbps, 100);
+    }
+    #[test]
+    fn ssh_needs_no_cloudflare_account() {
+        let mut v = vars();
+        v.remove("CF_TUNNEL_TOKEN");
+        assert!(load(&v).is_err());
+        v.insert("LOBO_CONNECTION".into(), "ssh".into());
+        assert!(load(&v).unwrap().cf_tunnel_token.is_empty());
+        v.insert("LOBO_CONNECTION".into(), "plain-http".into());
+        assert!(load(&v).is_err());
     }
     #[test]
     fn load_agent_errors() {

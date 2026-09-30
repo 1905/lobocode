@@ -15,11 +15,11 @@ pub fn run(path: &Path, rotate: bool, io: &mut Io) -> anyhow::Result<()> {
         tracing::info!("keeping existing LOBO_API_KEY (use --rotate for a new one)");
     }
     let cfg = Laptop::from_values(&config::values(path)?);
-    if cfg.domain.is_empty() {
-        tracing::info!("LOBO_DOMAIN is empty: writing only the lobo-local provider (this Mac)");
+    if cfg.providers().is_empty() && cfg.domain.is_empty() {
+        tracing::info!("no cloud provider configured: writing only the local provider");
     }
     let output = Path::new(genkey::OPENCODE_OUT);
-    genkey::write_opencode(output, &cfg.domain, &key, cfg.port())?;
+    genkey::write_opencode_for_laptop(output, &cfg, &key)?;
     writeln!(io.out, "wrote {}", std::path::absolute(output)?.display())?;
     Ok(())
 }

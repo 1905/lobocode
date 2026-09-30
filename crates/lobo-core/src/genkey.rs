@@ -13,6 +13,18 @@ pub fn new_api_key() -> String {
     format!("sk-{}", hex::encode(bytes))
 }
 pub fn opencode_config(domain: &str, key: &str, port: u16) -> Result<String> {
+    opencode_endpoints(
+        (!domain.is_empty()).then(|| format!("https://{domain}/v1")),
+        key,
+        port,
+    )
+}
+pub fn opencode_for_laptop(cfg: &config::Laptop, key: &str) -> Result<String> {
+    cfg.connection_mode()?;
+    let cloud = (!cfg.providers().is_empty() || !cfg.domain.is_empty()).then(|| cfg.cloud_url());
+    opencode_endpoints(cloud, key, cfg.port())
+}
+fn opencode_endpoints(cloud: Option<String>, key: &str, port: u16) -> Result<String> {
     let m = lobo_proto::catalog::get("q8").expect("q8 is in the pinned model catalog");
     let models =
         json!({&m.alias:{"name":"Qwen3.5-27B Q8","limit":{"context":65536,"output":8192}}});
@@ -23,11 +35,8 @@ pub fn opencode_config(domain: &str, key: &str, port: u16) -> Result<String> {
         provider("Lobo (this Mac)", format!("http://127.0.0.1:{port}/v1")),
     );
     let mut agent_model = format!("lobo-local/{}", m.alias);
-    if !domain.is_empty() {
-        providers.insert(
-            "lobo".into(),
-            provider("Lobo", format!("https://{domain}/v1")),
-        );
+    if let Some(cloud) = cloud {
+        providers.insert("lobo".into(), provider("Lobo", cloud));
         agent_model = format!("lobo/{}", m.alias);
     }
     let config = json!({"$schema":"https://opencode.ai/config.json","provider":providers,
@@ -43,6 +52,12 @@ pub fn opencode_config(domain: &str, key: &str, port: u16) -> Result<String> {
     Ok(text + "\n")
 }
 pub fn write_opencode(path: &Path, domain: &str, key: &str, port: u16) -> Result<()> {
+    write_config(path, &opencode_config(domain, key, port)?)
+}
+pub fn write_opencode_for_laptop(path: &Path, cfg: &config::Laptop, key: &str) -> Result<()> {
+    write_config(path, &opencode_for_laptop(cfg, key)?)
+}
+fn write_config(path: &Path, text: &str) -> Result<()> {
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -50,7 +65,7 @@ pub fn write_opencode(path: &Path, domain: &str, key: &str, port: u16) -> Result
         .mode(0o600)
         .open(path)?;
     file.set_permissions(fs::Permissions::from_mode(0o600))?;
-    file.write_all(opencode_config(domain, key, port)?.as_bytes())?;
+    file.write_all(text.as_bytes())?;
     Ok(())
 }
 pub fn ensure_api_key(config_path: &Path, rotate: bool) -> Result<(String, bool)> {

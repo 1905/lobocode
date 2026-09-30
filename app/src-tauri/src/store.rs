@@ -138,7 +138,6 @@ impl Store {
             .as_ref()
             .filter(|s| !s.down)
             .and_then(|s| s.pod.as_ref())
-            && pod.provider == "local"
             && !pod.api_url.is_empty()
         {
             return Some(pod.api_url.clone());
@@ -157,9 +156,7 @@ impl Store {
         self.state
             .config
             .as_ref()
-            .and_then(|c| c.values.get("LOBO_DOMAIN"))
-            .filter(|d| !d.is_empty())
-            .map(|d| format!("https://{d}/v1"))
+            .map(|c| lobo_core::config::Laptop::from_values(&c.values).cloud_url())
     }
     pub fn needs_cleanup(&self) -> bool {
         self.up_running || self.stop_running || self.cleanup_failed

@@ -226,6 +226,7 @@ pub fn release() -> Resolved {
 }
 pub fn deps(rp: Arc<FakeRunPod>, ag: Arc<FakeAgent>, clock: Arc<dyn Clock>) -> Deps {
     Deps {
+        connection: None,
         operations: Arc::new(OperationState::memory()),
         providers: [(
             "runpod".into(),

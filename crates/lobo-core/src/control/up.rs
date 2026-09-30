@@ -44,6 +44,18 @@ struct Events {
     tx: mpsc::Sender<UpEvent>,
     terminal: Mutex<Option<mpsc::OwnedPermit<UpEvent>>>,
 }
+struct PreparedConnection {
+    manager: Arc<crate::connection::Manager>,
+    boot_id: String,
+    keep: bool,
+}
+impl Drop for PreparedConnection {
+    fn drop(&mut self) {
+        if !self.keep {
+            let _ = self.manager.discard_keys(&self.boot_id);
+        }
+    }
+}
 impl Events {
     fn emit(&self, event: UpEvent) {
         // Reserve one slot for completion. Slow consumers can miss progress,
@@ -207,6 +219,9 @@ async fn run(
     let rel = if o.provider == "local" {
         builtin("local".into(), String::new())
     } else {
+        if let Some(connection) = &d.connection {
+            connection.preflight()?;
+        }
         if o.image.is_empty() {
             o.image = d.cfg.pod_image.clone();
         }
@@ -422,6 +437,19 @@ async fn boot(
 ) -> Result<bool> {
     use rand::RngExt;
     co.boot_id = hex::encode(rand::rng().random::<[u8; 8]>());
+    let mut prepared = (p.name() != "local")
+        .then(|| d.connection.clone())
+        .flatten()
+        .map(|manager| PreparedConnection {
+            manager,
+            boot_id: co.boot_id.clone(),
+            keep: false,
+        });
+    if p.name() != "local"
+        && let Some(connection) = &d.connection
+    {
+        read(cancel, connection.prepare(&mut co)).await?;
+    }
     let before = read(cancel, p.list())
         .await?
         .into_iter()
@@ -440,7 +468,7 @@ async fn boot(
         return Err(Error::Cancelled);
     }
     // This await owns a submitted create through cancellation.
-    let pod = match p
+    let mut pod = match p
         .rent(&co, cancel.clone(), &|note| events.phase("create", note))
         .await
     {
@@ -473,7 +501,17 @@ async fn boot(
         return Err(error);
     }
     check_cancel(cancel)?;
+    if p.name() != "local"
+        && let Some(connection) = &d.connection
+        && let Err(e) = connection.start(&mut pod, &co).await
+    {
+        cleanup::pending(d, ownership).await?;
+        return Err(e);
+    }
     let agent = (d.new_agent)(&pod.agent_url);
+    if let Some(prepared) = &mut prepared {
+        prepared.keep = true;
+    }
     events.phase(
         "create",
         format!(
@@ -499,11 +537,24 @@ async fn boot(
     let mut last_check = created;
     loop {
         check_cancel(cancel)?;
+        if p.name() != "local"
+            && let Some(connection) = &d.connection
+            && let Err(e) = connection.attach(&mut pod).await
+        {
+            cleanup::pending(d, ownership).await?;
+            return Err(e);
+        }
         let mut status = match read(cancel, agent.status()).await {
             Ok(s) => Some(s),
             Err(Error::Cancelled) => return Err(Error::Cancelled),
             Err(_) => None,
         };
+        if status.is_none()
+            && let Some(connection) = &d.connection
+            && let Some(detail) = connection.detail()
+        {
+            events.phase(if seen { &last_phase } else { "image" }, detail);
+        }
         if status
             .as_ref()
             .is_some_and(|s| !s.boot_id.is_empty() && s.boot_id != co.boot_id)

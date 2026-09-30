@@ -1,6 +1,6 @@
 # Domain-free cloud connections
 
-Status: implementation authorized on 2026-09-30. Plan written before code changes.
+Status: implemented locally on 2026-09-30. Plan written before code changes.
 Release remains on hold. Do not rent GPUs or publish builds for this work.
 
 ## Outcome
@@ -72,3 +72,39 @@ The existing model/agent bucket is still a separate configuration dependency.
 A bucket URL can use a provider hostname; it does not require buying a domain.
 Cross-device public access is outside this change. Localhost is intentionally
 available only to clients on the computer running the connection helper.
+
+## Implementation evidence — 2026-09-30
+
+All seven implementation steps are complete in the working branch. CLI and app
+share the detached helper, instance key state, provider mappings and endpoints.
+The setup wizard and native Cloud Settings default to SSH. Existing complete
+Cloudflare configurations remain compatible. README, screenshots and changelog
+now describe the unreleased implementation.
+
+- Dell: agent, core, CLI and protocol suites pass across the recorded runs.
+  The final core run passed 202 tests before adding two provider-error key
+  redaction regressions; the final provider run passed all 41 tests including
+  both regressions. All 13 process fixtures and workspace clippy pass.
+- The CLI replay initially exposed three intended differences from the frozen
+  Go behavior: domain-free validation and two generated endpoint cases. Scoped
+  Rust expectations now cover those differences. All 53 replay cases pass;
+  the frozen Go fixtures remain unchanged.
+- Real OpenSSH integration on Dell passed in 122.44 seconds. It verified API
+  authentication, progressive SSE, tool-call bytes, a 105-second first response,
+  reconnect, reopen without a duplicate connection, helper crash recovery,
+  changed-host-key rejection, unauthorized-client-key rejection, occupied
+  ports, and owned connection/key cleanup. No model was loaded.
+- Process fixtures initially found an unsuitable container harness: its PID 1
+  did not reap detached children. Running through `tini -s --` fixed the harness;
+  the process and SSH tests then passed. No product process check was disabled.
+- Mac: 9 frontend tests, UI type checks, 10 view-store tests, 2 fixture tests,
+  a native UI-only setup/save smoke, the native test-bundle build and app clippy pass.
+  All 20 panel layouts and 3 Settings tabs fit without scrolling or clipping.
+  Six terminal layout tests and five fixture-only PTY checks also pass.
+- No Mac inference, backend/lifecycle suite, Docker or provider rental was used
+  for this feature. No push, merge, release or agent publication was made.
+
+Live provisioning with both providers requires the matching updated agent.
+That agent has not been published. GPU inference, real sleep/wake and final
+native window-movement acceptance remain pending. The conditional Go/Rust
+interop checks and pinned-runtime download were not rerun for this change.

@@ -11,7 +11,7 @@ Your own uncensored coding model, on demand. `lobo up` rents one RTX 5090, serve
 
 ## TL;DR
 
-- **What:** one command rents a 5090 on RunPod or Vast.ai and gives you `https://<your-domain>/v1`. Point OpenCode or any OpenAI client at it.
+- **What:** one command rents a 5090 on RunPod or Vast.ai. The Rust candidate connects it through private SSH at `http://127.0.0.1:8933/v1`. No purchased domain is required.
 - **Speed:** about 45 tok/s generation, 500+ tok/s prompt, 64K context.
 - **Cost:** $0.69–0.99/h while it runs. It deletes itself after 30 min idle, and after 12 h in any case.
 - **Safe to forget:** the pod kills itself. Your account keys never leave your laptop.
@@ -47,12 +47,16 @@ The Go CLI remains in `master` and the legacy `make install` target until the Ru
 
 **In the cloud:**
 - A **RunPod** or **Vast.ai** API key. One is enough.
-- A **Cloudflare named tunnel** token and a hostname routed to it. That hostname is your endpoint.
-- A public **bucket URL** that holds the model GGUF.
+- **OpenSSH** on the client computer. macOS includes it; Linux needs the `openssh-client` package.
+- A public **bucket URL** that holds the model and agent release. A provider URL such as an R2 `r2.dev` hostname works without buying a domain.
 
 `lobo config` asks for what your choice needs and writes `~/.config/lobo/config.env`.
 
-The current cloud connection requires a domain because it uses a named Cloudflare tunnel. A domain-free SSH connection is [proposed](docs/cloud-without-domain.md); it is not implemented yet. Local mode needs no domain or Cloudflare account.
+New Rust configurations use a [private SSH connection](docs/cloud-without-domain.md). Lobocode creates its own keys, checks the server identity, and forwards requests automatically. No domain, Cloudflare tunnel account, or connection subscription is required. GPU and provider bandwidth charges still apply.
+
+The connection survives closing the app or finishing `lobo up`. It reconnects after a network interruption. The endpoint works only on that computer. Stop deletes the instance and closes the connection.
+
+Existing complete domain/token configurations keep their public connection. Select **use private connection** in Cloud Settings, or set `LOBO_CONNECTION=ssh`, before the next start. The SSH mode needs the matching new cloud agent. No updated agent image or release has been published yet; live provider validation remains pending.
 
 ## Use
 
@@ -92,13 +96,13 @@ Build the Rust candidate with `make install-mac`. `make dmg` creates `bin/loboco
 
 <details><summary>Settings: Local, Cloud and Defaults</summary>
 <p><img src="docs/img/settings.png" width="520" alt="Local settings: weights folder and API port"></p>
-<p><img src="docs/img/settings_cloud.png" width="520" alt="Cloud settings: provider keys, API key, tunnel, domain and model bucket"></p>
+<p><img src="docs/img/settings_cloud.png" width="520" alt="Cloud settings: provider keys, private SSH, API key, cloud port and model bucket"></p>
 <p><img src="docs/img/settings_defaults.png" width="520" alt="Defaults: model, context size, shutdown limits and provider options"></p>
 </details>
 
 ## OpenCode
 
-`lobo gen-api-key` writes `opencode.lobo.json` with the `lobo` provider (your domain), the `lobo-local` provider (this Mac) and the agent. Merge its `provider.lobo` and `agent.lobo` blocks into `~/.config/opencode/opencode.json`, then pick the `lobo` agent (Tab). The agent turns off MCP tools and skills for this model: the first request drops from 43K to 15K tokens.
+`lobo gen-api-key` writes `opencode.lobo.json` with the `lobo` cloud provider at `http://127.0.0.1:8933/v1`, the `lobo-local` provider at port `8931`, and the agent. Cloud appears when a provider is configured. Existing public connections retain their domain endpoint. Merge the generated blocks into `~/.config/opencode/opencode.json`, then select the `lobo` agent (Tab). The agent disables MCP tools and skills for this model.
 
 ## Pod image
 
@@ -118,6 +122,8 @@ Without it, the pod starts from the plain llama.cpp image and downloads the agen
 | Key | Flag | Default |
 |---|---|---|
 | `LOBO_PROVIDER` (runpod, vast, local) | `--provider` | runpod |
+| `LOBO_CONNECTION` (ssh, cloudflare) | | ssh for new configurations |
+| `LOBO_CLOUD_PORT` (control API on port + 1) | | 8933 |
 | `LOBO_MODEL` (q8, q6) | `--q6` | q8 |
 | `LOBO_CTX` | `--ctx` | 65536 |
 | `LOBO_IDLE_MIN` | `--idle-min` | 30 |
@@ -128,6 +134,8 @@ Without it, the pod starts from the plain llama.cpp image and downloads the agen
 | `LOBO_VAST_MAX_DPH` | | 1.20 |
 | `LOBO_WEIGHTS_DIR` | | `~/Library/Application Support/lobo/weights` |
 | `LOBO_LOCAL_PORT` (API on port + 1) | | 8931 |
+
+Cloud and local port pairs must not overlap. SSH mode selects RunPod hosts with public TCP mappings and Vast hosts with direct ports. This can reduce host availability. `LOBO_DOMAIN` and `CF_TUNNEL_TOKEN` are only needed for the legacy `cloudflare` connection.
 
 ## Safety
 

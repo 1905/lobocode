@@ -173,7 +173,7 @@ mod tests {
                     runpod_api_key: "r".into(),
                     ..Default::default()
                 },
-                "config: cloud needs CF_TUNNEL_TOKEN, LOBO_DOMAIN, LOBO_BUCKET_URL",
+                "config: cloud needs LOBO_BUCKET_URL",
             ),
         ] {
             let req = UpRequest {

@@ -12,9 +12,9 @@ fn config() -> (ConfigShow, Readiness) {
     let values: BTreeMap<String, String> = [
         ("RUNPOD_API_KEY", "rpa_…a1b2"),
         ("VASTAI_API_KEY", "3f9c…c0de"),
-        ("LOBO_DOMAIN", "lobo.example.com"),
+        ("LOBO_CONNECTION", "ssh"),
+        ("LOBO_CLOUD_PORT", "8933"),
         ("LOBO_API_KEY", "sk-9…7e4d"),
-        ("CF_TUNNEL_TOKEN", "eyJh…fQ=="),
         ("LOBO_BUCKET_URL", "https://pub-….r2.dev"),
         ("LOBO_MIN_MBPS", "100"),
     ]

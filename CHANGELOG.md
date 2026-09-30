@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add automatic private SSH connections for cloud instances. New setups need no domain, Cloudflare account or tunnel subscription. OpenCode uses `http://127.0.0.1:8933/v1`; GPU and provider charges still apply.
+- Pin a fresh server key for each instance, restrict forwarding to the inference/control APIs, and reconnect through a detached helper. Stop closes the owned connection and removes its keys. Preserve existing complete Cloudflare configurations.
+- Update the CLI wizard, native Cloud Settings, OpenCode configuration, README and screenshots for domain-free setup.
+- Dell checks pass for provider requests, authentication, progressive streaming, tool calls, a 105-second first response, reconnect, helper crash recovery, rejected keys, occupied ports and cleanup. Native UI-only setup, 9 frontend tests and all 23 browser layouts pass without scrolling.
+- Release remains on hold. No GPU was rented, and no new agent or image was published. Live RunPod/Vast provisioning, inference and sleep/wake acceptance remain pending.
+
 - Refresh native UI assets and Rust branch instructions. Release remains on hold for manual testing.
 - Fit the TUI status values and quit hint into 80×20 and 80×24 terminals. Show a resize hint in smaller terminals. Six layout tests and five fixture-only terminal checks pass.
 - Accept the initial streaming chat chunk with null content. Reject malformed numeric content. Focused regression checks passed before local backend testing was stopped.

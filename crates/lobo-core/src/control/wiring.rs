@@ -68,6 +68,15 @@ pub fn deps_from_config(cfg: Laptop, w: &Wiring) -> Result<Deps> {
         None
     };
     Ok(Deps {
+        connection: if cfg.uses_ssh() {
+            Some(Arc::new(crate::connection::Manager::new(
+                w.config_path.clone(),
+                w.spawner.exe.clone(),
+                cfg.cloud_port(),
+            )?))
+        } else {
+            None
+        },
         operations: Arc::new(OperationState::persistent(
             StateFile::default_path().with_file_name("operation.json"),
         )),

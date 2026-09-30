@@ -26,6 +26,23 @@ async fn bad_key_names_env() {
     }
 }
 
+#[tokio::test]
+async fn rejected_create_does_not_echo_connection_private_key() {
+    for status in [200, 400, 500] {
+        let (_s, c) = reply(status, json!({"success":false,"msg":"secret-host-base64"})).await;
+        let e = c
+            .create(
+                7,
+                &json!({"env":{"LOBO_CONNECTION_HOST_KEY":"secret-host-base64"}}),
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(!e.contains("secret-host-base64"));
+        assert!(e.contains("redacted host key"));
+    }
+}
+
 #[test]
 fn search_query_shape() {
     let q = search_query(1.2, 100);
@@ -493,4 +510,25 @@ async fn cancel_during_search_does_not_create() {
             .iter()
             .all(|r| r.method != "PUT")
     );
+}
+#[test]
+fn private_connection_exposes_only_ssh_and_retains_mapping() {
+    use super::*;
+    let mut opts = crate::provider::fixture_opts();
+    opts.connection = "ssh".into();
+    let body = create_body(&opts);
+    assert_eq!(body["env"]["-p 2222:2222"], "1");
+    assert!(body["env"].get("CF_TUNNEL_TOKEN").is_none());
+    let value = serde_json::json!({"id":123,"public_ipaddr":"203.0.113.8","ports":{"2222/tcp":[{"HostIp":"0.0.0.0","HostPort":"30222"}]}});
+    let i = to_instance(serde_json::from_value(value).unwrap());
+    assert_eq!((i.ssh_host.as_str(), i.ssh_port), ("203.0.113.8", 30222));
+    for ports in [
+        serde_json::Value::Null,
+        serde_json::json!([]),
+        serde_json::json!({}),
+    ] {
+        let waiting =
+            to_instance(serde_json::from_value(serde_json::json!({"ports":ports})).unwrap());
+        assert_eq!(waiting.ssh_port, 0);
+    }
 }

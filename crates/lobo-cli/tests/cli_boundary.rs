@@ -33,7 +33,7 @@ fn gen_key_reuse_rotate_and_permissions() {
         let out = String::from_utf8(output.stdout).unwrap();
         let err = String::from_utf8(output.stderr).unwrap();
         assert!(out.starts_with("wrote "));
-        assert!(err.contains("LOBO_DOMAIN is empty"));
+        assert!(err.contains("no cloud provider configured"));
         let key = lobo_core::config::values(&path).unwrap()["LOBO_API_KEY"].clone();
         let file = dir.path().join("opencode.lobo.json");
         assert_eq!(
@@ -268,7 +268,7 @@ async fn gates_reject_before_dependencies() {
         (
             "up",
             "LOBO_API_KEY=sk\nRUNPOD_API_KEY=rp\n",
-            "CF_TUNNEL_TOKEN",
+            "LOBO_BUCKET_URL",
         ),
         (
             "down",

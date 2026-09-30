@@ -88,6 +88,16 @@ pub(crate) async fn pending(d: &Deps, guard: &mut OperationGuard<'_>) -> Result<
     delete_verified(&**provider, pending.instance_id.as_deref().unwrap(), d.poll)
         .await
         .map_err(|e| pending.unresolved(e.to_string()))?;
+    if let Some(connection) = &d.connection {
+        connection
+            .stop(&pending.provider, pending.instance_id.as_deref().unwrap())
+            .await?;
+    }
+    if let Some(connection) = &d.connection
+        && pending.provider != "local"
+    {
+        connection.discard_keys(&pending.boot_id)?;
+    }
     guard.clear()
 }
 #[cfg(test)]

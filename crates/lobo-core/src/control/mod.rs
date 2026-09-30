@@ -49,6 +49,7 @@ pub struct UpOpts {
 pub type AgentFactory = Arc<dyn Fn(&str) -> Arc<dyn AgentApi> + Send + Sync>;
 #[derive(Clone)]
 pub struct Deps {
+    pub connection: Option<Arc<crate::connection::Manager>>,
     pub providers: BTreeMap<String, Arc<dyn Provider>>,
     pub operations: Arc<OperationState>,
     pub releases: Arc<dyn ReleaseResolver>,
