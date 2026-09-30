@@ -448,6 +448,9 @@ impl Store {
         }
     }
     pub fn handle_event(&mut self, ev: &UpEvent, now: DateTime<Utc>) -> Vec<Note> {
+        let mut ev = ev.clone();
+        ev.detail = self.sanitize_identity(&ev.detail);
+        ev.err = ev.err.map(|err| self.sanitize_identity(&err));
         self.state.up_phase = Some(ev.phase.clone());
         if let Some(step) = Step::from_up_phase(&ev.phase) {
             self.mark(step, now);
@@ -526,7 +529,9 @@ impl Store {
     pub fn stop_failed(&mut self, message: String) {
         self.stop_running = false;
         self.cleanup_failed = true;
-        self.state.phase = Phase::Failed { message };
+        self.state.phase = Phase::Failed {
+            message: self.sanitize_identity(&message),
+        };
     }
     pub fn stop_done(&mut self) {
         self.stop_running = false;
@@ -568,10 +573,10 @@ impl Store {
         }
     }
     pub fn set_warning(&mut self, w: Option<String>) {
-        self.state.warning = w;
+        self.state.warning = w.map(|warning| self.sanitize_identity(&warning));
     }
     pub fn poll_failed(&mut self, msg: String) {
-        self.state.warning = Some(msg);
+        self.state.warning = Some(self.sanitize_identity(&msg));
         if self.state.phase == Phase::Loading {
             self.state.phase = Phase::Off;
         }
@@ -587,6 +592,20 @@ impl Store {
     pub fn invalidate_memory(&mut self) {
         self.memory_generation = self.memory_generation.wrapping_add(1);
         self.state.local_memory = None;
+    }
+    fn sanitize_identity(&self, text: &str) -> String {
+        let mut text = text.to_owned();
+        if let Some(owner) = &self.runtime {
+            if !owner.boot_id.is_empty() {
+                text = text.replace(&owner.boot_id, "[runtime]");
+            }
+            if owner.provider == "local" {
+                if let Some(pid) = owner.local_pid {
+                    text = text.replace(&pid.to_string(), "[runtime]");
+                }
+            }
+        }
+        text
     }
     pub fn invalidate_config(&mut self) {
         self.config_generation = self.config_generation.wrapping_add(1);

@@ -489,6 +489,15 @@ fn immutable_runtime_is_private_and_controls_running_identity() {
     status.pod.as_mut().unwrap().id = "4242".into();
     status.status.as_mut().unwrap().boot_id = "private-boot".into();
     store.apply_snap(status, now());
+    store.handle_event(
+        &UpEvent {
+            phase: "create".into(),
+            detail: "local 4242 is starting".into(),
+            err: Some("boot private-boot".into()),
+            ..Default::default()
+        },
+        now(),
+    );
     store.choose(Target::Cloud);
     store.set_provider("vastai".into());
     assert_eq!(store.runtime(), Some(owner));
@@ -498,4 +507,8 @@ fn immutable_runtime_is_private_and_controls_running_identity() {
     assert!(!json.contains("4242"));
     assert!(!json.contains("local_start_id"));
     assert!(!json.contains("runtime_generation"));
+    store.set_runtime(None);
+    let json = serde_json::to_string(&store.view(now())).unwrap();
+    assert!(!json.contains("private-boot"));
+    assert!(!json.contains("4242"));
 }

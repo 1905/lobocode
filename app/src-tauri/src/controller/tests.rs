@@ -770,6 +770,11 @@ async fn local_ready_and_stop_ignore_a_failing_vast_provider() {
     assert_eq!(b.down_targets.lock().unwrap().len(), 1);
     assert_eq!(b.down_targets.lock().unwrap()[0].provider, "local");
     assert_eq!(c.state().phase, Phase::Off);
+    let snap = c.state().snap.unwrap();
+    assert!(snap.down);
+    assert_eq!(snap.pod, None);
+    assert_eq!(snap.status, None);
+    assert_ne!(c.state().endpoint.as_deref(), Some(testkit::LOCAL_API_URL));
     assert!(vast.calls().is_empty());
 }
 
