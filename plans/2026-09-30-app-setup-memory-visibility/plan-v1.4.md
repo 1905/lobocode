@@ -35,6 +35,8 @@ Publication checkpoint: the direct GHCR upload-session probe returned 403 DENIED
 
 C1a source checkpoint: candidate mode and the OCI verifier are prepared. Parent review plus Dell validation pass: 18 fake cases, Python compilation, actionlint and shell syntax. Actual candidate verification and verification-only CI remain pending. The pinned official runner image is downloaded on Dell; no runner is registered.
 
+C1a review follow-up: reject OCI descriptor platform declarations that disagree with the runnable Linux AMD64 config, including enclosing indexes. Parent reviewed the fix; all 23 focused fixtures, Python compilation and workflow lint pass on Dell. Candidate image source is unchanged.
+
 ## Earlier local diagnostic — now deferred
 
 The user explicitly requested a direct comparison without OpenCode using the same input size. This narrow authorization supersedes the earlier inference hold and 64-token input cap for one diagnostic. All other deferred work remains held. Existing Tasks 1–23 and their completed evidence remain unchanged below.
