@@ -1,0 +1,80 @@
+{
+  "name": "off_local_nomodels",
+  "now_ms": 1790683200000,
+  "state": {
+    "boot_progress": 0.0,
+    "boot_start_ms": null,
+    "boot_steps": [
+      "rent",
+      "gpu",
+      "download",
+      "load",
+      "ready"
+    ],
+    "catalog_ids": [
+      "q8",
+      "q6"
+    ],
+    "config": {
+      "exists": true,
+      "path": "/Users/you/.config/lobo/config.env",
+      "set": {
+        "CF_TUNNEL_TOKEN": true,
+        "LOBO_API_KEY": true,
+        "LOBO_BUCKET_URL": true,
+        "LOBO_DOMAIN": true,
+        "LOBO_MIN_MBPS": true,
+        "RUNPOD_API_KEY": true,
+        "VASTAI_API_KEY": true
+      },
+      "values": {
+        "CF_TUNNEL_TOKEN": "eyJh…fQ==",
+        "LOBO_API_KEY": "sk-9…7e4d",
+        "LOBO_BUCKET_URL": "https://pub-….r2.dev",
+        "LOBO_DOMAIN": "lobo.example.com",
+        "LOBO_MIN_MBPS": "100",
+        "RUNPOD_API_KEY": "rpa_…a1b2",
+        "VASTAI_API_KEY": "3f9c…c0de"
+      }
+    },
+    "current_step": null,
+    "download": null,
+    "endpoint": "http://127.0.0.1:8931/v1",
+    "is_local": true,
+    "last_detail": "",
+    "log_tail": [],
+    "menu_text": "off",
+    "model": "q8",
+    "models": null,
+    "phase": {
+      "kind": "off"
+    },
+    "provider": "vast",
+    "readiness": {
+      "cloud_ready": true,
+      "default_model": "q8",
+      "default_provider": "vast",
+      "error": null,
+      "exists": true,
+      "local_port": 8931,
+      "local_supported": true,
+      "providers": [
+        "runpod",
+        "vast"
+      ],
+      "ready": true
+    },
+    "ready_url": null,
+    "snap": {
+      "at": "2026-09-29T12:00:00Z",
+      "down": true,
+      "pod": null,
+      "status": null,
+      "version": null
+    },
+    "steps": [],
+    "target": "local",
+    "up_phase": null,
+    "warning": null
+  }
+}

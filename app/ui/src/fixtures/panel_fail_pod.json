@@ -1,0 +1,153 @@
+{
+  "name": "fail_pod",
+  "now_ms": 1790683200000,
+  "state": {
+    "boot_progress": 0.0,
+    "boot_start_ms": null,
+    "boot_steps": [
+      "rent",
+      "container",
+      "tunnel",
+      "gpu",
+      "download",
+      "load",
+      "ready"
+    ],
+    "catalog_ids": [
+      "q8",
+      "q6"
+    ],
+    "config": {
+      "exists": true,
+      "path": "/Users/you/.config/lobo/config.env",
+      "set": {
+        "CF_TUNNEL_TOKEN": true,
+        "LOBO_API_KEY": true,
+        "LOBO_BUCKET_URL": true,
+        "LOBO_DOMAIN": true,
+        "LOBO_MIN_MBPS": true,
+        "RUNPOD_API_KEY": true,
+        "VASTAI_API_KEY": true
+      },
+      "values": {
+        "CF_TUNNEL_TOKEN": "eyJh…fQ==",
+        "LOBO_API_KEY": "sk-9…7e4d",
+        "LOBO_BUCKET_URL": "https://pub-….r2.dev",
+        "LOBO_DOMAIN": "lobo.example.com",
+        "LOBO_MIN_MBPS": "100",
+        "RUNPOD_API_KEY": "rpa_…a1b2",
+        "VASTAI_API_KEY": "3f9c…c0de"
+      }
+    },
+    "current_step": null,
+    "download": null,
+    "endpoint": "https://lobo.example.com/v1",
+    "is_local": false,
+    "last_detail": "",
+    "log_tail": [],
+    "menu_text": "FAIL",
+    "model": "q8",
+    "models": null,
+    "phase": {
+      "kind": "failed",
+      "message": "down: delete denied"
+    },
+    "provider": "vast",
+    "readiness": {
+      "cloud_ready": true,
+      "default_model": "q8",
+      "default_provider": "vast",
+      "error": null,
+      "exists": true,
+      "local_port": 8931,
+      "local_supported": true,
+      "providers": [
+        "runpod",
+        "vast"
+      ],
+      "ready": true
+    },
+    "ready_url": null,
+    "snap": {
+      "at": "2026-09-29T12:00:00Z",
+      "down": false,
+      "pod": {
+        "cost_per_hr": 0.69,
+        "detail": "COMMUNITY, ≥5000 Mbps",
+        "host_download_mbps": 5000,
+        "id": "rysv8058qqhsqc",
+        "provider": "runpod",
+        "started_at": "2026-09-29T09:40:58Z",
+        "status": "RUNNING"
+      },
+      "status": {
+        "ctx": 65536,
+        "download": {
+          "bytes": 0,
+          "mbps": 0.0,
+          "total": 0
+        },
+        "expires_at": "0001-01-01T00:00:00Z",
+        "gpu": {
+          "name": "NVIDIA GeForce RTX 5090",
+          "util_pct": 87,
+          "vram_total_mb": 32607,
+          "vram_used_mb": 29316
+        },
+        "host": null,
+        "idle_s": 180,
+        "kill_in_s": 1634,
+        "kill_reason": "idle",
+        "llama": {
+          "gen_tokens_total": 115498,
+          "gen_tps": 45.1,
+          "prompt_tokens_total": 857350,
+          "prompt_tps": 503.9,
+          "requests_deferred": 0,
+          "requests_processing": 1
+        },
+        "metrics_failures": 0,
+        "model": "q8",
+        "stage": "ready",
+        "stage_detail": "",
+        "timings": {
+          "bootstrap_apt_s": 0.0,
+          "bootstrap_zip_s": 0.0,
+          "container_started_at": "0001-01-01T00:00:00Z",
+          "download_conns": 0,
+          "download_mbps": 0.0,
+          "download_s": 0.0,
+          "download_source": "",
+          "gpu_check_s": 0.0,
+          "load_s": 0.0,
+          "ready_at": "0001-01-01T00:00:00Z",
+          "tunnel_s": 0.0,
+          "verify_s": 0.0
+        },
+        "uptime_s": 8342
+      },
+      "version": {
+        "built_at": "0001-01-01T00:00:00Z",
+        "built_by": "",
+        "defaults": {
+          "ctx": 0,
+          "idle_min": 0,
+          "max_hours": 0
+        },
+        "git_dirty": false,
+        "git_sha": "4b513b3",
+        "llama_image": "",
+        "model": {
+          "file": "",
+          "id": "",
+          "sha256": ""
+        },
+        "version": "2026.09.25-10"
+      }
+    },
+    "steps": [],
+    "target": "cloud",
+    "up_phase": null,
+    "warning": null
+  }
+}

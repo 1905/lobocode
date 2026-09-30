@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Rust P5 app candidate: shared-core backend, owned Start/Stop/Quit, tray, native windows, local supervisor, Svelte panel and settings. The app does not launch or bundle the CLI.
+- App checks pass: 36 Rust tests, 8 UI tests, lint, generated UI fixtures and production frontend build. Failed Quit can retry cleanup without disabling polling.
+- CI now builds and verifies the macOS app bundle with frozen frontend dependencies. Native app E2E, final render acceptance and clean-runner app CI remain pending; Swift source is retained meanwhile.
+
 - Rust P5 shared app APIs: config readiness, settings validation, explicit startup overrides and free-space checks for unsaved folders. The desktop app is still in progress.
 - Shared protocol/core checks pass: 255 tests, one network test ignored; clippy passes. Native app E2E remains pending.
 

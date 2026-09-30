@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "windows": [
+    "main",
+    "panel",
+    "settings"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-size",
+    "core:event:default"
+  ]
+}

@@ -98,3 +98,47 @@ jobs:
         run: test "$(uname -m)" = arm64
       - name: Test core, CLI and local process lifecycle
         run: cargo test --locked -p lobo-core -p lobo-cli --features lobo-cli/test-fakes -j 2
+
+  app:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.1"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "app/src-tauri -> target"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "9.11.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: app/ui/pnpm-lock.yaml
+      - name: Install and build UI
+        run: |
+          pnpm -C app/ui install --frozen-lockfile
+          pnpm -C app/ui build
+      - name: App lint and tests
+        run: make app-lint app-test
+      - name: Check app fixtures and TypeScript
+        run: |
+          make app-fixtures
+          git diff --exit-code -- app/ui/src/fixtures app/ui/src/gen app/ui/src/proto
+          test -z "$(git status --porcelain -- app/ui/src/fixtures app/ui/src/gen app/ui/src/proto)"
+      - name: Build native app bundle
+        run: make mac
+      - name: Verify bundle
+        run: |
+          test -x bin/lobocode.app/Contents/MacOS/lobocode
+          test ! -e bin/lobocode.app/Contents/Resources/lobo
+          codesign --verify --deep --strict bin/lobocode.app
+          ditto -c -k --keepParent bin/lobocode.app bin/lobocode-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lobocode-macos-arm64
+          path: bin/lobocode-macos-arm64.zip
+          retention-days: 7

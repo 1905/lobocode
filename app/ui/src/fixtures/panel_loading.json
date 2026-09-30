@@ -1,0 +1,42 @@
+{
+  "name": "loading",
+  "now_ms": 1790683200000,
+  "state": {
+    "boot_progress": 0.0,
+    "boot_start_ms": null,
+    "boot_steps": [
+      "rent",
+      "container",
+      "tunnel",
+      "gpu",
+      "download",
+      "load",
+      "ready"
+    ],
+    "catalog_ids": [
+      "q8",
+      "q6"
+    ],
+    "config": null,
+    "current_step": null,
+    "download": null,
+    "endpoint": null,
+    "is_local": false,
+    "last_detail": "",
+    "log_tail": [],
+    "menu_text": "lobo",
+    "model": "q8",
+    "models": null,
+    "phase": {
+      "kind": "loading"
+    },
+    "provider": "runpod",
+    "readiness": null,
+    "ready_url": null,
+    "snap": null,
+    "steps": [],
+    "target": "cloud",
+    "up_phase": null,
+    "warning": null
+  }
+}
