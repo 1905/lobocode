@@ -85,3 +85,5 @@ later”: implement first with unit/build checks, and defer native E2E plus the
 bounded inference benchmark to the later validation stage. The memory branch
 must be integrated into the new isolated feature branch without prematurely
 merging unverified code to master. Image builds and updater remain paused.
+
+Current host constraint (2026-09-30): the user reported no available Mac memory during the app-runtime fixes. Keep the Mac to code edits. Use Dell/hosted macOS for builds and unit checks. Local install and all E2E remain pending. Do not start a model or rent a GPU.

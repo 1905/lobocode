@@ -4,7 +4,8 @@
 
 - Add app-scoped runtime operations in the shared core. Match provider, instance and boot identity before cleanup; preserve unrelated pending operations and connections. App integration is in progress.
 - Core checks pass on Dell: 74 control tests, 19 local-provider tests and the scoped connection fixture. Final discovery fixes pass 24 scoped tests. Native E2E remains deferred; no inference or provider requests ran.
-- Correct the native memory probe test for macOS runners without Metal. Require the exact unavailable error on those runners; keep startup admission unchanged. Hosted retest is pending.
+- Correct the native memory probe test for macOS runners without Metal. Require the exact unavailable error on those runners; keep startup admission unchanged. Hosted macOS checks pass.
+- Write executable core-test fixtures in a separate process to avoid inherited writable handles. Dell core library checks pass: 250 tests, one opt-in test ignored. Hosted Linux retest is pending after a `Text file busy` failure.
 
 - Fix app fixtures rejected by macOS CI: remove a redundant default initializer and give the ready fake GPU its agent/API addresses.
 

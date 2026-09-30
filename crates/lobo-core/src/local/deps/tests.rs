@@ -25,7 +25,16 @@ fn deps(w: &Path) -> MacDeps {
     d
 }
 fn executable(path: &Path, body: &str) {
-    fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    // A sibling test can fork while this fixture is open for writing. CLOEXEC
+    // leaves a brief writable reference in that child, making exec return
+    // ETXTBSY. Keep the writable descriptor out of the shared test process.
+    let status = std::process::Command::new("/bin/sh")
+        .args(["-c", "printf '%s' \"$1\" > \"$2\"", "fixture-writer"])
+        .arg(format!("#!/bin/sh\n{body}\n"))
+        .arg(path)
+        .status()
+        .unwrap();
+    assert!(status.success());
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
