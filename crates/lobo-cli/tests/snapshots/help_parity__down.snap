@@ -1,0 +1,15 @@
+---
+source: crates/lobo-cli/tests/help_parity.rs
+expression: "String::from_utf8(output).unwrap()"
+---
+Delete every lobo pod on every provider
+
+Usage:
+  lobo down [OPTIONS]
+
+Flags:
+      --json[=<JSON>]  print {"spent_usd": …} on stdout
+  -h, --help           help for down
+
+Global Flags:
+      --config <string>  config file (dotenv; the OS env is never read) [default: /home/u/.config/lobo/config.env]

@@ -1,0 +1,12 @@
+Live dashboard of the running pod
+
+Usage:
+  lobo status [flags]
+
+Flags:
+  -h, --help   help for status
+      --json   print one snapshot as JSON (pod, release, agent status) and exit
+      --once   print one snapshot and exit
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")

@@ -1,0 +1,10 @@
+Build lobo-agent, zip it with release.json, scan for secrets, upload to bucket lobo
+
+Usage:
+  lobo release [flags]
+
+Flags:
+  -h, --help   help for release
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")

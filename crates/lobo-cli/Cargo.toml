@@ -1,0 +1,50 @@
+[package]
+name = "lobo-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "lobo_cli"
+
+[[bin]]
+name = "lobo"
+path = "src/main.rs"
+
+[features]
+test-fakes = ["lobo-core/testkit"]
+
+[dependencies]
+lobo-core = { path = "../lobo-core" }
+lobo-proto = { path = "../lobo-proto" }
+clap = { workspace = true, features = ["string"] }
+clap_complete.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+inquire.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono = { workspace = true, features = ["clock"] }
+serde.workspace = true
+serde_json.workspace = true
+unicode-width.workspace = true
+futures-util.workspace = true
+tempfile.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+lobo-core = { path = "../lobo-core", features = ["testkit"] }
+insta.workspace = true
+assert_cmd.workspace = true
+predicates.workspace = true
+serial_test.workspace = true
+wiremock.workspace = true
+regex-lite.workspace = true

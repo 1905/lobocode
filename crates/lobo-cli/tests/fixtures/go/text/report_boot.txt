@@ -1,0 +1,11 @@
+
+boot timings:
+  rent → container start          0.0s  runpod pod1 (COMMUNITY, host ≥10000 Mbps), attempt 1, host net n/a  
+  bootstrap apt                   2.0s                                                                      
+  bootstrap release zip           1.0s                                                                      
+  tunnel                          3.0s                                                                      
+  gpu check                       4.0s                                                                      
+  model download                 30.0s  200 MB/s, 4 conns, r2                                               
+  sha256 verify                   5.0s                                                                      
+  load into VRAM                  6.0s                                                                      
+  total (incl. replaced pods)    15.0s                                                                      

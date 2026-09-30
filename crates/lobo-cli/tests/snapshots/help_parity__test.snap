@@ -1,0 +1,14 @@
+---
+source: crates/lobo-cli/tests/help_parity.rs
+expression: "String::from_utf8(output).unwrap()"
+---
+Smoke test the live API: streamed chat + tool call
+
+Usage:
+  lobo test [OPTIONS]
+
+Flags:
+  -h, --help  help for test
+
+Global Flags:
+      --config <string>  config file (dotenv; the OS env is never read) [default: /home/u/.config/lobo/config.env]

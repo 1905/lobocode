@@ -1,0 +1,15 @@
+---
+source: crates/lobo-cli/tests/help_parity.rs
+expression: "String::from_utf8(output).unwrap()"
+---
+Print the config with API keys masked
+
+Usage:
+  lobo config show [OPTIONS]
+
+Flags:
+      --json[=<JSON>]  machine-readable: path, exists, masked values, which keys are set
+  -h, --help           help for show
+
+Global Flags:
+      --config <string>  config file (dotenv; the OS env is never read) [default: /home/u/.config/lobo/config.env]

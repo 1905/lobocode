@@ -1,0 +1,16 @@
+---
+source: crates/lobo-cli/tests/help_parity.rs
+expression: "String::from_utf8(output).unwrap()"
+---
+Live dashboard of the running pod
+
+Usage:
+  lobo status [OPTIONS]
+
+Flags:
+      --json[=<JSON>]  print one snapshot as JSON (pod, release, agent status) and exit
+      --once[=<ONCE>]  print one snapshot and exit
+  -h, --help           help for status
+
+Global Flags:
+      --config <string>  config file (dotenv; the OS env is never read) [default: /home/u/.config/lobo/config.env]

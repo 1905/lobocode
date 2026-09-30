@@ -1,0 +1,11 @@
+Print the config with API keys masked
+
+Usage:
+  lobo config show [flags]
+
+Flags:
+  -h, --help   help for show
+      --json   machine-readable: path, exists, masked values, which keys are set
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")

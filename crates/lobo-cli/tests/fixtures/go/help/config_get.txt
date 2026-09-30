@@ -1,0 +1,10 @@
+Print one value in clear (e.g. LOBO_API_KEY for a client config)
+
+Usage:
+  lobo config get KEY [flags]
+
+Flags:
+  -h, --help   help for get
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")

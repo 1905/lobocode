@@ -1,0 +1,11 @@
+Delete every lobo pod on every provider
+
+Usage:
+  lobo down [flags]
+
+Flags:
+  -h, --help   help for down
+      --json   print {"spent_usd": …} on stdout
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")

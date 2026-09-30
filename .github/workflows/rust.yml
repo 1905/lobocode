@@ -12,6 +12,7 @@ on:
       - "app/**"
       - "tools/protofixtures/**"
       - "tools/corefixtures/**"
+      - "tools/clifixtures/**"
       - "internal/**"
       - "cmd/**"
       - "go.mod"
@@ -56,6 +57,11 @@ jobs:
           test -z "$(git status --porcelain -- crates/lobo-core/fixtures)"
       - name: Check Go and Rust local-state compatibility
         run: LOBO_GO_INTEROP=1 cargo test --locked -p lobo-core --test go_interop
+      - name: Check Go CLI fixtures
+        run: |
+          make cli-fixtures
+          git diff --exit-code -- crates/lobo-cli/tests/fixtures crates/lobo-cli/tests/goldens
+          test -z "$(git status --porcelain -- crates/lobo-cli/tests/fixtures crates/lobo-cli/tests/goldens)"
 
   agent-musl:
     runs-on: ubuntu-latest
@@ -85,5 +91,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Verify Apple Silicon runner
         run: test "$(uname -m)" = arm64
-      - name: Test core and local process lifecycle
-        run: cargo test --locked -p lobo-core -j 2
+      - name: Test core, CLI and local process lifecycle
+        run: cargo test --locked -p lobo-core -p lobo-cli -j 2

@@ -1,0 +1,26 @@
+---
+source: crates/lobo-cli/tests/help_parity.rs
+expression: "String::from_utf8(output).unwrap()"
+---
+Set keys in the config file. KEY= removes a key. With --stdin, reads one JSON object
+{"KEY": "value"} from stdin instead, so secrets never show up in the process list.
+
+Usage:
+  lobo config set [OPTIONS] [KEY=value]...
+
+Arguments:
+  [KEY=value]...
+          
+
+Flags:
+      --stdin[=<STDIN>]
+          read {"KEY": "value"} JSON from stdin (keeps secrets out of argv)
+
+  -h, --help
+          help for set
+
+Global Flags:
+      --config <string>
+          config file (dotenv; the OS env is never read)
+          
+          [default: /home/u/.config/lobo/config.env]

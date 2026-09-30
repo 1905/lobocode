@@ -102,3 +102,17 @@ rust-agent:
 .PHONY: core-fixtures
 core-fixtures:
 	go run ./tools/corefixtures dump crates/lobo-core/fixtures
+
+.PHONY: cli-fixtures
+cli-fixtures:
+	python3 tools/clifixtures/capture.py all crates/lobo-cli/tests/fixtures/go
+	TZ=UTC go test -tags capture -run TestCapture ./cmd/lobo/ -args -out $(CURDIR)/crates/lobo-cli/tests/fixtures/go/text
+
+.PHONY: rust-build-lobo rust-install
+rust-build-lobo:
+	LOBO_VERSION=$(VERSION) LOBO_COMMIT=$(COMMIT) LOBO_DATE=$(DATE) cargo build --release --locked -p lobo-cli
+
+rust-install: rust-build-lobo
+	install -d $(PREFIX)/bin
+	install -m 0755 target/release/lobo $(PREFIX)/bin/lobo-rs
+	@echo "installed $(PREFIX)/bin/lobo-rs ($(VERSION))"

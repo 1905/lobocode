@@ -1,0 +1,16 @@
+Supervise llama-server on this Mac and serve the agent API on 127.0.0.1:--api-port
+
+Usage:
+  lobo local run [flags]
+
+Flags:
+      --api-port int     agent API port (default 8932)
+      --boot-id string   echoed in /api/status
+      --ctx int          context size
+  -h, --help             help for run
+      --idle-min int     minutes without requests before it stops
+      --model string     catalog model id (default "q6")
+      --port int         llama-server port (default 8931)
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")

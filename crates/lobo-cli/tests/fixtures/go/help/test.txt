@@ -1,0 +1,10 @@
+Smoke test the live API: streamed chat + tool call
+
+Usage:
+  lobo test [flags]
+
+Flags:
+  -h, --help   help for test
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")
