@@ -21,11 +21,12 @@ User corrections saved on 2026-09-30.
 - Keep mistakes and unresolved acceptance visible in
   [docs/implementation-mistakes.md](docs/implementation-mistakes.md).
 
-Current state: SSH transport is implemented locally. Complete public-image
-distribution and latest-image resolution have partial, uncommitted implementation.
-The first Dell compile check passed for an earlier source snapshot. The latest
-changes, full image builds and live provider acceptance remain unverified.
-The installed app still uses `3dec9ad`; it does not contain the image changes.
-The [written spec](plans/2026-09-30-public-pod-images/spec.md) is pending review
-under the planning workflow introduced on 2026-09-30. Preserve existing work.
+Current state: SSH transport, complete public-image startup and fresh latest-image
+resolution are implemented locally. Agent/core/CLI fixture checks and clippy pass
+on Dell. Native setup/save and all browser layouts pass. Native drag automation
+did not observe movement; manual acceptance remains open. Full image builds are
+still running, and images remain unpublished. The installed app is still
+`3dec9ad` until the new local bundle is installed. Live provider acceptance is held.
+The user approved the [written spec](plans/2026-09-30-public-pod-images/spec.md)
+on 2026-09-30. Continue the authorized implementation and preserve existing work.
 The [earlier plan](plans/2026-09-30-public-pod-images.md) remains as a record.

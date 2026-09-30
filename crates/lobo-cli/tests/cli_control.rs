@@ -6,7 +6,7 @@ use lobo_cli::{
     logfmt::{SharedWriter, ZerologConsole},
 };
 use lobo_core::{
-    clock::{FixedClock, StepClock},
+    clock::FixedClock,
     control::testkit::{self, FakeAgent, FakeRunPod},
     provider::runpod::Pod,
 };
@@ -235,10 +235,7 @@ async fn up_command_modes_defaults_and_report() {
             Ok(testkit::deps(
                 rp.clone(),
                 agent.clone(),
-                Arc::new(StepClock::new(
-                    "2026-09-23T10:00:00Z".parse().unwrap(),
-                    Duration::from_secs(1),
-                )),
+                Arc::new(FixedClock("2026-09-23T10:00:00Z".parse().unwrap())),
             ))
         });
         let args = if flag.is_empty() {
@@ -250,12 +247,25 @@ async fn up_command_modes_defaults_and_report() {
         assert_eq!(code, 0, "{err}");
         let s = f.rp.state.lock().unwrap();
         assert_eq!(s.created[0].opts.model, "q8");
+        assert_eq!(s.created[0].opts.ctx, 65536);
+        assert_eq!(s.created[0].opts.image, "public-image-q8@sha256:fixture");
         assert!(s.deleted.is_empty());
+        // Frozen Go output still checks the event contract. Rust cloud starts
+        // use built-in defaults and resolve an image before an agent version exists.
+        // A fixed clock keeps this command test independent of clock-read counts.
+        let adapt =
+            |text: String| text.replace(", release 2026.09.23-1, q8 ctx 8192", ", q8 ctx 65536");
         if flag == "--json" {
-            assert_eq!(json_lines(&out), json_lines(&fixture("json_up_boot.jsonl")));
+            let mut expected = json_lines(&adapt(fixture("json_up_boot.jsonl")));
+            expected.last_mut().unwrap()["ready"]["elapsed_ns"] = 0.into();
+            assert_eq!(json_lines(&out), expected);
         } else {
             assert!(out.is_empty());
-            assert!(no_timestamps(&err).starts_with(&no_timestamps(&fixture("plain_up_boot.txt"))));
+            let expected = adapt(fixture("plain_up_boot.txt")).replace("boot=15000", "boot=0");
+            assert!(
+                no_timestamps(&err).starts_with(&no_timestamps(&expected)),
+                "{err}"
+            );
         }
         assert!(err.contains("boot timings:"));
         assert!(f.app.boot_log.exists());

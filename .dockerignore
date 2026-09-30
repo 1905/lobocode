@@ -8,3 +8,7 @@ e2e
 *.jsonl
 
 target
+app
+.playwright-cli
+.claude
+.codex

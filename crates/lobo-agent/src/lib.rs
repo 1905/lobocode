@@ -6,6 +6,7 @@ pub mod error;
 pub mod fetch;
 pub mod health;
 pub mod http;
+pub mod image_model;
 pub mod logring;
 pub mod metrics;
 pub mod pod;

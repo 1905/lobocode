@@ -7,14 +7,12 @@ pub const SECRETS: [&str; 4] = [
     "LOBO_API_KEY",
     "CF_TUNNEL_TOKEN",
 ];
-pub const SUMMARY_ROWS: [(&str, &str); 15] = [
+pub const SUMMARY_ROWS: [(&str, &str); 13] = [
     ("RUNPOD_API_KEY", "RunPod key"),
     ("VASTAI_API_KEY", "Vast key"),
     ("LOBO_CONNECTION", "Connection"),
     ("LOBO_API_KEY", "LOBO API key"),
-    ("LOBO_BUCKET_URL", "Bucket URL"),
     ("LOBO_PROVIDER", "Default provider"),
-    ("LOBO_MIN_MBPS", "Min MB/s"),
     ("LOBO_MODEL", "Model"),
     ("LOBO_CTX", "Context"),
     ("LOBO_IDLE_MIN", "Idle minutes"),
@@ -43,7 +41,6 @@ pub struct WizardState {
     pub tunnel: String,
     pub api_key: String,
     pub domain: String,
-    pub bucket: String,
     pub provider: String,
     pub model: String,
     pub cloud: String,
@@ -68,7 +65,6 @@ impl WizardState {
             }
             .into(),
             domain: get("LOBO_DOMAIN"),
-            bucket: get("LOBO_BUCKET_URL"),
             provider: get("LOBO_PROVIDER"),
             model: get("LOBO_MODEL"),
             cloud: get("LOBO_CLOUD"),
@@ -135,7 +131,6 @@ impl WizardState {
                 .into(),
             ),
             ("LOBO_DOMAIN", self.domain.trim().into()),
-            ("LOBO_BUCKET_URL", self.bucket.trim().into()),
             ("LOBO_MODEL", self.model.clone()),
             ("LOBO_MIN_MBPS", self.min_mbps.trim().into()),
             ("LOBO_CTX", self.ctx.trim().into()),
@@ -333,7 +328,7 @@ mod tests {
         ] {
             assert!(sum.contains(want));
         }
-        assert_eq!(sum.lines().count(), 15);
+        assert_eq!(sum.lines().count(), 13);
         for (line, (_, label)) in sum.lines().zip(SUMMARY_ROWS) {
             assert!(line.starts_with(label));
         }

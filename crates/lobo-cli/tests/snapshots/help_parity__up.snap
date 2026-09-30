@@ -9,19 +9,15 @@ Usage:
 
 Flags:
       --cloud <string>       community ($0.69/h, default, community hosts only) or secure (datacenter $0.99/h first, community fallback) [default: community]
-      --conns <int>          parallel download streams on the pod (0 = agent default)
-      --ctx <int>            context size (0 = release default)
-      --idle-min <int>       minutes without requests before the pod deletes itself (0 = release default)
-      --image <string>       pod image with lobo-agent baked in, e.g. ghcr.io/1905/lobocode@sha256:… (default: LOBO_POD_IMAGE, else the release zip)
+      --ctx <int>            context size (0 = built-in default)
+      --idle-min <int>       minutes without requests before the pod deletes itself (0 = built-in default)
+      --image <string>       development override: complete GPU image (default: resolve latest public image for the selected model)
       --json[=<JSON>]        one JSON object per event on stdout (for scripts and tests)
-      --max-life <duration>  hard pod lifetime, e.g. 12h (0 = release default)
-      --min-mbps <int>       drop the pod if the model downloads slower than this after 20 s (0 = LOBO_MIN_MBPS or 100)
+      --max-life <duration>  hard pod lifetime, e.g. 12h (0 = built-in default)
+      --min-mbps <int>       minimum advertised Vast host download speed in MB/s (0 = LOBO_MIN_MBPS or 100)
       --plain[=<PLAIN>]      log lines instead of the TUI
       --provider <string>    runpod, vast or local (this Mac) (default: LOBO_PROVIDER, else the one with a key, runpod first)
-      --q6[=<Q6>]            serve Q6_K instead of the release default
-      --release <string>     release version (default latest)
-      --source <string>      model source: r2 (presigned, default) | feesh (the model server HTTP) | ssh (the model server SSH) | public (r2.dev)
-      --ssh <string>         debug: path to a public key; opens 22/tcp and runs sshd on the pod
+      --q6[=<Q6>]            serve Q6_K instead of the default Q8_0 model
   -h, --help                 help for up
 
 Global Flags:

@@ -15,8 +15,10 @@ mutex deadlock that earlier checks missed.
 
 Corrections already implemented: native title bars, measured content sizing,
 compact Settings tabs, rounded corners, and tray mutations on the main thread.
-Native setup/save and browser layout checks pass. Actual window movement still
-needs explicit acceptance. Do not describe all native behavior as verified.
+Native setup/save and all 23 browser layouts pass. A new native drag check did
+not observe movement through the input automation. The cause is unresolved;
+manual movement acceptance remains open. Rounded corners were inspected in the
+actual native window. Do not describe all native behavior as verified.
 
 The user also limited testing on the Mac because of insufficient memory. Since
 that correction, further backend and lifecycle checks belong on Dell or an
@@ -48,14 +50,23 @@ The replacement design puts the agent, inference runtime, SSH daemon and model
 weights in public, model-specific images. The app selects the image. No user
 bucket, personal download server or manual agent install is part of onboarding.
 
-Status: [plan written](../plans/2026-09-30-public-pod-images.md); implementation
-and image acceptance are pending. Do not present the planned Docker packaging
-as an available public release.
+Status: implemented in the Rust source under the user's approved
+[spec](../plans/2026-09-30-public-pod-images/spec.md). The source removes private
+storage from normal startup. Settings and the wizard no longer ask for a bucket.
+Agent, core and CLI fixture checks pass on Dell; image builds are still running.
+This is not an available public release.
 
 The first replacement plan also tied image selection to the app release. The
 user corrected that: each new cloud start must resolve the latest public image
-for the selected model. The app must not silently fall back to an older cached
-image. Latest-image resolution is still planned, not verified behavior.
+for the selected model. The app must not silently use an older cached image.
+Tests now cover changing registry manifests, two starts with different digests,
+and registry failure after a previous success with no extra provider create.
+The provider receives the resolved digest. Local mode avoids registry access.
+
+CI now builds both model images before the app/CLI release jobs. Stable latest
+tags move only after both builds and anonymous manifest checks succeed. CI needs
+a Linux AMD64 runner with 200 GiB free Docker storage per concurrent job.
+Actual anonymous layer pulls and live providers remain release acceptance.
 
 ## 4. The DMG and CLI delivery paths were confused
 

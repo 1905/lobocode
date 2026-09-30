@@ -10,8 +10,42 @@ fn golden(name: &str, text: String) {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/goldens")
         .join(format!("{name}.golden"));
-    assert_eq!(text, std::fs::read_to_string(path).unwrap(), "{name}");
+    let expected = std::fs::read_to_string(path)
+        .unwrap()
+        .replace(", release 2026.09.23-1, q8 ctx 8192", ", q8 ctx 65536");
+    assert_eq!(text, expected, "{name}");
     insta::assert_snapshot!(name, text);
+}
+#[test]
+fn bundled_model_verification_has_no_network_download_or_eta() {
+    let mut state = UpState::default();
+    state.apply_at(
+        &UpEvent {
+            phase: "verify".into(),
+            download: Some(DownloadProgress {
+                bytes: 500,
+                total: 1000,
+                verifying: true,
+                source: "Docker image".into(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        "2026-09-30T00:00:00Z".parse().unwrap(),
+    );
+    let text = to_plain(&render_up(&state, "*"));
+    assert!(text.contains("50.0%") && text.contains("SHA-256"), "{text}");
+    assert!(
+        !text.contains("download model") && !text.contains("MB/s") && !text.contains("ETA"),
+        "{text}"
+    );
+    let mut snapshot = snap();
+    let status = snapshot.status.as_mut().unwrap();
+    status.stage = Stage::Verify;
+    status.download = state.event.download.clone().unwrap();
+    let text = to_plain(&render_status(&snapshot, &Utc));
+    assert!(text.contains("50.0%") && text.contains("SHA-256"), "{text}");
+    assert!(!text.contains("MB/s"), "{text}");
 }
 async fn up_until(script: Vec<Option<Status>>, phase: &str) -> UpState {
     let t0: DateTime<Utc> = "2026-09-25T10:00:00Z".parse().unwrap();
@@ -22,7 +56,13 @@ async fn up_until(script: Vec<Option<Status>>, phase: &str) -> UpState {
         .enumerate()
     {
         let at = t0 + TimeDelta::seconds(i as i64 * 7);
-        state.apply_at(e, at);
+        let mut e = e.clone();
+        // Renderer fixtures use a stable measured duration. Core timeout tests
+        // separately exercise elapsed time and deadline enforcement.
+        if let Some(ready) = &mut e.ready {
+            ready.elapsed_ns = 15_000_000_000;
+        }
+        state.apply_at(&e, at);
         state.at = at + TimeDelta::seconds(5);
         if e.phase == phase {
             break;
@@ -248,7 +288,7 @@ fn up_state_timers_and_terminal_events() {
     );
     s.at = at + TimeDelta::seconds(20);
     let text = to_plain(&render_up(&s, "*"));
-    for want in ["0:18", "re-rent at 6:00", "2s"] {
+    for want in ["0:18", "host deadline 30:00", "2s"] {
         assert!(text.contains(want), "{text}");
     }
     s.apply_at(

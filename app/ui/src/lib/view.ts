@@ -42,7 +42,7 @@ export function headerDetail(s: PanelState): string {
 export function limits(values: Record<string, string>): string {
   const n = (key: string, fallback: number) =>
     Number(values[key]) > 0 ? Number(values[key]) : fallback;
-  return `≥${n('LOBO_MIN_MBPS', 100)}MB/s idle ${n('LOBO_IDLE_MIN', 30)}m max ${n('LOBO_MAX_HOURS', 12)}h`;
+  return `idle ${n('LOBO_IDLE_MIN', 30)}m max ${n('LOBO_MAX_HOURS', 12)}h`;
 }
 export function modelRows(s: PanelState) {
   return (s.models?.models ?? []).map((m) => ({
@@ -72,7 +72,9 @@ export function stepRows(s: PanelState) {
             Record<Step, string>
           >
         )[step] ?? step)
-      : step;
+      : step === 'download'
+        ? 'verify model'
+        : step;
     return {
       step,
       label,

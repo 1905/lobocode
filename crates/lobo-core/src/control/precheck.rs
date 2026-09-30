@@ -171,9 +171,10 @@ mod tests {
                 "runpod",
                 Laptop {
                     runpod_api_key: "r".into(),
+                    connection: "cloudflare".into(),
                     ..Default::default()
                 },
-                "config: cloud needs LOBO_BUCKET_URL",
+                "config: cloud needs CF_TUNNEL_TOKEN, LOBO_DOMAIN",
             ),
         ] {
             let req = UpRequest {
@@ -205,7 +206,7 @@ mod tests {
         for (cfg, provider, supported, want) in [
             (Laptop::default(), "local", true, ""),
             (Laptop::default(), "local", false, "unsupported"),
-            (Laptop::default(), "runpod", true, "cloud needs"),
+            (Laptop::default(), "runpod", true, "RUNPOD_API_KEY"),
             (cloud(), "runpod", false, ""),
             (cloud(), "vast", false, ""),
         ] {

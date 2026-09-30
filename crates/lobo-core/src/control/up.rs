@@ -222,20 +222,39 @@ async fn run(
         if let Some(connection) = &d.connection {
             connection.preflight()?;
         }
-        if o.image.is_empty() {
-            o.image = d.cfg.pod_image.clone();
+        if !o.release.is_empty() {
+            return Err(Error::Config(
+                "cloud starts use the latest public image; --release is no longer supported".into(),
+            ));
         }
-        if !o.image.is_empty() && !o.release.is_empty() {
-            return Err(Error::Other(
-                "--release picks a bucket agent zip, --image has the agent baked in: use one"
+        if !o.source.is_empty() {
+            return Err(Error::Config(
+                "cloud models are included in the Docker image; --source is no longer supported"
                     .into(),
             ));
         }
-        if !o.image.is_empty() {
-            builtin(o.image.clone(), o.image.clone())
-        } else {
-            read(cancel, d.releases.resolve(&o.release)).await?
+        if o.conns != 0 {
+            return Err(Error::Config(
+                "cloud models are included in the Docker image; --conns is no longer supported"
+                    .into(),
+            ));
         }
+        if !o.ssh_key.is_empty() {
+            return Err(Error::Config(
+                "cloud SSH is managed automatically; --ssh is no longer supported".into(),
+            ));
+        }
+        if o.model.is_empty() {
+            o.model = release::DEFAULT_MODEL.into();
+        }
+        catalog::get(&o.model).map_err(|e| Error::Other(e.to_string()))?;
+        // Re-resolve on every start. Never fall back to a cached tag or config image.
+        let image = if o.image.is_empty() {
+            read(cancel, d.images.latest(&o.model)).await?
+        } else {
+            o.image.clone() // Explicit CLI development override only.
+        };
+        builtin("unknown".into(), image)
     };
     let defaults = &rel.manifest.defaults;
     if o.model.is_empty() {
@@ -256,7 +275,7 @@ async fn run(
         );
     }
     if o.timeout.is_zero() {
-        o.timeout = Duration::from_secs(20 * 60);
+        o.timeout = Duration::from_secs(40 * 60);
     }
     if o.ctx < 512 || o.idle_min < 1 || o.max_life < Duration::from_secs(60) {
         return Err(Error::Other(format!(
@@ -318,70 +337,9 @@ async fn cloud_opts(
     rel: &release::Resolved,
     start: DateTime<Utc>,
 ) -> Result<CreateOpts> {
-    use base64::Engine;
-    let source = if !o.source.is_empty() {
-        o.source.as_str()
-    } else if d.cfg.model_source == "r2" || (d.cfg.model_source.is_empty() && d.presign.is_some()) {
-        "r2"
-    } else if d.cfg.model_source.starts_with("ssh://") {
-        "ssh"
-    } else {
-        "public"
-    };
-    if o.conns == 0 {
-        o.conns = if matches!(source, "r2" | "feesh") {
-            32
-        } else {
-            8
-        };
-    } else if source == "ssh" && o.conns > 8 {
-        o.conns = 8;
-    }
-    let mut ssh_key = String::new();
-    let mut presigned = String::new();
-    match source {
-        "public" => {}
-        "feesh" => {
-            if d.cfg.feesh_http_url.is_empty() {
-                return Err(Error::Config(
-                    "model source feesh needs LOBO_FEESH_HTTP_URL in the lobo config".into(),
-                ));
-            }
-        }
-        "r2" => {
-            let signer = d.presign.as_ref().ok_or_else(|| {
-                Error::Config("model source r2 needs R2 keys in the lobo config".into())
-            })?;
-            presigned = signer
-                .presign_get(
-                    &format!("models/{}", m.file),
-                    Duration::from_secs(12 * 3600),
-                )
-                .await
-                .map_err(|e| Error::Other(format!("presign model: {e}")))?;
-        }
-        "ssh" => {
-            if !d.cfg.model_source.starts_with("ssh://") {
-                return Err(Error::Config(
-                    "model source ssh needs LOBO_MODEL_SOURCE=ssh://… in the lobo config".into(),
-                ));
-            }
-            ssh_key = base64::engine::general_purpose::STANDARD.encode(
-                std::fs::read(&d.cfg.model_ssh_key_file)
-                    .map_err(|e| Error::Other(format!("model ssh key: {e}")))?,
-            );
-        }
-        _ => {
-            return Err(Error::Other(format!(
-                "unknown model source {source:?} (r2, feesh, ssh, public)"
-            )));
-        }
-    }
-    let mut co = CreateOpts {
+    Ok(CreateOpts {
         image: rel.manifest.llama_image.clone(),
-        release_url: release::zip_url(rel, &d.cfg.bucket_url),
-        release_sha256: rel.zip_sha256.clone(),
-        model_url: m.url(&d.cfg.bucket_url),
+        image_model: true,
         lobo_api_key: d.cfg.lobo_api_key.clone(),
         cf_tunnel_token: d.cfg.cf_tunnel_token.clone(),
         model: m.id.clone(),
@@ -390,37 +348,18 @@ async fn cloud_opts(
         expires_at: expires(start, o.max_life)?,
         ssh_pub_key: o.ssh_key.clone(),
         cloud: o.cloud.clone(),
-        dl_conns: o.conns,
-        min_mbps: o.min_mbps,
+        min_mbps: if o.min_mbps > 0 {
+            o.min_mbps
+        } else {
+            d.cfg
+                .min_mbps
+                .parse::<i64>()
+                .ok()
+                .filter(|n| *n > 0)
+                .unwrap_or(100)
+        },
         ..Default::default()
-    };
-    if co.min_mbps == 0 {
-        co.min_mbps = d
-            .cfg
-            .min_mbps
-            .parse::<i64>()
-            .ok()
-            .filter(|n| *n > 0)
-            .unwrap_or(100);
-    }
-    let feesh = if d.cfg.feesh_http_url.is_empty() {
-        String::new()
-    } else {
-        format!("{}/{}", d.cfg.feesh_http_url.trim_end_matches('/'), m.file)
-    };
-    if !presigned.is_empty() {
-        co.model_url = presigned;
-        co.model_fallback = feesh.clone();
-    }
-    if source == "feesh" {
-        co.model_url = feesh;
-    }
-    if !ssh_key.is_empty() {
-        co.model_url = d.cfg.model_source.trim_end_matches('/').into();
-        co.model_ssh_key = ssh_key;
-        co.model_host_key = d.cfg.model_ssh_host_key.clone();
-    }
-    Ok(co)
+    })
 }
 #[allow(clippy::too_many_arguments)]
 async fn boot(
@@ -515,7 +454,7 @@ async fn boot(
     events.phase(
         "create",
         format!(
-            "{} {}, {}, ${:.2}/h, release {release_version}, {} ctx {}",
+            "{} {}, {}, ${:.2}/h, {} ctx {}",
             p.name(),
             pod.id,
             pod.detail,
@@ -537,6 +476,14 @@ async fn boot(
     let mut last_check = created;
     loop {
         check_cancel(cancel)?;
+        if d.clock.now() >= co.expires_at {
+            cleanup::pending(d, ownership).await?;
+            return Err(events.fail(
+                "terminated",
+                "maximum lifetime reached during startup".into(),
+                Error::Other("maximum lifetime reached during startup; instance deleted".into()),
+            ));
+        }
         if p.name() != "local"
             && let Some(connection) = &d.connection
             && let Err(e) = connection.attach(&mut pod).await
@@ -594,7 +541,7 @@ async fn boot(
         .to_owned();
         let download = status
             .as_ref()
-            .filter(|s| s.stage == Stage::Download)
+            .filter(|s| matches!(s.stage, Stage::Download | Stage::Verify))
             .map(|s| s.download.clone());
         let bytes = download
             .as_ref()
@@ -685,11 +632,13 @@ async fn boot(
             && (d.clock.now() - created).to_std().unwrap_or_default() > CONTAINER_TIMEOUT
             && p.replaceable()
         {
-            events.phase("image", "host: container not started after 6m0s".into());
+            events.phase("image", "host: container not started after 30m0s".into());
             cleanup::pending(d, ownership).await?;
             return Ok(true);
         }
-        if (d.clock.now() - progress).to_std().unwrap_or_default() > o.timeout {
+        if (d.clock.now() - progress).to_std().unwrap_or_default() > o.timeout
+            || (d.clock.now() - start).to_std().unwrap_or_default() > o.timeout
+        {
             let logs = read(cancel, agent.logs(20)).await.unwrap_or_default();
             check_cancel(cancel)?;
             cleanup::pending(d, ownership).await?;
@@ -697,7 +646,7 @@ async fn boot(
                 "terminated",
                 String::new(),
                 Error::Other(format!(
-                    "no progress for {:?} in phase {phase}; pod {} deleted (err=none)\n{}",
+                    "startup exceeded {:?} in phase {phase}; pod {} deleted (err=none)\n{}",
                     o.timeout,
                     pod.id,
                     logs.trim()

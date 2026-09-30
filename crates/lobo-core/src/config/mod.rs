@@ -98,7 +98,6 @@ impl Laptop {
                     &self.domain
                 },
             ),
-            ("LOBO_BUCKET_URL", &self.bucket_url),
         ]
         .into_iter()
         .filter(|(_, v)| v.is_empty())
@@ -110,7 +109,6 @@ impl Laptop {
                 missing.join(", ")
             )));
         }
-        self.require_bucket()?;
         self.require_provider_key()
     }
     pub fn connection_mode(&self) -> Result<&str> {
@@ -272,24 +270,11 @@ pub fn load_laptop(path: &Path) -> Result<Laptop> {
     if l.lobo_api_key.is_empty() {
         bad.push("LOBO_API_KEY: required");
     }
-    if !l.bucket_url.is_empty() && !valid_url(&l.bucket_url) {
-        bad.push("LOBO_BUCKET_URL: url");
-    }
     if !bad.is_empty() {
         return Err(Error::Config(format!("config: {}", bad.join("; "))));
     }
-    if l.model_source.starts_with("ssh://")
-        && (l.model_ssh_key_file.is_empty() || l.model_ssh_host_key.is_empty())
-    {
-        return Err(Error::Config("config: LOBO_MODEL_SOURCE is ssh://: LOBO_MODEL_SSH_KEY_FILE and LOBO_MODEL_SSH_HOSTKEY are required".into()));
-    }
-    if !l.model_source.is_empty() && l.model_source != "r2" && !l.model_source.starts_with("ssh://")
-    {
-        return Err(Error::Config(format!(
-            "config: LOBO_MODEL_SOURCE: want r2 or ssh://user@host:port, got {:?}",
-            l.model_source
-        )));
-    }
+    // Legacy storage fields are only validated by explicitly invoked release tools.
+    // Normal starts use complete public images and must ignore old source settings.
     Ok(l)
 }
 #[derive(Debug, Clone, Default, PartialEq)]

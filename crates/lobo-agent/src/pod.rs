@@ -260,8 +260,16 @@ pub struct PodTunnel {
 impl Tunnel for PodTunnel {
     async fn start(&self, boot: CancellationToken, life: CancellationToken) -> Result<Exit> {
         tokio::select! {biased;_=boot.cancelled()=>return Err(Error::Cancelled),result=async {
-            if let Some(parent)=self.bin.parent(){tokio::fs::create_dir_all(parent).await?;}
-            crate::fetch::fetch_file(&self.url,&self.bin,0o755,-1,"").await
+            if self.url.is_empty() {
+                let meta = tokio::fs::symlink_metadata(&self.bin).await?;
+                if !meta.is_file() {
+                    return Err(Error::msg("Docker image tunnel binary is not a regular file"));
+                }
+                Ok(())
+            } else {
+                if let Some(parent)=self.bin.parent(){tokio::fs::create_dir_all(parent).await?;}
+                crate::fetch::fetch_file(&self.url,&self.bin,0o755,-1,"").await
+            }
         }=>result?}
         if boot.is_cancelled() || life.is_cancelled() {
             return Err(Error::Cancelled);
@@ -388,13 +396,44 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
         &cfg.vast_api_key,
     )
     .ok_or_else(|| Error::msg("invalid provider instance credentials"))?;
+    let (download, model_path): (Arc<dyn Download>, PathBuf) = if cfg.image_model {
+        let bundled = crate::image_model::ImageModel::load(
+            std::path::Path::new("/lobo/models"),
+            std::path::Path::new("/lobo/model.json"),
+            &model,
+        )
+        .await?;
+        let path = bundled.model_path();
+        (Arc::new(bundled), path)
+    } else {
+        (
+            Arc::new(ModelDownload {
+                urls,
+                dst: PathBuf::from(MODEL_DIR).join(&model.file),
+                size: model.size,
+                sha: model.sha256.clone(),
+                chunk_sha: model.chunk_sha.clone(),
+                conns: cfg.dl_conns,
+                min_mbps: cfg.min_mbps as f64,
+                slow_check_after: SLOW_CHECK_AFTER,
+                make_source: Arc::new(move |url| {
+                    crate::source::model_source(url, &ssh, &host, &file, size)
+                }),
+            }),
+            PathBuf::from(MODEL_DIR).join(&model.file),
+        )
+    };
     let d = Deps {
         tunnel: if cfg.connection == "ssh" {
             Arc::new(PrivateConnection)
         } else {
             Arc::new(PodTunnel {
                 bin: PathBuf::from(BIN_DIR).join("cloudflared"),
-                url: CLOUDFLARED_URL.into(),
+                url: if cfg.image_model {
+                    String::new()
+                } else {
+                    CLOUDFLARED_URL.into()
+                },
                 token: cfg.cf_tunnel_token,
                 env: clean.clone(),
                 logs: logs.clone(),
@@ -405,26 +444,11 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
             clean.clone(),
             logs.clone(),
         ))),
-        download: Arc::new(ModelDownload {
-            urls,
-            dst: PathBuf::from(MODEL_DIR).join(&model.file),
-            size: model.size,
-            sha: model.sha256.clone(),
-            chunk_sha: model.chunk_sha.clone(),
-            conns: cfg.dl_conns,
-            min_mbps: cfg.min_mbps as f64,
-            slow_check_after: SLOW_CHECK_AFTER,
-            make_source: Arc::new(move |url| {
-                crate::source::model_source(url, &ssh, &host, &file, size)
-            }),
-        }),
+        download,
         llama: Arc::new(PodLlama {
             bin: LLAMA_BIN.into(),
             args: LlamaArgs {
-                model_path: PathBuf::from(MODEL_DIR)
-                    .join(&model.file)
-                    .to_string_lossy()
-                    .into_owned(),
+                model_path: model_path.to_string_lossy().into_owned(),
                 alias: model.alias,
                 host: "127.0.0.1".into(),
                 port: 8080,
@@ -447,8 +471,16 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
         killer: Arc::new(RetryKiller { api }),
     };
     let mut timings = boot_timings(get);
-    timings.download_conns = cfg.dl_conns as i64;
-    timings.download_source = redact_url(&cfg.model_url);
+    timings.download_conns = if cfg.image_model {
+        0
+    } else {
+        cfg.dl_conns as i64
+    };
+    timings.download_source = if cfg.image_model {
+        "Docker image".into()
+    } else {
+        redact_url(&cfg.model_url)
+    };
     let idle = Duration::from_secs(
         (cfg.idle_min as u64)
             .checked_mul(60)
@@ -984,5 +1016,45 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(logs.tail(1), ["[cloudflared] tunnel --no-autoupdate run"]);
+    }
+    #[tokio::test]
+    async fn bundled_tunnel_runs_existing_binary_and_never_fetches() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = script(dir.path(), "cloudflared", "echo \"$@\"");
+        let logs = Arc::new(LogRing::new(10));
+        let tunnel = PodTunnel {
+            bin: bin.clone(),
+            url: String::new(),
+            token: "fixture".into(),
+            env: vec![],
+            logs: logs.clone(),
+        };
+        tunnel
+            .start(CancellationToken::new(), CancellationToken::new())
+            .await
+            .unwrap()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(logs.tail(1), ["[cloudflared] tunnel --no-autoupdate run"]);
+        std::fs::remove_file(&bin).unwrap();
+        assert!(
+            tunnel
+                .start(CancellationToken::new(), CancellationToken::new())
+                .await
+                .is_err()
+        );
+        assert!(
+            !bin.exists(),
+            "missing bundled binary must not be downloaded"
+        );
+        let target = script(dir.path(), "other", "exit 0");
+        std::os::unix::fs::symlink(target, &bin).unwrap();
+        assert!(
+            tunnel
+                .start(CancellationToken::new(), CancellationToken::new())
+                .await
+                .is_err()
+        );
     }
 }

@@ -143,7 +143,8 @@ pub struct UpArgs {
         value_name = "int",
         default_value_t = 0,
         allow_hyphen_values = true,
-        help = "parallel download streams on the pod (0 = agent default)"
+        hide = true,
+        help = "obsolete: model weights are included in the public image"
     )]
     pub conns: i64,
     #[arg(
@@ -151,7 +152,7 @@ pub struct UpArgs {
         value_name = "int",
         default_value_t = 0,
         allow_hyphen_values = true,
-        help = "context size (0 = release default)"
+        help = "context size (0 = built-in default)"
     )]
     pub ctx: i64,
     #[arg(
@@ -159,26 +160,26 @@ pub struct UpArgs {
         value_name = "int",
         default_value_t = 0,
         allow_hyphen_values = true,
-        help = "minutes without requests before the pod deletes itself (0 = release default)"
+        help = "minutes without requests before the pod deletes itself (0 = built-in default)"
     )]
     pub idle_min: i64,
     #[arg(
         long,
         value_name = "string",
         default_value = "",
-        help = "pod image with lobo-agent baked in, e.g. ghcr.io/1905/lobocode@sha256:… (default: LOBO_POD_IMAGE, else the release zip)"
+        help = "development override: complete GPU image (default: resolve latest public image for the selected model)"
     )]
     pub image: String,
     #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool_flag, help = "one JSON object per event on stdout (for scripts and tests)")]
     pub json: bool,
-    #[arg(long, value_name = "duration", default_value = "0", value_parser = crate::duration::parse_go_duration, help = "hard pod lifetime, e.g. 12h (0 = release default)")]
+    #[arg(long, value_name = "duration", default_value = "0", value_parser = crate::duration::parse_go_duration, help = "hard pod lifetime, e.g. 12h (0 = built-in default)")]
     pub max_life: Duration,
     #[arg(
         long,
         value_name = "int",
         default_value_t = 0,
         allow_hyphen_values = true,
-        help = "drop the pod if the model downloads slower than this after 20 s (0 = LOBO_MIN_MBPS or 100)"
+        help = "minimum advertised Vast host download speed in MB/s (0 = LOBO_MIN_MBPS or 100)"
     )]
     pub min_mbps: i64,
     #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool_flag, help = "log lines instead of the TUI")]
@@ -190,27 +191,30 @@ pub struct UpArgs {
         help = "runpod, vast or local (this Mac) (default: LOBO_PROVIDER, else the one with a key, runpod first)"
     )]
     pub provider: String,
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool_flag, help = "serve Q6_K instead of the release default")]
+    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool_flag, help = "serve Q6_K instead of the default Q8_0 model")]
     pub q6: bool,
     #[arg(
         long,
         value_name = "string",
         default_value = "",
-        help = "release version (default latest)"
+        hide = true,
+        help = "obsolete: cloud starts resolve the latest public image"
     )]
     pub release: String,
     #[arg(
         long,
         value_name = "string",
         default_value = "",
-        help = "model source: r2 (presigned, default) | feesh (the model server HTTP) | ssh (the model server SSH) | public (r2.dev)"
+        hide = true,
+        help = "obsolete: model weights are included in the public image"
     )]
     pub source: String,
     #[arg(
         long,
         value_name = "string",
         default_value = "",
-        help = "debug: path to a public key; opens 22/tcp and runs sshd on the pod"
+        hide = true,
+        help = "obsolete: the app manages a restricted SSH connection automatically"
     )]
     pub ssh: String,
     #[command(flatten)]

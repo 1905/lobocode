@@ -127,11 +127,36 @@ fn help_facts_match_go() {
         for part in name.split('_') {
             cmd = cmd.find_subcommand(part).unwrap();
         }
-        assert_eq!(
-            clap(cmd),
-            cobra(&std::fs::read_to_string(&file).unwrap()),
-            "{name}"
-        );
+        let mut expected = cobra(&std::fs::read_to_string(&file).unwrap());
+        if name == "up" {
+            // Complete public images intentionally replace Go's download/release flags.
+            for obsolete in ["conns", "release", "source", "ssh"] {
+                expected.flags.remove(obsolete);
+            }
+            for (flag, help) in [
+                ("ctx", "context size (0 = built-in default)"),
+                (
+                    "idle-min",
+                    "minutes without requests before the pod deletes itself (0 = built-in default)",
+                ),
+                (
+                    "image",
+                    "development override: complete GPU image (default: resolve latest public image for the selected model)",
+                ),
+                (
+                    "max-life",
+                    "hard pod lifetime, e.g. 12h (0 = built-in default)",
+                ),
+                (
+                    "min-mbps",
+                    "minimum advertised Vast host download speed in MB/s (0 = LOBO_MIN_MBPS or 100)",
+                ),
+                ("q6", "serve Q6_K instead of the default Q8_0 model"),
+            ] {
+                expected.flags.get_mut(flag).unwrap().help = help.into();
+            }
+        }
+        assert_eq!(clap(cmd), expected, "{name}");
     }
 }
 #[test]

@@ -2,13 +2,13 @@
 
 **Date:** 2026-09-30
 **Scope:** /Users/kass/dev/lobocode
-**Status:** pending review
+**Status:** approved
 
 ## TL;DR
 
 **What:** Each new cloud start resolves the latest public Q8 or Q6 image and gives its exact digest to the GPU provider.
 **Why:** Users must not need a domain, developer bucket, private host or separate agent download. The image contains all required software and weights.
-**Your action:** Review this spec. Existing product decisions stay unchanged.
+**Your action:** Approved on 2026-09-30. Implementation continues under the existing release hold.
 **Limits:** No release, image publication or GPU rental. Backend checks run on Dell. The DMG remains standalone; Homebrew owns the optional CLI.
 
 ## Problem(s)
@@ -37,6 +37,14 @@ Line references describe the working tree when this spec was written. Some fixes
 - No model inference or backend/lifecycle test suite on this Mac.
 - No forced update or restart of an already running GPU.
 - No removal of unrelated Go compatibility fixtures or legacy maintainer release tools.
+
+## As-built notes
+
+- `.github/workflows/release.yml` must depend on the complete image workflow before publishing CLI or DMG assets. Independent tag-triggered workflows could otherwise release the app before its required images exist. Use the same-commit reusable workflow mechanism documented in [GitHub Actions](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows).
+- Cloud `--conns` and debug `--ssh` are also obsolete. Reject them before rental; normal cloud SSH remains automatic.
+- Shared dependency cleanup also touches `app/src-tauri/src/backend.rs` and `crates/lobo-cli/src/cmd/up.rs`. Neither normal path initializes private storage signing.
+- TUI progress and app fixtures distinguish image verification from model downloads. Frozen Go fixtures remain unchanged; Rust expectations document the intentional behavior changes.
+- Full image builds require 200 GiB free Docker storage per concurrent CI job. Standard hosted runners do not satisfy this prerequisite; configure `POD_IMAGE_RUNNER` before release.
 
 ## Image selection
 
@@ -195,6 +203,6 @@ P3: After the hold is lifted, verify published images and live providers before 
 
 The earlier loose plan remains at `../2026-09-30-public-pod-images.md`. It is not silently moved or deleted.
 After spec approval, create the versioned implementation plan in this directory.
-Existing uncommitted implementation is preserved. No written-spec approval has been recorded for this new planning workflow.
+Existing uncommitted implementation is preserved. The user approved this spec on 2026-09-30.
 
 Sources: [Docker multi-stage builds](https://docs.docker.com/build/building/multi-stage/), [GHCR limits and public pulls](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry), [pinned CUDA image](https://github.com/ggml-org/llama.cpp/blob/b11118/.devops/cuda.Dockerfile), [GGUF split](https://github.com/ggml-org/llama.cpp/blob/b11118/tools/gguf-split/README.md), [model license](https://huggingface.co/HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive).

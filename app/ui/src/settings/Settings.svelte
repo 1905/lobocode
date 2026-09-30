@@ -34,12 +34,10 @@
   let tab = $state('local');
   const targets = $derived(readiness ? providerTargets(readiness) : null);
   const numeric = [
-    ['LOBO_MIN_MBPS', 'min MB/s', '100'],
     ['LOBO_CTX', 'context', '65536'],
     ['LOBO_IDLE_MIN', 'idle min', '30'],
     ['LOBO_MAX_HOURS', 'max hours', '12'],
     ['LOBO_VAST_MAX_DPH', 'vast max $/h', '1.20'],
-    ['LOBO_POD_IMAGE', 'pod image', 'ghcr.io/1905/lobocode@sha256:…'],
   ];
   async function attempt(f: () => Promise<unknown>) {
     try {
@@ -270,15 +268,6 @@
             disabled={saving}
           /></label
         >
-        <label class="field"
-          ><span>bucket url</span><input
-            aria-label="bucket url"
-            placeholder="https://pub-….r2.dev"
-            bind:value={fields.plain.LOBO_BUCKET_URL}
-            disabled={saving}
-            spellcheck="false"
-          /></label
-        >
       </section>
     </div>
   {:else if tab === 'defaults'}
@@ -329,7 +318,7 @@
               >{/each}
           </div>
         </div>
-        {#each numeric.slice(0, 4) as [key, label, placeholder]}<label
+        {#each numeric.slice(0, 3) as [key, label, placeholder]}<label
             class="field"
             ><span>{label}</span><input
               aria-label={label}
@@ -355,7 +344,7 @@
               >{/each}
           </div>
         </div>
-        {#each numeric.slice(4) as [key, label, placeholder]}<label
+        {#each numeric.slice(3) as [key, label, placeholder]}<label
             class="field"
             ><span>{label}</span><input
               aria-label={label}

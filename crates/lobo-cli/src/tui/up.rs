@@ -28,6 +28,7 @@ pub struct UpState {
     pub err: Option<String>,
     pub done: bool,
     pub at: DateTime<Utc>,
+    bundled_model: bool,
     started: BTreeMap<String, DateTime<Utc>>,
     took: BTreeMap<String, TimeDelta>,
 }
@@ -40,6 +41,7 @@ impl Default for UpState {
             err: None,
             done: false,
             at: DateTime::<Utc>::MIN_UTC,
+            bundled_model: false,
             started: BTreeMap::new(),
             took: BTreeMap::new(),
         }
@@ -47,6 +49,12 @@ impl Default for UpState {
 }
 impl UpState {
     pub fn apply_at(&mut self, e: &UpEvent, at: DateTime<Utc>) {
+        if e.download
+            .as_ref()
+            .is_some_and(|d| d.source == "Docker image")
+        {
+            self.bundled_model = true;
+        }
         self.at = self.at.max(at);
         let terminal = ["failed", "terminated", "cancelled"].contains(&e.phase.as_str());
         if !terminal && e.phase != self.phase {
@@ -88,6 +96,9 @@ pub fn render_up(s: &UpState, spin: &str) -> Text<'static> {
     ];
     let cur = index(&s.phase);
     for (i, (id, name)) in PHASES.iter().enumerate() {
+        if *id == "download" && s.bundled_model {
+            continue;
+        }
         let current = cur == Some(i);
         let completed = cur.is_some_and(|n| i < n) || current && s.phase == "ready";
         let (mark, style) = if completed {
@@ -113,7 +124,7 @@ pub fn render_up(s: &UpState, spin: &str) -> Text<'static> {
                 line.push(span(format!("{:<6} ", clock(s.at - *start)), BOLD));
             }
             if *id == "image" {
-                line.push(dim("usually 15–30 s · re-rent at 6:00 "));
+                line.push(dim("pull complete image · host deadline 30:00 "));
             }
         }
         if cur.is_some_and(|n| i <= n)
@@ -121,7 +132,7 @@ pub fn render_up(s: &UpState, spin: &str) -> Text<'static> {
         {
             line.push(dim(detail.clone()));
         }
-        if *id == "download"
+        if matches!(*id, "download" | "verify")
             && current
             && let Some(dl) = s.event.download.as_ref().filter(|dl| dl.total > 0)
         {
@@ -132,13 +143,22 @@ pub fn render_up(s: &UpState, spin: &str) -> Text<'static> {
                 "?".into()
             };
             line.extend(bar(frac, 24, Style::new().fg(OK)));
-            line.push(Span::raw(format!(
-                " {:5.1}%  {} / {}  {:.0} MB/s  ETA {eta}",
-                100.0 * frac,
-                gb(dl.bytes),
-                gb(dl.total),
-                dl.mbps
-            )));
+            if dl.verifying {
+                line.push(Span::raw(format!(
+                    " {:5.1}%  {} / {}  SHA-256",
+                    100.0 * frac,
+                    gb(dl.bytes),
+                    gb(dl.total)
+                )));
+            } else {
+                line.push(Span::raw(format!(
+                    " {:5.1}%  {} / {}  {:.0} MB/s  ETA {eta}",
+                    100.0 * frac,
+                    gb(dl.bytes),
+                    gb(dl.total),
+                    dl.mbps
+                )));
+            }
         }
         lines.push(Line::from(line));
     }

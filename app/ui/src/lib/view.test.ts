@@ -15,7 +15,7 @@ test('header, limits and model rows', () => {
   );
   expect(view.headerDetail(f('off').state)).toBe('no pod · $0.00/h');
   expect(view.headerDetail(f('off_local').state)).toBe('');
-  expect(view.limits({})).toBe('≥100MB/s idle 30m max 12h');
+  expect(view.limits({})).toBe('idle 30m max 12h');
   expect(view.limits({ LOBO_IDLE_MIN: '0' })).toContain('idle 30m');
   const rows = view.modelRows(f('off_local').state);
   expect(rows[0]).toMatchObject({
@@ -37,11 +37,11 @@ test('boot steps and each download state', () => {
     'wait',
   ]);
   expect(view.downloadLine(f('boot').state)).toMatchObject({
-    kind: 'bytes',
-    gb: '12.4/28.6G',
-    mbps: '713MB/s',
-    mbpsTone: 'green',
+    kind: 'sha',
   });
+  expect(
+    view.stepRows(f('boot').state).find((s) => s.step === 'download')?.label,
+  ).toBe('verify model');
   expect(view.downloadLine(f('boot_local').state)).toMatchObject({
     kind: 'bytes',
     mbps: '88MB/s',

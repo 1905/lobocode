@@ -108,9 +108,10 @@ async fn list_all_keeps_going_on_error() {
     assert_eq!(error.unwrap().to_string(), "runpod: list broke");
 }
 #[test]
-fn consts_match_go() {
+fn lifecycle_limits() {
     assert_eq!(MAX_GPU_RETRIES, 4);
-    assert_eq!(CONTAINER_TIMEOUT, Duration::from_secs(360));
+    // Complete images include 22–29 GB of weights; the old image deadline was 6m.
+    assert_eq!(CONTAINER_TIMEOUT, Duration::from_secs(30 * 60));
     assert_eq!(STALE_SLACK, Duration::from_secs(15));
     assert_eq!(POD_CHECK_EVERY, Duration::from_secs(30));
 }

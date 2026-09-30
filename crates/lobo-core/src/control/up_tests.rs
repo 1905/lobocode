@@ -37,6 +37,58 @@ fn ready() -> Vec<Option<Status>> {
     })]
 }
 #[tokio::test]
+async fn bundled_verification_progress_reaches_clients() {
+    let (d, _) = test_deps(vec![
+        Some(Status {
+            stage: Stage::Verify,
+            download: lobo_proto::DownloadProgress {
+                bytes: 123,
+                total: 456,
+                verifying: true,
+                source: "Docker image".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }),
+        ready().remove(0),
+    ]);
+    let (events, result) = collect(d, UpOpts::default()).await;
+    result.unwrap();
+    let progress = events
+        .iter()
+        .find(|e| e.phase == "verify")
+        .unwrap()
+        .download
+        .as_ref()
+        .unwrap();
+    assert!(progress.verifying);
+    assert_eq!((progress.bytes, progress.total), (123, 456));
+    assert_eq!(progress.source, "Docker image");
+}
+#[tokio::test]
+async fn lifetime_limit_applies_while_image_is_still_pulling() {
+    let (d, rp) = test_deps(vec![None]);
+    let result = collect(
+        d,
+        UpOpts {
+            max_life: Duration::from_secs(60),
+            ..Default::default()
+        },
+    )
+    .await
+    .1;
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("maximum lifetime reached")
+    );
+    let state = rp.state.lock().unwrap();
+    assert_eq!(state.created.len(), 1);
+    assert_eq!(state.deleted, ["pod1"]);
+    assert!(state.pods.is_empty());
+}
+#[tokio::test]
 async fn up_happy_and_events_helper() {
     let (d, rp) = test_deps(boot_script());
     let (events, result) = collect(d, UpOpts::default()).await;
@@ -96,7 +148,7 @@ async fn up_preflight_rejects_before_renting() {
             "image-release" => {
                 o.image = "image".into();
                 o.release = "release".into();
-                "use one"
+                "--release is no longer supported"
             }
             "ctx" => {
                 o.ctx = 2;
@@ -122,10 +174,10 @@ async fn up_preflight_rejects_before_renting() {
         assert!(rp.state.lock().unwrap().created.is_empty());
     }
 }
-struct PanicRelease;
+struct PanicImages;
 #[async_trait]
-impl ReleaseResolver for PanicRelease {
-    async fn resolve(&self, _: &str) -> Result<Resolved> {
+impl crate::images::ImageResolver for PanicImages {
+    async fn latest(&self, _: &str) -> Result<String> {
         panic!("must not resolve")
     }
 }
@@ -133,12 +185,12 @@ impl ReleaseResolver for PanicRelease {
 async fn up_baked_image_uses_builtin_defaults() {
     for from_config in [false, true] {
         let (mut d, rp) = test_deps(ready());
-        d.releases = Arc::new(PanicRelease);
         let mut o = UpOpts::default();
         if from_config {
             d.cfg.pod_image = "baked".into();
         } else {
             o.image = "baked".into();
+            d.images = Arc::new(PanicImages);
         }
         collect(d, o).await.1.unwrap();
         let s = rp.state.lock().unwrap();
@@ -150,7 +202,15 @@ async fn up_baked_image_uses_builtin_defaults() {
                 .parse::<chrono::DateTime<chrono::Utc>>()
                 .unwrap()
         );
-        assert_eq!(o.image, "baked");
+        assert_eq!(
+            o.image,
+            if from_config {
+                "public-image-q8@sha256:fixture"
+            } else {
+                "baked"
+            }
+        );
+        assert!(o.image_model);
         assert!(o.release_url.is_empty());
         assert!(o.release_sha256.is_empty());
     }
@@ -215,7 +275,7 @@ async fn up_timeout_and_failed_polls_do_not_reset_stall() {
         },
     )
     .await;
-    assert!(result.unwrap_err().to_string().contains("no progress"));
+    assert!(result.unwrap_err().to_string().contains("startup exceeded"));
     assert_eq!(events.last().unwrap().phase, "terminated");
     assert_eq!(rp.state.lock().unwrap().deleted, vec!["pod1"]);
 }
@@ -313,7 +373,7 @@ async fn up_local_and_local_failure_stops_without_rerent() {
         let (mut d, rp) = test_deps(ready());
         let local = Arc::new(FakeLocal::default());
         d.providers.insert("local".into(), local.clone());
-        d.releases = Arc::new(PanicRelease);
+        d.images = Arc::new(PanicImages);
         let script = if fail {
             vec![Some(Status {
                 stage: Stage::Failed,
@@ -570,89 +630,129 @@ async fn unresolved_record_blocks_another_up_until_reconciled() {
     assert_eq!(p.rents.load(Ordering::SeqCst), 1);
 }
 
-struct Signer;
-#[async_trait]
-impl Presigner for Signer {
-    async fn presign_get(&self, key: &str, ttl: Duration) -> Result<String> {
-        assert!(key.starts_with("models/"));
-        assert_eq!(ttl, Duration::from_secs(12 * 3600));
-        Ok(format!("https://signed/{key}?signature=secret"))
+#[tokio::test]
+async fn up_ignores_private_sources_and_never_forwards_their_secrets() {
+    let (mut d, rp) = test_deps(ready());
+    d.cfg.feesh_http_url = "https://private-host/".into();
+    d.cfg.model_source = "ssh://lobo@host:22/".into();
+    d.cfg.model_ssh_key_file = "/missing-private-key".into();
+    d.cfg.model_ssh_host_key = "pinned".into();
+    d.cfg.runpod_api_key = "secret-runpod".into();
+    d.cfg.vast_api_key = "secret-vast".into();
+    d.cfg.r2.access_key = "secret-r2-access".into();
+    d.cfg.r2.secret_key = "secret-r2-private".into();
+    collect(d, UpOpts::default()).await.1.unwrap();
+    let state = rp.state.lock().unwrap();
+    let o = &state.created[0].opts;
+    assert!(o.image_model);
+    assert!(o.model_url.is_empty() && o.model_fallback.is_empty());
+    assert!(o.model_ssh_key.is_empty() && o.model_host_key.is_empty());
+    assert!(o.release_url.is_empty() && o.release_sha256.is_empty());
+    for payload in [
+        crate::provider::runpod::build_create_payload(o, "COMMUNITY", 0.0).to_string(),
+        crate::provider::vast::create_body(o).to_string(),
+    ] {
+        assert!(payload.contains("exec /lobo/start"));
+        assert!(payload.contains("public-image-q8@sha256:fixture"));
+        for forbidden in [
+            "secret-runpod",
+            "secret-vast",
+            "secret-r2-access",
+            "secret-r2-private",
+            "private-host",
+            "LOBO_RELEASE_URL",
+            "LOBO_MODEL_URL",
+            "LOBO_MODEL_SSH_KEY",
+            "apt-get",
+        ] {
+            assert!(!payload.contains(forbidden), "{forbidden}");
+        }
     }
 }
 #[tokio::test]
-async fn up_model_sources_and_secret_boundaries() {
-    for source in ["r2", "feesh", "public", "ssh"] {
-        let tmp = tempfile::tempdir().unwrap();
-        let key = tmp.path().join("key");
-        std::fs::write(&key, b"ssh-private-key").unwrap();
-        let (mut d, rp) = test_deps(ready());
-        d.presign = Some(Arc::new(Signer));
-        d.cfg.feesh_http_url = "https://feesh/".into();
-        d.cfg.model_source = "ssh://lobo@host:22/".into();
-        d.cfg.model_ssh_key_file = key.to_string_lossy().into();
-        d.cfg.model_ssh_host_key = "pinned".into();
-        d.cfg.runpod_api_key = "secret-runpod".into();
-        d.cfg.vast_api_key = "secret-vast".into();
-        d.cfg.r2.access_key = "secret-r2-access".into();
-        d.cfg.r2.secret_key = "secret-r2-private".into();
-        collect(
-            d,
+async fn up_rejects_obsolete_explicit_source_before_renting() {
+    for (opts, flag) in [
+        (
             UpOpts {
-                source: source.into(),
-                conns: if source == "ssh" { 16 } else { 0 },
+                source: "r2".into(),
+                ..Default::default()
+            },
+            "source",
+        ),
+        (
+            UpOpts {
+                conns: 16,
+                ..Default::default()
+            },
+            "conns",
+        ),
+        (
+            UpOpts {
+                ssh_key: "debug-key".into(),
+                ..Default::default()
+            },
+            "ssh",
+        ),
+    ] {
+        let (d, rp) = test_deps(ready());
+        let error = collect(d, opts).await.1.unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("--{flag} is no longer supported"))
+        );
+        assert!(rp.state.lock().unwrap().created.is_empty());
+    }
+}
+struct ChangingImages(AtomicUsize);
+#[async_trait]
+impl crate::images::ImageResolver for ChangingImages {
+    async fn latest(&self, model: &str) -> Result<String> {
+        assert_eq!(model, "q6");
+        let n = self.0.fetch_add(1, Ordering::SeqCst);
+        if n == 2 {
+            Err(Error::Other("registry unavailable".into()))
+        } else {
+            Ok(format!("public@sha256:generation-{n}"))
+        }
+    }
+}
+#[tokio::test]
+async fn each_new_start_resolves_again_and_registry_failure_never_rents() {
+    let (mut d, rp) = test_deps(ready());
+    let images = Arc::new(ChangingImages(AtomicUsize::new(0)));
+    d.images = images.clone();
+    d.cfg.pod_image = "stale:cached".into();
+    for n in 0..3 {
+        let result = collect(
+            d.clone(),
+            UpOpts {
+                model: "q6".into(),
                 ..Default::default()
             },
         )
         .await
-        .1
-        .unwrap();
-        let s = rp.state.lock().unwrap();
-        let o = &s.created[0].opts;
-        assert_eq!(
-            o.dl_conns,
-            if matches!(source, "r2" | "feesh") {
-                32
-            } else {
-                8
-            }
-        );
-        match source {
-            "r2" => {
-                assert!(o.model_url.starts_with("https://signed/models/"));
-                assert!(o.model_fallback.starts_with("https://feesh/"));
-            }
-            "feesh" => {
-                assert!(o.model_url.starts_with("https://feesh/"));
-                assert!(o.model_fallback.is_empty());
-            }
-            "ssh" => {
-                use base64::Engine;
-                assert_eq!(o.model_url, "ssh://lobo@host:22");
-                assert_eq!(
-                    base64::engine::general_purpose::STANDARD
-                        .decode(&o.model_ssh_key)
-                        .unwrap(),
-                    b"ssh-private-key"
-                );
-                assert_eq!(o.model_host_key, "pinned");
-            }
-            _ => assert!(o.model_url.starts_with("https://pub-x.r2.dev/models/")),
-        }
-        let payloads = [
-            crate::provider::runpod::build_create_payload(o, "COMMUNITY", 0.0).to_string(),
-            crate::provider::vast::create_body(o).to_string(),
-        ];
-        for payload in payloads {
-            for secret in [
-                "secret-runpod",
-                "secret-vast",
-                "secret-r2-access",
-                "secret-r2-private",
-            ] {
-                assert!(!payload.contains(secret));
-            }
+        .1;
+        if n == 2 {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("registry unavailable")
+            );
+        } else {
+            result.unwrap();
+            // Simulate the user's completed Stop before their next Start.
+            let mut state = rp.state.lock().unwrap();
+            assert_eq!(
+                state.created[n].opts.image,
+                format!("public@sha256:generation-{n}")
+            );
+            state.pods.clear();
         }
     }
+    assert_eq!(images.0.load(Ordering::SeqCst), 3);
+    assert_eq!(rp.state.lock().unwrap().created.len(), 2);
 }
 #[tokio::test]
 async fn up_min_mbps() {
@@ -709,9 +809,16 @@ async fn up_replaces_container_that_never_starts() {
     ]);
     d.clock = Arc::new(StepClock::new(
         "2026-09-23T10:00:00Z".parse().unwrap(),
-        Duration::from_secs(100),
+        Duration::from_secs(500),
     ));
-    let (events, result) = collect(d, UpOpts::default()).await;
+    let (events, result) = collect(
+        d,
+        UpOpts {
+            timeout: Duration::from_secs(20000),
+            ..Default::default()
+        },
+    )
+    .await;
     result.unwrap();
     assert!(
         events

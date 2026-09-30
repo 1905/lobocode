@@ -1,75 +1,138 @@
 name: Pod image
 
-# ghcr.io/1905/lobocode: llama.cpp server with lobo-agent (Rust) baked in. Tagged in lockstep with the CLI (v* tags);
-# master and feat/** pushes build sha-<commit> tags for testing. Pin by digest: `lobo up --image ghcr.io/1905/lobocode@sha256:…`.
+# Complete models need a Linux AMD64 runner with 200 GiB free Docker storage.
+# Set POD_IMAGE_RUNNER for release builds. Source CI remains separate.
 on:
-  push:
-    tags:
-      - "v*"
-    branches:
-      - master
-      - "feat/**"
-    paths:
-      - "crates/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - ".cargo/**"
-      - "docker/pod/**"
-      - ".github/workflows/pod-image.yml"
+  workflow_call:
+    inputs:
+      publish:
+        type: boolean
+        default: false
   workflow_dispatch:
-
+    inputs:
+      publish:
+        description: Publish immutable model images (does not move latest tags)
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
-
+concurrency:
+  group: pod-image-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   image:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.POD_IMAGE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [q6, q8]
     steps:
       - uses: actions/checkout@v4
-
-      - id: meta
+      - name: Check build capacity
         run: |
-          sha=$(git rev-parse --short HEAD)
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          [ "$(uname -m)" = x86_64 ] || { echo "A Linux AMD64 image builder is required." >&2; exit 1; }
+          docker_root=$(docker info --format '{{.DockerRootDir}}')
+          free_kib=$(df -Pk "$docker_root" | awk 'NR==2 {print $4}')
+          if [ "$free_kib" -lt 209715200 ]; then
+            echo "Complete model builds require 200 GiB free Docker storage per concurrent job." >&2
+            echo "Set POD_IMAGE_RUNNER to a runner label with sufficient storage; standard hosted runners are too small." >&2
+            exit 1
+          fi
+      - id: meta
+        env:
+          MODEL: ${{ matrix.model }}
+        run: |
+          sha=$(git rev-parse --short=12 HEAD)
           if [ "$GITHUB_REF_TYPE" = tag ]; then version=$GITHUB_REF_NAME; else version=sha-$sha; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          # one tag list: ":<tag>" + ":sha-<sha>" on a release, only ":sha-<sha>" on a branch
-          { echo "tags<<EOF"; echo "ghcr.io/1905/lobocode:sha-$sha"
-            [ "$version" != "sha-$sha" ] && echo "ghcr.io/1905/lobocode:$version"; echo "EOF"; } >> "$GITHUB_OUTPUT"
-          # the base image comes from the Rust pin, so the zip path and the baked path run the same llama-server
+          {
+            echo 'tags<<EOF'
+            echo "ghcr.io/1905/lobocode:sha-$sha-$MODEL"
+            if [ "$GITHUB_REF_TYPE" = tag ]; then echo "ghcr.io/1905/lobocode:$version-$MODEL"; fi
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
           llama=$(sed -n 's/.*DEFAULT_LLAMA_IMAGE: &str = "\(.*\)";/\1/p' crates/lobo-proto/src/release.rs)
-          [ -n "$llama" ] || { echo "DEFAULT_LLAMA_IMAGE not found"; exit 1; }
+          [ -n "$llama" ] || { echo "DEFAULT_LLAMA_IMAGE not found" >&2; exit 1; }
           echo "llama=$llama" >> "$GITHUB_OUTPUT"
-
       - uses: docker/login-action@v3
+        if: inputs.publish
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - uses: docker/setup-buildx-action@v3
-
+        with:
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 2
       - id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/pod/Dockerfile
           platforms: linux/amd64
-          push: true
+          push: ${{ inputs.publish }}
           provenance: false
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
             GIT_SHA=${{ steps.meta.outputs.sha }}
+            MODEL=${{ matrix.model }}
             LLAMA_IMAGE=${{ steps.meta.outputs.llama }}
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           labels: |
             org.opencontainers.image.source=https://github.com/1905/lobocode
-
-      - name: Summary
+      - name: Verify anonymous manifest access
+        if: inputs.publish
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          MODEL: ${{ matrix.model }}
         run: |
-          echo "ghcr.io/1905/lobocode@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "ghcr.io/1905/lobocode@${{ steps.build.outputs.digest }}"
+          # An authenticated push alone does not prove this is a public package.
+          token=$(curl --fail --silent --show-error 'https://ghcr.io/token?service=ghcr.io&scope=repository:1905/lobocode:pull' | jq -er .token)
+          curl --fail --silent --show-error -H "Authorization: Bearer $token" \
+            -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/1905/lobocode/manifests/$DIGEST" -o manifest.json
+          actual="sha256:$(sha256sum manifest.json | cut -d ' ' -f 1)"
+          [ "$actual" = "$DIGEST" ] || { echo 'Anonymous manifest digest mismatch' >&2; exit 1; }
+          mkdir -p digest
+          printf '%s\n' "$DIGEST" > "digest/$MODEL.txt"
+          echo "ghcr.io/1905/lobocode@$DIGEST ($MODEL)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: inputs.publish
+        with:
+          name: image-digest-${{ matrix.model }}
+          path: digest/*.txt
+          if-no-files-found: error
+  promote:
+    needs: image
+    if: github.event_name == 'push' && inputs.publish && github.ref_type == 'tag' && !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require stable version
+        run: '[[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: image-digest-*
+          merge-multiple: true
+          path: digest
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Promote both accepted model images
+        run: |
+          for model in q6 q8; do
+            digest=$(cat "digest/$model.txt")
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
+          done
+          for model in q6 q8; do
+            digest=$(cat "digest/$model.txt")
+            docker buildx imagetools create --prefer-index=false \
+              --tag "ghcr.io/1905/lobocode:latest-$model" "ghcr.io/1905/lobocode@$digest"
+            echo "latest-$model -> $digest" >> "$GITHUB_STEP_SUMMARY"
+          done
