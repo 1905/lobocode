@@ -1,0 +1,15 @@
+---
+source: crates/lobo-cli/tests/help_parity.rs
+expression: "String::from_utf8(output).unwrap()"
+---
+Catalog models and their state in the local weights folder
+
+Usage:
+  lobo models [OPTIONS]
+
+Flags:
+      --json[=<JSON>]  print the listing as JSON (weights, free_bytes, models, runtime)
+  -h, --help           help for models
+
+Global Flags:
+      --config <string>  config file (dotenv; the OS env is never read) [default: /home/u/.config/lobo/config.env]

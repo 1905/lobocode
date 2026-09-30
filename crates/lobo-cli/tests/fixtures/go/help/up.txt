@@ -1,0 +1,24 @@
+Rent a 5090 and boot lobo; shows progress until the API is ready
+
+Usage:
+  lobo up [flags]
+
+Flags:
+      --cloud string        community ($0.69/h, default, community hosts only) or secure (datacenter $0.99/h first, community fallback) (default "community")
+      --conns int           parallel download streams on the pod (0 = agent default)
+      --ctx int             context size (0 = release default)
+  -h, --help                help for up
+      --idle-min int        minutes without requests before the pod deletes itself (0 = release default)
+      --image string        pod image with lobo-agent baked in, e.g. ghcr.io/1905/lobocode@sha256:… (default: LOBO_POD_IMAGE, else the release zip)
+      --json                one JSON object per event on stdout (for scripts and tests)
+      --max-life duration   hard pod lifetime, e.g. 12h (0 = release default)
+      --min-mbps int        drop the pod if the model downloads slower than this after 20 s (0 = LOBO_MIN_MBPS or 100)
+      --plain               log lines instead of the TUI
+      --provider string     runpod, vast or local (this Mac) (default: LOBO_PROVIDER, else the one with a key, runpod first)
+      --q6                  serve Q6_K instead of the release default
+      --release string      release version (default latest)
+      --source string       model source: r2 (presigned, default) | feesh (the model server HTTP) | ssh (the model server SSH) | public (r2.dev)
+      --ssh string          debug: path to a public key; opens 22/tcp and runs sshd on the pod
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")

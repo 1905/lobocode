@@ -1,0 +1,15 @@
+---
+source: crates/lobo-cli/tests/help_parity.rs
+expression: "String::from_utf8(output).unwrap()"
+---
+Print the pod's recent agent, llama-server and cloudflared logs
+
+Usage:
+  lobo logs [OPTIONS]
+
+Flags:
+  -n, --n <int>  number of lines (max 1000) [default: 200]
+  -h, --help     help for logs
+
+Global Flags:
+      --config <string>  config file (dotenv; the OS env is never read) [default: /home/u/.config/lobo/config.env]

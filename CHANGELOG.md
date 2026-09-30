@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rust P4 partial CLI: config commands and terminal wizard, help, API-key generation, model listing and the shared local supervisor entry. The Go CLI remains the installed default.
+- Checks: 27 Rust test functions pass, covering 53 Go CLI replay cases, help metadata, key rotation and local flags. Isolated terminal Save/Escape smoke tests pass. Live control commands, dashboards, release packaging and candidate CI remain pending.
+
 - Rust P3 start control: owned worker completion, cancellation during cloud/local startup, persistent recovery of uncertain creates, shared boot progress and bad-host replacement.
 - Workspace tests pass, including 24 start-loop tests, 13 real local-process tests and the public API contract test. These cover a 121-second create, full/closed event queues, failed cleanup and worker panic. The Go interop checks were not enabled in this run; one network test was ignored. Ubuntu, Apple Silicon and pod-image CI passed at 2884464. Explicit Go interop and Go regression checks also passed. Live inference remains pending.
 

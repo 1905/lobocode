@@ -486,3 +486,7 @@ Original name alignment applied 2026-09-29 (plan-p2-v1.1, p3-v1.1, p4-v1.1, p5-v
 `up` and `down` hold the operation lock through create/cleanup. Persist provider, boot ID and the pre-create instance IDs before rent; add the returned ID before polling. Clear ownership only after verified cleanup or successful ready handoff. An ambiguous create remains recorded and blocks later starts, including after process restart. Reconciliation may adopt a single new instance from the before/after list, then delete it. An empty list alone does not prove an ambiguous create failed. Multiple candidates remain unresolved.
 
 This is required by the existing v1.2 unresolved-create rule. The earlier Deps field list lacked storage and cross-process ownership. `new_agent` uses the equivalent `AgentFactory` type alias for lint clarity.
+
+### P4 implementation additions — 2026-09-30
+
+App.cancel is a CancellationToken. Main owns signal handling; tests cancel through the token. Wizard Prompter returns PromptError::{Aborted, Failed(anyhow::Error)}. run_wizard returns Result<Option<BTreeMap<String,String>>>: only cancellation/discard returns None; terminal failures stay errors.

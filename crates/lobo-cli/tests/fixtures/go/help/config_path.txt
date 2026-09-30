@@ -1,0 +1,10 @@
+Print the config file path
+
+Usage:
+  lobo config path [flags]
+
+Flags:
+  -h, --help   help for path
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")

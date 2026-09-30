@@ -1,0 +1,11 @@
+Create LOBO_API_KEY in the config once (kept across ups) and write opencode.lobo.json with it
+
+Usage:
+  lobo gen-api-key [flags]
+
+Flags:
+  -h, --help     help for gen-api-key
+      --rotate   replace the existing key
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")

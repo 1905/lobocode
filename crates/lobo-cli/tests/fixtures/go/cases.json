@@ -1,0 +1,892 @@
+[
+  {
+    "name": "version",
+    "args": [
+      "version"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 0,
+    "stdout": "lobo dev (none, unknown)\n",
+    "stderr": "",
+    "files_after": {}
+  },
+  {
+    "name": "unknown_command",
+    "args": [
+      "nosuch"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "prefix",
+    "parser": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: unknown command \"nosuch\" for \"lobo\"\n",
+    "files_after": {}
+  },
+  {
+    "name": "unknown_flag",
+    "args": [
+      "up",
+      "--bogus"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "prefix",
+    "parser": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: unknown flag: --bogus\n",
+    "files_after": {}
+  },
+  {
+    "name": "config_path",
+    "args": [
+      "config",
+      "path"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 0,
+    "stdout": "$TMP/config.env\n",
+    "stderr": "",
+    "files_after": {}
+  },
+  {
+    "name": "config_show_missing",
+    "args": [
+      "config",
+      "show"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 0,
+    "stdout": "# $TMP/config.env\n# no config yet: run `lobo config` in a terminal\n",
+    "stderr": "",
+    "files_after": {}
+  },
+  {
+    "name": "config_json_missing",
+    "args": [
+      "config",
+      "show",
+      "--json"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 0,
+    "stdout": "{\"path\":\"$TMP/config.env\",\"exists\":false,\"values\":{},\"set\":{}}\n",
+    "stderr": "",
+    "files_after": {}
+  },
+  {
+    "name": "config_show_present",
+    "args": [
+      "config",
+      "show"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 0,
+    "stdout": "# $TMP/config.env\n\n# providers (at least one, or LOBO_PROVIDER=local)\nRUNPOD_API_KEY=••••\n\n# access\nLOBO_DOMAIN=lobo.test\nLOBO_API_KEY=••••\n\n# defaults for `lobo up` (flags override; empty or 0 = built-in / release default)\nLOBO_CTX=8192\n\n# other\nFOO_TOKEN=priv…mple\n",
+    "stderr": "",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n"
+    }
+  },
+  {
+    "name": "config_json_present",
+    "args": [
+      "config",
+      "show",
+      "--json"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 0,
+    "stdout": "{\"path\":\"$TMP/config.env\",\"exists\":true,\"values\":{\"FOO_TOKEN\":\"priv…mple\",\"LOBO_API_KEY\":\"••••\",\"LOBO_CTX\":\"8192\",\"LOBO_DOMAIN\":\"lobo.test\",\"RUNPOD_API_KEY\":\"••••\"},\"set\":{\"FOO_TOKEN\":true,\"LOBO_API_KEY\":true,\"LOBO_CTX\":true,\"LOBO_DOMAIN\":true,\"RUNPOD_API_KEY\":true}}\n",
+    "stderr": "",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n"
+    }
+  },
+  {
+    "name": "config_get",
+    "args": [
+      "config",
+      "get",
+      "LOBO_DOMAIN"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 0,
+    "stdout": "lobo.test\n",
+    "stderr": "",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n"
+    }
+  },
+  {
+    "name": "config_get_missing",
+    "args": [
+      "config",
+      "get",
+      "NOPE"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: NOPE is not set in $TMP/config.env\n",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n"
+    }
+  },
+  {
+    "name": "config_get_no_arg",
+    "args": [
+      "config",
+      "get"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "prefix",
+    "parser": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: accepts 1 arg(s), received 0\n",
+    "files_after": {}
+  },
+  {
+    "name": "config_set_empty",
+    "args": [
+      "config",
+      "set"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: want KEY=value arguments or --stdin\n",
+    "files_after": {}
+  },
+  {
+    "name": "config_set_mixed",
+    "args": [
+      "config",
+      "set",
+      "--stdin",
+      "X=1"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: use KEY=value arguments or --stdin, not both\n",
+    "files_after": {}
+  },
+  {
+    "name": "config_set_bad_key",
+    "args": [
+      "config",
+      "set",
+      "lower=1"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: want KEY=value with KEY like LOBO_MIN_MBPS, got \"lower=1\"\n",
+    "files_after": {}
+  },
+  {
+    "name": "config_set_values",
+    "args": [
+      "config",
+      "set",
+      "LOBO_MIN_MBPS=150",
+      "CF_TUNNEL_TOKEN=a=b",
+      "LOBO_CTX="
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nFOO_TOKEN=private-example\nCF_TUNNEL_TOKEN=a=b\nLOBO_MIN_MBPS=150\n"
+    }
+  },
+  {
+    "name": "config_set_stdin",
+    "args": [
+      "config",
+      "set",
+      "--stdin"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "stdin": "{\"LOBO_CTX\":\"8192\"}",
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n"
+    }
+  },
+  {
+    "name": "stdin_empty",
+    "args": [
+      "config",
+      "set",
+      "--stdin"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "stdin": "{}",
+    "json_error": false,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: config set --stdin: empty object\n",
+    "files_after": {}
+  },
+  {
+    "name": "stdin_array",
+    "args": [
+      "config",
+      "set",
+      "--stdin"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "json_error",
+    "stdin": "[1]",
+    "json_error": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: config set --stdin: want a JSON object of strings: json: cannot unmarshal array into Go value of type map[string]string\n",
+    "files_after": {}
+  },
+  {
+    "name": "stdin_number",
+    "args": [
+      "config",
+      "set",
+      "--stdin"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "json_error",
+    "stdin": "{\"A\":1}",
+    "json_error": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: config set --stdin: want a JSON object of strings: json: cannot unmarshal number into Go struct field .A of type string\n",
+    "files_after": {}
+  },
+  {
+    "name": "stdin_syntax",
+    "args": [
+      "config",
+      "set",
+      "--stdin"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "json_error",
+    "stdin": "nope",
+    "json_error": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: config set --stdin: want a JSON object of strings: invalid character 'o' in literal null (expecting 'u')\n",
+    "files_after": {}
+  },
+  {
+    "name": "stdin_bad_key",
+    "args": [
+      "config",
+      "set",
+      "--stdin"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "stdin": "{\"lower\":\"1\"}",
+    "json_error": false,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: config set --stdin: bad key \"lower\" (want like LOBO_MIN_MBPS)\n",
+    "files_after": {}
+  },
+  {
+    "name": "config_non_tty",
+    "args": [
+      "config"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 0,
+    "stdout": "# $TMP/config.env\n\n# providers (at least one, or LOBO_PROVIDER=local)\nRUNPOD_API_KEY=••••\n\n# access\nLOBO_DOMAIN=lobo.test\nLOBO_API_KEY=••••\n\n# defaults for `lobo up` (flags override; empty or 0 = built-in / release default)\nLOBO_CTX=8192\n\n# other\nFOO_TOKEN=priv…mple\n",
+    "stderr": "not a terminal: showing $TMP/config.env instead of the form\n",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n"
+    }
+  },
+  {
+    "name": "up_no_config",
+    "args": [
+      "up"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no config at $TMP/config.env. Run `lobo config` first\n",
+    "files_after": {}
+  },
+  {
+    "name": "down_no_config",
+    "args": [
+      "down"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no config at $TMP/config.env. Run `lobo config` first\n",
+    "files_after": {}
+  },
+  {
+    "name": "status_no_config",
+    "args": [
+      "status"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no config at $TMP/config.env. Run `lobo config` first\n",
+    "files_after": {}
+  },
+  {
+    "name": "logs_no_config",
+    "args": [
+      "logs"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no config at $TMP/config.env. Run `lobo config` first\n",
+    "files_after": {}
+  },
+  {
+    "name": "test_no_config",
+    "args": [
+      "test"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no config at $TMP/config.env. Run `lobo config` first\n",
+    "files_after": {}
+  },
+  {
+    "name": "models_no_config",
+    "args": [
+      "models"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no config at $TMP/config.env. Run `lobo config` first\n",
+    "files_after": {}
+  },
+  {
+    "name": "release_no_config",
+    "args": [
+      "release"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no config at $TMP/config.env. Run `lobo config` first\n",
+    "files_after": {}
+  },
+  {
+    "name": "bad_cloud",
+    "args": [
+      "up",
+      "--cloud",
+      "bad"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: --cloud: want secure or community, got \"bad\"\n",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\n"
+    }
+  },
+  {
+    "name": "bad_provider",
+    "args": [
+      "up",
+      "--provider",
+      "aws"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: --provider: want runpod, vast or local, got \"aws\"\n",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\n"
+    }
+  },
+  {
+    "name": "vast_without_key",
+    "args": [
+      "up",
+      "--provider",
+      "vast"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no VASTAI_API_KEY in $TMP/config.env. Run `lobo config` to add it\n",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\n"
+    }
+  },
+  {
+    "name": "bad_ctx",
+    "args": [
+      "up"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_CTX=100\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: config: LOBO_CTX: want a whole number ≥ 512 (or empty), got \"100\" (in $TMP/config.env; fix it with `lobo config` or by hand)\n",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_CTX=100\n"
+    }
+  },
+  {
+    "name": "override_bad_ctx",
+    "args": [
+      "up",
+      "--ctx",
+      "100000",
+      "--provider",
+      "runpod"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_CTX=100\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: config: cloud needs CF_TUNNEL_TOKEN, LOBO_DOMAIN, LOBO_BUCKET_URL\n",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_CTX=100\n"
+    }
+  },
+  {
+    "name": "release_no_r2",
+    "args": [
+      "release"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: config: R2_ACCOUNT_ID: required; R2_ACCESS_KEY: required; R2_SECRET_KEY: required; R2_ENDPOINT: required\n",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\n"
+    }
+  },
+  {
+    "name": "release_no_bucket",
+    "args": [
+      "release"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nR2_ACCOUNT_ID=a\nR2_ACCESS_KEY=k\nR2_SECRET_KEY=s\nR2_ENDPOINT=https://r2.test\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: config: set LOBO_BUCKET_URL\n",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nR2_ACCOUNT_ID=a\nR2_ACCESS_KEY=k\nR2_SECRET_KEY=s\nR2_ENDPOINT=https://r2.test\n"
+    }
+  },
+  {
+    "name": "models_text",
+    "args": [
+      "models"
+    ],
+    "config": "LOBO_API_KEY=sk-test\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "weights_dir": true,
+    "exit": 0,
+    "stdout": "q6     22.1 GB  partial 50%  \nq8     28.6 GB  missing      \nweights $TMP/weights (N GB free)\n",
+    "stderr": "",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nLOBO_WEIGHTS_DIR=$TMP/weights\n"
+    }
+  },
+  {
+    "name": "models_json",
+    "args": [
+      "models",
+      "--json"
+    ],
+    "config": "LOBO_API_KEY=sk-test\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "weights_dir": true,
+    "exit": 0,
+    "stdout": "{\"weights\":\"$TMP/weights\",\"free_bytes\":0,\"models\":[{\"id\":\"q6\",\"file\":\"Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf\",\"size\":22082528352,\"on_disk\":11041264176,\"verified\":false},{\"id\":\"q8\",\"file\":\"Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf\",\"size\":28595762272,\"on_disk\":0,\"verified\":false}],\"runtime\":{\"version\":\"b11118\",\"present\":false}}\n",
+    "stderr": "",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nLOBO_WEIGHTS_DIR=$TMP/weights\n"
+    }
+  },
+  {
+    "name": "local_invalid_model",
+    "args": [
+      "local",
+      "run",
+      "--model",
+      "q2",
+      "--ctx",
+      "1",
+      "--idle-min",
+      "1"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "parser": false,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: unknown model \"q2\", valid: q6, q8\n",
+    "files_after": {}
+  },
+  {
+    "name": "local_invalid_ctx",
+    "args": [
+      "local",
+      "run",
+      "--idle-min",
+      "1"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "parser": false,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: --ctx: want > 0, got 0\n",
+    "files_after": {}
+  },
+  {
+    "name": "local_invalid_idle",
+    "args": [
+      "local",
+      "run",
+      "--ctx",
+      "1"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "parser": false,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: --idle-min: want > 0, got 0\n",
+    "files_after": {}
+  },
+  {
+    "name": "local_invalid_port",
+    "args": [
+      "local",
+      "run",
+      "--ctx",
+      "1",
+      "--idle-min",
+      "1",
+      "--port",
+      "9000",
+      "--api-port",
+      "9000"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "parser": false,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: --api-port: want 1-65535 and not --port, got 9000\n",
+    "files_after": {}
+  },
+  {
+    "name": "local_invalid_extra",
+    "args": [
+      "local",
+      "run",
+      "--ctx",
+      "1",
+      "--idle-min",
+      "1",
+      "x"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "prefix",
+    "parser": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: unknown command \"x\" for \"lobo local run\"\n",
+    "files_after": {}
+  },
+  {
+    "name": "gen_key_new",
+    "args": [
+      "gen-api-key"
+    ],
+    "config": "LOBO_DOMAIN=lobo.test\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "log",
+    "exit": 0,
+    "stdout": "wrote $TMP/opencode.lobo.json\n",
+    "stderr": "INF new LOBO_API_KEY written to the config (a running pod keeps the old key until the next `lobo up`)\n",
+    "files_after": {
+      "config.env": "LOBO_DOMAIN=lobo.test\nLOBO_API_KEY=sk-KEY\n",
+      "opencode.lobo.json": "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"agent\": {\n    \"lobo\": {\n      \"description\": \"Lean agent for the lobo pod (Qwen3.5-27B): no MCP, no skills, core coding tools only\",\n      \"mode\": \"primary\",\n      \"model\": \"lobo/qwen3.5-27b-uncensored-q8\",\n      \"tools\": {\n        \"blender_*\": false,\n        \"pencil_*\": false,\n        \"skill\": false,\n        \"task\": false,\n        \"todoread\": false,\n        \"todowrite\": false,\n        \"webfetch\": false\n      }\n    }\n  },\n  \"provider\": {\n    \"lobo\": {\n      \"models\": {\n        \"qwen3.5-27b-uncensored-q8\": {\n          \"limit\": {\n            \"context\": 65536,\n            \"output\": 8192\n          },\n          \"name\": \"Qwen3.5-27B Q8\"\n        }\n      },\n      \"name\": \"Lobo\",\n      \"npm\": \"@ai-sdk/openai-compatible\",\n      \"options\": {\n        \"apiKey\": \"sk-KEY\",\n        \"baseURL\": \"https://lobo.test/v1\"\n      }\n    },\n    \"lobo-local\": {\n      \"models\": {\n        \"qwen3.5-27b-uncensored-q8\": {\n          \"limit\": {\n            \"context\": 65536,\n            \"output\": 8192\n          },\n          \"name\": \"Qwen3.5-27B Q8\"\n        }\n      },\n      \"name\": \"Lobo (this Mac)\",\n      \"npm\": \"@ai-sdk/openai-compatible\",\n      \"options\": {\n        \"apiKey\": \"sk-KEY\",\n        \"baseURL\": \"http://127.0.0.1:8931/v1\"\n      }\n    }\n  }\n}\n"
+    }
+  },
+  {
+    "name": "gen_key_keep",
+    "args": [
+      "gen-api-key"
+    ],
+    "config": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n",
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "log",
+    "twice": true,
+    "exit": 0,
+    "stdout": "wrote $TMP/opencode.lobo.json\n",
+    "stderr": "INF keeping existing LOBO_API_KEY (use --rotate for a new one)\n",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nRUNPOD_API_KEY=rp-test\nLOBO_DOMAIN=lobo.test\nLOBO_CTX=8192\nFOO_TOKEN=private-example\n",
+      "opencode.lobo.json": "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"agent\": {\n    \"lobo\": {\n      \"description\": \"Lean agent for the lobo pod (Qwen3.5-27B): no MCP, no skills, core coding tools only\",\n      \"mode\": \"primary\",\n      \"model\": \"lobo/qwen3.5-27b-uncensored-q8\",\n      \"tools\": {\n        \"blender_*\": false,\n        \"pencil_*\": false,\n        \"skill\": false,\n        \"task\": false,\n        \"todoread\": false,\n        \"todowrite\": false,\n        \"webfetch\": false\n      }\n    }\n  },\n  \"provider\": {\n    \"lobo\": {\n      \"models\": {\n        \"qwen3.5-27b-uncensored-q8\": {\n          \"limit\": {\n            \"context\": 65536,\n            \"output\": 8192\n          },\n          \"name\": \"Qwen3.5-27B Q8\"\n        }\n      },\n      \"name\": \"Lobo\",\n      \"npm\": \"@ai-sdk/openai-compatible\",\n      \"options\": {\n        \"apiKey\": \"sk-test\",\n        \"baseURL\": \"https://lobo.test/v1\"\n      }\n    },\n    \"lobo-local\": {\n      \"models\": {\n        \"qwen3.5-27b-uncensored-q8\": {\n          \"limit\": {\n            \"context\": 65536,\n            \"output\": 8192\n          },\n          \"name\": \"Qwen3.5-27B Q8\"\n        }\n      },\n      \"name\": \"Lobo (this Mac)\",\n      \"npm\": \"@ai-sdk/openai-compatible\",\n      \"options\": {\n        \"apiKey\": \"sk-test\",\n        \"baseURL\": \"http://127.0.0.1:8931/v1\"\n      }\n    }\n  }\n}\n"
+    }
+  },
+  {
+    "name": "gen_key_missing",
+    "args": [
+      "gen-api-key"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "os_error",
+    "os_error": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: read $TMP/config.env: open $TMP/config.env: no such file or directory\n",
+    "files_after": {}
+  },
+  {
+    "name": "models_loose_mode",
+    "args": [
+      "models"
+    ],
+    "config": "LOBO_API_KEY=sk-test\n",
+    "config_mode": "644",
+    "cwd_tmp": true,
+    "stderr_match": "log",
+    "weights_dir": true,
+    "exit": 0,
+    "stdout": "q6     22.1 GB  partial 50%  \nq8     28.6 GB  missing      \nweights $TMP/weights (N GB free)\n",
+    "stderr": "WRN $TMP/config.env holds API keys and other users can read it: chmod 600 $TMP/config.env\n",
+    "files_after": {
+      "config.env": "LOBO_API_KEY=sk-test\nLOBO_WEIGHTS_DIR=$TMP/weights\n"
+    }
+  },
+  {
+    "name": "extra_47",
+    "args": [
+      "up",
+      "foo"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no config at $TMP/config.env. Run `lobo config` first\n",
+    "files_after": {}
+  },
+  {
+    "name": "extra_48",
+    "args": [
+      "up",
+      "foo",
+      "--q6=false"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no config at $TMP/config.env. Run `lobo config` first\n",
+    "files_after": {}
+  },
+  {
+    "name": "extra_49",
+    "args": [
+      "up",
+      "--q6=false",
+      "foo"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no config at $TMP/config.env. Run `lobo config` first\n",
+    "files_after": {}
+  },
+  {
+    "name": "extra_50",
+    "args": [
+      "up",
+      "--",
+      "foo"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "error: no config at $TMP/config.env. Run `lobo config` first\n",
+    "files_after": {}
+  },
+  {
+    "name": "extra_51",
+    "args": [
+      "version",
+      "foo"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 0,
+    "stdout": "lobo dev (none, unknown)\n",
+    "stderr": "",
+    "files_after": {}
+  },
+  {
+    "name": "extra_52",
+    "args": [
+      "config",
+      "path",
+      "foo"
+    ],
+    "config": null,
+    "config_mode": "600",
+    "cwd_tmp": true,
+    "stderr_match": "exact",
+    "exit": 0,
+    "stdout": "$TMP/config.env\n",
+    "stderr": "",
+    "files_after": {}
+  }
+]

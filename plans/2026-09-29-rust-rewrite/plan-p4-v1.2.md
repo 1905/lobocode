@@ -36,7 +36,7 @@ P4-specific addition to the scope (verbatim, every dispatch): never run the real
 
 ## Pinned versions
 
-_(Task 1 fills this line from `Cargo.lock`: clap, clap_complete, ratatui, crossterm, inquire, insta, assert_cmd, predicates, anyhow, tracing, tracing-subscriber, unicode-width, serial_test, wiremock, tempfile.)_
+Cargo.lock pins: clap 4.6.7, clap_complete 4.6.11, ratatui 0.30.2, crossterm 0.29.0, inquire 0.9.4, insta 1.48.0, assert_cmd 2.2.2, predicates 3.1.4, anyhow 1.0.104, tracing 0.1.44, tracing-subscriber 0.3.23, unicode-width 0.2.2, serial_test 3.5.0, wiremock 0.6.5, tempfile 3.27.0.
 
 ---
 
@@ -311,6 +311,7 @@ pub struct App {
     pub clock: Arc<dyn lobo_core::clock::Clock>,
     pub term: Term,
     pub exe: PathBuf,
+    pub cancel: CancellationToken, // main owns signals; tests cancel without global signal handlers
 }
 impl App { pub fn real() -> App; }
 pub async fn run(app: &App, argv: Vec<OsString>, io: &mut Io) -> i32;   // 0 ok, 1 any error
@@ -544,15 +545,15 @@ impl WizardState { pub fn summary(&self, color: bool) -> String; }   // 16 rows 
 **Files:** `src/wizard/flow.rs`, `src/wizard/prompt.rs` (trait only). Rows: W-02. Go test: TestFormBuilds.
 
 ```rust
-pub struct Abort;
+pub enum PromptError { Aborted, Failed(anyhow::Error) }
 pub trait Prompter {
-    fn note(&mut self, title: &str, body: &str) -> Result<(), Abort>;
-    fn secret(&mut self, title: &str, desc: &str, check: &dyn Fn(&str) -> Result<(), String>) -> Result<String, Abort>;
-    fn text(&mut self, title: &str, desc: &str, initial: &str, check: &dyn Fn(&str) -> Result<(), String>) -> Result<String, Abort>;
-    fn select(&mut self, title: &str, desc: &str, options: &[(&str, &str)], current: &str) -> Result<String, Abort>;
-    fn confirm(&mut self, title: &str, desc: &str, yes: &str, no: &str, default: bool) -> Result<bool, Abort>;
+    fn note(&mut self, title: &str, body: &str) -> Result<(), PromptError>;
+    fn secret(&mut self, title: &str, desc: &str, check: &dyn Fn(&str) -> Result<(), String>) -> Result<String, PromptError>;
+    fn text(&mut self, title: &str, desc: &str, initial: &str, check: &dyn Fn(&str) -> Result<(), String>) -> Result<String, PromptError>;
+    fn select(&mut self, title: &str, desc: &str, options: &[(&str, &str)], current: &str) -> Result<String, PromptError>;
+    fn confirm(&mut self, title: &str, desc: &str, yes: &str, no: &str, default: bool) -> Result<bool, PromptError>;
 }
-pub fn run_wizard(p: &mut dyn Prompter, path: &Path, cur: BTreeMap<String,String>, local_ok: bool) -> Option<BTreeMap<String,String>>; // None = quit or Discard
+pub fn run_wizard(p: &mut dyn Prompter, path: &Path, cur: BTreeMap<String,String>, local_ok: bool) -> anyhow::Result<Option<BTreeMap<String,String>>>; // None = quit or Discard; terminal failures stay errors
 ```
 Group titles (`1/4 · GPU providers` …) are passed as a prefix of each prompt title: `"{group} · {field}"`. Intro note last line: `Enter: next · Esc: quit without saving`.
 - [ ] Failing tests with a `Scripted` prompter (records every title, answers from a queue, asserts the queue ends empty): `form_builds` (both `local_ok` values, answers all defaults, `Some(result)`); `flow_order_cloud` (fresh file, not capable: exact title list); `flow_order_local` (capable Mac: where group first, no pick group); `flow_pick_shown_with_two_keys`; `abort_mid_way_saves_nothing`; `discard_saves_nothing`; a validator rejection is re-asked (Scripted returns a bad then a good value; asserts the check was called with both).
@@ -563,7 +564,7 @@ Group titles (`1/4 · GPU providers` …) are passed as a prefix of each prompt 
 
 **Files:** `src/wizard/prompt.rs`, `src/cmd/config.rs`. Rows: C-01, C-02, C-03.
 
-`InquirePrompter` maps: `note` → print styled title + body; `secret` → `Password::new(title).with_help_message(desc).without_confirmation().with_display_mode(Masked).with_validator(..)`; `text` → `Text` with `initial_value`; `select` → `Select` with `starting_cursor` at `current`; `confirm` → `Select` over `[yes, no]` (inquire `Confirm` has no custom labels). `InquireError::OperationCanceled | OperationInterrupted` → `Abort`. Render config accent #7D56F4.
+`InquirePrompter` maps: `note` → print styled title + body; `secret` → `Password::new(title).with_help_message(desc).without_confirmation().with_display_mode(Masked).with_validator(..)`; `text` → `Text` with `initial_value`; `select` → `Select` with `starting_cursor` at `current`; `confirm` → `Select` over `[yes, no]` (inquire `Confirm` has no custom labels). `InquireError::OperationCanceled | OperationInterrupted` → `PromptError::Aborted`; other errors → `PromptError::Failed`. Render config accent #7D56F4.
 - [ ] Failing tests (in-process, non-TTY `Term`): `config` prints the not-a-terminal line on stderr and the show text on stdout, exit 0; with a scripted prompter in `App.prompter` → `saved {path}`, API key note when the key changed from non-empty, `still missing …` when `load_laptop` fails; Discard → `nothing saved`.
 - [ ] Orchestrator (manual, free): `cargo run -p lobo-cli -- --config /tmp/lobo-wiz/config.env config` in a real terminal; walk through once; `cat` the file; move `/tmp/lobo-wiz` to `/tmp/trash`.
 - [ ] Verify: `cargo test -p lobo-cli cmd::config` → ok.
@@ -980,3 +981,14 @@ P4 needs the P3 plan's additions 1–7 and 9–11 as written there (Wiring, test
 - Release command: add hidden `--no-promote` (false by default). True calls Store::publish_version; ordinary release calls Store::publish. Help/release defaults stay compatible. Add a fake-store test that forbids any latest write.
 - Tasks 36–39: retain the UpOperation outside the event renderer. After EOF, Ctrl+C, quit, or stdout failure, cancel as needed and await completion before exit. Event tee/render tasks never own the worker. A successful ready event cannot hide a failed completion. Test plain, JSON and TUI cancel with a 121 s rent and failed cleanup.
 - Keep the one final external code review at P6. No new model review spend per phase.
+
+
+## As built — first P4 batch, 2026-09-30
+
+- Implemented crate/build info, full flag tree, help metadata checks and snapshots, duration parsing, log formatting, CLI I/O/error seams, config commands/wizard, API-key generation, model listing and local supervisor entry.
+- Go fixture capture: 53 no-network replay cases, 19 help outputs, 9 control/report outputs and 10 copied goldens. Repeated generation produced no drift. Go vet with the capture tag passed.
+- All 53 replay cases passed. Root help matches Go bytes. Help metadata matches 17 command paths. Local supervisor tests verify exact config forwarding and reject invalid flags before spawning.
+- The actual inquire terminal UI passed Save and Escape smoke checks in isolated pseudo-terminals. Save wrote a 0600 file; Escape wrote nothing.
+- Prompt errors now distinguish user cancellation from terminal failures. Inquire 0.9 Password requires a static validator; the adapter checks borrowed form state after each masked prompt and re-prompts without printing the secret. Text validators remain in inquire.
+- Wizard prices reject non-finite values, matching core validation. App carries a CancellationToken so main and tests own cancellation explicitly.
+- Live control commands, terminal dashboards, release packaging and fake-provider binary tests remain pending. Those command handlers currently return explicit implementation-pending errors after prechecks. This batch is not a replacement for the Go CLI.

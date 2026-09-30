@@ -1,0 +1,10 @@
+Print version, commit and build date
+
+Usage:
+  lobo version [flags]
+
+Flags:
+  -h, --help   help for version
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")

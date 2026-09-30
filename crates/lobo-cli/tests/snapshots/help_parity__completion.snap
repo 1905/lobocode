@@ -1,0 +1,25 @@
+---
+source: crates/lobo-cli/tests/help_parity.rs
+expression: "String::from_utf8(output).unwrap()"
+---
+Generate the autocompletion script for lobo for the specified shell.
+See each sub-command's help for details on how to use the generated script.
+
+Usage:
+  lobo completion [OPTIONS] [COMMAND]
+
+Available Commands:
+  bash        Generate the autocompletion script for bash
+  fish        Generate the autocompletion script for fish
+  powershell  Generate the autocompletion script for powershell
+  zsh         Generate the autocompletion script for zsh
+
+Flags:
+  -h, --help
+          help for completion
+
+Global Flags:
+      --config <string>
+          config file (dotenv; the OS env is never read)
+          
+          [default: /home/u/.config/lobo/config.env]

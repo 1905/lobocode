@@ -1,0 +1,15 @@
+Local-mode internals (spawned by `lobo up --provider local`)
+
+Usage:
+  lobo local [command]
+
+Available Commands:
+  run         Supervise llama-server on this Mac and serve the agent API on 127.0.0.1:--api-port
+
+Flags:
+  -h, --help   help for local
+
+Global Flags:
+      --config string   config file (dotenv; the OS env is never read) (default "/home/u/.config/lobo/config.env")
+
+Use "lobo local [command] --help" for more information about a command.

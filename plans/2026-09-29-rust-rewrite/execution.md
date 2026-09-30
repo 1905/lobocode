@@ -156,3 +156,5 @@ The user said "continue". Resume the authorized full-auto implementation and del
 
 - P3 complete for frontend integration at 2884464: Rust CI 36654674144 passed on Ubuntu and Apple Silicon; static agent and image CI 36654674125 passed. Full Go regression passed locally. Live local/cloud inference remains P6.
 - P4 baseline remains master 3117f9b. Go CLI/TUI/config source diff is empty. Captured 53 isolated Go CLI cases and 19 help outputs; replay implementation is next.
+
+- P4 first CLI batch: 27 Rust test functions pass, including all 53 Go replay cases and 17 help paths. Real terminal Save/Escape checks passed; build-info override printed lobo 9.9.9. Captured fixtures regenerate without drift. CLI lint and Go capture vet passed. Control/dashboard/release handlers remain pending.
