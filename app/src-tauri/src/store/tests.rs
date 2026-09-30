@@ -458,3 +458,44 @@ fn memory_selection_config_and_latest_request_discard_stale_results() {
         assert_eq!(store.view(now()).local_memory, None, "{change}");
     }
 }
+
+#[test]
+fn unchanged_config_polling_does_not_invalidate_captured_start() {
+    let mut store = Store::new(Some(Target::Local), true);
+    let (cfg, readiness) = config();
+    store.apply_config(cfg.clone(), readiness.clone());
+    let submission = store.submit(now());
+    store.apply_config(cfg.clone(), readiness.clone());
+    assert!(store.submission_valid(&submission));
+    store.invalidate_config();
+    assert!(!store.submission_valid(&submission));
+}
+
+#[test]
+fn immutable_runtime_is_private_and_controls_running_identity() {
+    let mut store = Store::new(Some(Target::Cloud), true);
+    let owner = lobo_core::control::RuntimeTarget {
+        provider: "local".into(),
+        instance_id: Some("4242".into()),
+        boot_id: "private-boot".into(),
+        local_pid: Some(4242),
+        local_start_id: Some(100),
+        agent_url: None,
+        api_url: None,
+    };
+    store.set_runtime(Some(owner.clone()));
+    let mut status = snap(false, Some(Stage::Ready));
+    status.pod.as_mut().unwrap().provider = "local".into();
+    status.pod.as_mut().unwrap().id = "4242".into();
+    status.status.as_mut().unwrap().boot_id = "private-boot".into();
+    store.apply_snap(status, now());
+    store.choose(Target::Cloud);
+    store.set_provider("vastai".into());
+    assert_eq!(store.runtime(), Some(owner));
+    assert!(store.view(now()).is_local);
+    let json = serde_json::to_string(&store.view(now())).unwrap();
+    assert!(!json.contains("private-boot"));
+    assert!(!json.contains("4242"));
+    assert!(!json.contains("local_start_id"));
+    assert!(!json.contains("runtime_generation"));
+}

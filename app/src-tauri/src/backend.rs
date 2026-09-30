@@ -1,21 +1,60 @@
 use crate::types::AppError;
 use async_trait::async_trait;
 use lobo_core::{config, control, local};
-use lobo_proto::{ConfigShow, Listing, Readiness, Snap, UpRequest};
+use lobo_proto::{ConfigShow, Listing, Readiness, Snap, Status, UpRequest};
 use local::memory::{self, MemoryAssessment, MemoryProbe};
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    io::Write,
+    os::unix::fs::PermissionsExt,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 use tokio_util::sync::CancellationToken;
 
 pub type Result<T> = std::result::Result<T, AppError>;
+// Captured config and admitted options stay in Rust, never IPC or logs.
+pub struct PreparedUp {
+    pub(crate) config: config::Laptop,
+    pub(crate) options: control::UpOpts,
+}
 #[async_trait]
 pub trait Backend: Send + Sync {
     fn config_path(&self) -> PathBuf;
     async fn config(&self) -> Result<(ConfigShow, Readiness)>;
     async fn models(&self) -> Result<Listing>;
-    async fn snapshot(&self) -> Result<Snap>;
+    #[allow(dead_code)] // Rust convenience API; app polling needs the paired private owner.
+    async fn snapshot(&self, provider: &str) -> Result<Snap> {
+        let expected = self.load_owner()?;
+        let (owner, snap) = self.snapshot_owned(provider, expected.clone()).await?;
+        if let Some(owner) = owner {
+            self.adopt_owner(expected, owner)?;
+        }
+        Ok(snap)
+    }
+    fn load_owner(&self) -> Result<Option<control::RuntimeTarget>>;
+    fn adopt_owner(
+        &self,
+        expected: Option<control::RuntimeTarget>,
+        target: control::RuntimeTarget,
+    ) -> Result<()>;
+    async fn snapshot_owned(
+        &self,
+        provider: &str,
+        captured: Option<control::RuntimeTarget>,
+    ) -> Result<(Option<control::RuntimeTarget>, Snap)>;
     async fn local_memory(&self, model: &str) -> Result<MemoryAssessment>;
-    fn up(&self, req: UpRequest, cancel: CancellationToken) -> Result<control::UpOperation>;
-    async fn down(&self) -> Result<f64>;
+    fn prepare_up(&self, req: UpRequest) -> Result<PreparedUp>;
+    fn up(
+        &self,
+        prepared: PreparedUp,
+        previous: Option<control::RuntimeTarget>,
+        cancel: CancellationToken,
+        owner: control::OwnerSink,
+    ) -> Result<control::UpOperation>;
+    async fn down(&self, target: control::RuntimeTarget) -> Result<f64>;
+    #[allow(dead_code)] // The telemetry task will consume this scoped interface.
+    async fn telemetry(&self, target: control::RuntimeTarget) -> Result<Status>;
     async fn api_key(&self) -> Result<String>;
     async fn save(&self, set: BTreeMap<String, String>) -> Result<()>;
 }
@@ -23,6 +62,7 @@ pub struct CoreBackend {
     pub path: PathBuf,
     pub wiring: control::Wiring,
     memory: MemoryProbe,
+    owner_lock: Arc<Mutex<()>>,
 }
 impl CoreBackend {
     pub fn new(path: PathBuf) -> std::io::Result<Self> {
@@ -33,6 +73,7 @@ impl CoreBackend {
             path,
             wiring,
             memory: std::sync::Arc::new(memory::snapshot),
+            owner_lock: Arc::new(Mutex::new(())),
         })
     }
     pub fn configured_path() -> PathBuf {
@@ -73,6 +114,55 @@ impl CoreBackend {
         let _ = display;
         self.memory.clone()
     }
+    fn owner_path(&self) -> PathBuf {
+        self.path.with_extension("app-runtime.json")
+    }
+    fn clear_owner(&self, target: &control::RuntimeTarget) -> Result<()> {
+        let _guard = self.owner_lock.lock().unwrap();
+        if read_owner(&self.owner_path())?.as_ref() == Some(target) {
+            std::fs::remove_file(self.owner_path()).map_err(owner_error)?;
+        }
+        Ok(())
+    }
+}
+fn owner_error(error: impl std::fmt::Display) -> AppError {
+    AppError {
+        kind: "ownership".into(),
+        message: format!("Runtime ownership: {error}"),
+    }
+}
+fn read_owner(path: &std::path::Path) -> Result<Option<control::RuntimeTarget>> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(owner_error(e)),
+    };
+    let target: control::RuntimeTarget = serde_json::from_slice(&bytes).map_err(owner_error)?;
+    if target.boot_id.is_empty() || target.provider.is_empty() {
+        return Err(owner_error("runtime identity is missing"));
+    }
+    Ok(Some(target))
+}
+fn write_owner(path: &std::path::Path, target: &control::RuntimeTarget) -> Result<()> {
+    if target.boot_id.is_empty() || target.provider.is_empty() {
+        return Err(owner_error("runtime identity is missing"));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| owner_error("missing parent directory"))?;
+    std::fs::create_dir_all(parent).map_err(owner_error)?;
+    let mut file = tempfile::NamedTempFile::new_in(parent).map_err(owner_error)?;
+    file.as_file()
+        .set_permissions(std::fs::Permissions::from_mode(0o600))
+        .map_err(owner_error)?;
+    file.write_all(&serde_json::to_vec(target).map_err(owner_error)?)
+        .map_err(owner_error)?;
+    file.as_file().sync_all().map_err(owner_error)?;
+    file.persist(path).map_err(owner_error)?;
+    std::fs::File::open(parent)
+        .and_then(|dir| dir.sync_all())
+        .map_err(owner_error)?;
+    Ok(())
 }
 #[async_trait]
 impl Backend for CoreBackend {
@@ -87,8 +177,49 @@ impl Backend for CoreBackend {
         let cfg = config::Laptop::from_values(&config::values(&self.path)?);
         Ok(local::list(&cfg.weights())?)
     }
-    async fn snapshot(&self) -> Result<Snap> {
-        Ok(control::snapshot(&self.deps()?).await?)
+    fn load_owner(&self) -> Result<Option<control::RuntimeTarget>> {
+        let _guard = self.owner_lock.lock().unwrap();
+        read_owner(&self.owner_path())
+    }
+    fn adopt_owner(
+        &self,
+        expected: Option<control::RuntimeTarget>,
+        target: control::RuntimeTarget,
+    ) -> Result<()> {
+        let _guard = self.owner_lock.lock().unwrap();
+        if read_owner(&self.owner_path())? != expected {
+            return Err(owner_error("runtime changed before ownership commit"));
+        }
+        if expected.as_ref() != Some(&target) {
+            write_owner(&self.owner_path(), &target)?;
+        }
+        Ok(())
+    }
+    async fn snapshot_owned(
+        &self,
+        provider: &str,
+        captured: Option<control::RuntimeTarget>,
+    ) -> Result<(Option<control::RuntimeTarget>, Snap)> {
+        let d = self.deps()?;
+        let recorded = self.load_owner()?;
+        let target = match captured.or(recorded.clone()) {
+            Some(target) => Some(target),
+            None => control::discover_app(&d, provider).await?,
+        };
+        let snap = match &target {
+            Some(target) => control::snapshot_app(&d, target).await?,
+            None => Snap {
+                down: true,
+                ..Default::default()
+            },
+        };
+        let _guard = self.owner_lock.lock().unwrap();
+        if read_owner(&self.owner_path())? != recorded {
+            return Err(owner_error("runtime changed while polling"));
+        }
+        // Discovery is a private candidate. Controller checks generations and
+        // persists it before Store or IPC delivery. Polling never erases ownership.
+        Ok((target, snap))
     }
     async fn local_memory(&self, model: &str) -> Result<MemoryAssessment> {
         let opts = self.local_options(model)?;
@@ -101,18 +232,51 @@ impl Backend for CoreBackend {
             })?
             .map_err(AppError::from)
     }
-    fn up(&self, req: UpRequest, cancel: CancellationToken) -> Result<control::UpOperation> {
+    fn prepare_up(&self, req: UpRequest) -> Result<PreparedUp> {
         // Admit before constructing dependencies, creating files or starting workers.
+        self.load_owner()?;
         let cfg = config::load_laptop(&self.path)?;
         let opts = self.resolve(&cfg, &req)?;
         if opts.provider == "local" {
             memory::inspect_with(&opts.model, opts.ctx, &self.probe(false))?.ensure_fit()?;
         }
-        let d = control::deps_from_config(cfg, &self.wiring)?;
-        Ok(control::up(d, opts, cancel))
+        Ok(PreparedUp {
+            config: cfg,
+            options: opts,
+        })
     }
-    async fn down(&self) -> Result<f64> {
-        Ok(control::down(&self.deps()?).await?)
+    fn up(
+        &self,
+        prepared: PreparedUp,
+        previous: Option<control::RuntimeTarget>,
+        cancel: CancellationToken,
+        owner: control::OwnerSink,
+    ) -> Result<control::UpOperation> {
+        let d = control::deps_from_config(prepared.config, &self.wiring)?;
+        let path = self.owner_path();
+        let lock = self.owner_lock.clone();
+        let owner = Arc::new(move |target: control::RuntimeTarget| {
+            {
+                let _guard = lock.lock().unwrap();
+                write_owner(&path, &target).map_err(|e| lobo_core::Error::Other(e.message))?;
+            }
+            owner(target)
+        });
+        Ok(control::up_app(
+            d,
+            prepared.options,
+            previous,
+            cancel,
+            owner,
+        ))
+    }
+    async fn down(&self, target: control::RuntimeTarget) -> Result<f64> {
+        let cost = control::down_app(&self.deps()?, &target).await?;
+        self.clear_owner(&target)?;
+        Ok(cost)
+    }
+    async fn telemetry(&self, target: control::RuntimeTarget) -> Result<Status> {
+        Ok(control::sample_app(&self.deps()?, &target).await?)
     }
     async fn api_key(&self) -> Result<String> {
         Ok(config::values(&self.path)?
@@ -132,6 +296,50 @@ impl Backend for CoreBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn target(boot: &str) -> control::RuntimeTarget {
+        control::RuntimeTarget {
+            provider: "local".into(),
+            boot_id: boot.into(),
+            instance_id: Some("4242".into()),
+            local_pid: Some(4242),
+            local_start_id: Some(100),
+            agent_url: None,
+            api_url: None,
+        }
+    }
+    #[test]
+    fn persisted_restart_ownership_is_private_and_old_stop_cannot_erase_new_owner() {
+        let (_root, backend) = memory_backend(0);
+        let old = target("old");
+        write_owner(&backend.owner_path(), &old).unwrap();
+        let reopened = CoreBackend::new(backend.path.clone()).unwrap();
+        assert_eq!(reopened.load_owner().unwrap(), Some(old.clone()));
+        assert_eq!(
+            std::fs::metadata(backend.owner_path())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        let newer = target("new");
+        write_owner(&backend.owner_path(), &newer).unwrap();
+        backend.clear_owner(&old).unwrap();
+        assert_eq!(backend.load_owner().unwrap(), Some(newer.clone()));
+        backend.clear_owner(&newer).unwrap();
+        assert_eq!(backend.load_owner().unwrap(), None);
+    }
+    #[test]
+    fn malformed_or_empty_owner_fails_without_overwriting_record() {
+        let (_root, backend) = memory_backend(0);
+        let path = backend.owner_path();
+        std::fs::write(&path, b"broken ownership").unwrap();
+        assert!(backend.load_owner().is_err());
+        assert!(backend.prepare_up(UpRequest::default()).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"broken ownership");
+        assert!(write_owner(&path, &target("")).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"broken ownership");
+    }
     fn memory_backend(mode: usize) -> (tempfile::TempDir, CoreBackend) {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("config.env");
@@ -185,14 +393,11 @@ mod tests {
         let (root, mut backend) = memory_backend(0);
         assert!(backend.local_memory("q8").await.unwrap().fits());
         backend.memory = memory_backend(1).1.memory;
-        let result = backend.up(
-            UpRequest {
-                provider: Some("local".into()),
-                model: Some("q8".into()),
-                ..Default::default()
-            },
-            CancellationToken::new(),
-        );
+        let result = backend.prepare_up(UpRequest {
+            provider: Some("local".into()),
+            model: Some("q8".into()),
+            ..Default::default()
+        });
         let Err(error) = result else {
             panic!("Start must deny");
         };
@@ -201,14 +406,11 @@ mod tests {
         backend.memory = memory_backend(2).1.memory;
         assert!(
             backend
-                .up(
-                    UpRequest {
-                        provider: Some("local".into()),
-                        model: Some("q8".into()),
-                        ..Default::default()
-                    },
-                    CancellationToken::new()
-                )
+                .prepare_up(UpRequest {
+                    provider: Some("local".into()),
+                    model: Some("q8".into()),
+                    ..Default::default()
+                })
                 .is_err()
         );
     }

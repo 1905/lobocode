@@ -2,6 +2,13 @@ use lobo_proto::{ConfigShow, DownloadProgress, Listing, Readiness, Snap};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+// This submission is private to Rust. It freezes the click before queueing.
+pub(crate) struct StartSubmission {
+    pub request: lobo_proto::UpRequest,
+    pub config_generation: u64,
+    pub selection_generation: u64,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[ts(export, export_to = "../gen/")]
