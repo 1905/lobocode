@@ -37,3 +37,15 @@ No model prompt, API key, full conversation or private config is reproduced here
 ## Final observation
 
 The request reached 28,672 prompt tokens and 61% progress before cancellation. It had generated no reply tokens. OpenCode recorded `MessageAbortedError`. The local supervisor logged a clean stop at `2026-09-30T09:28:01Z`, with zero errors. The user confirmed that they quit OpenCode and stopped the runtime. The endpoint then refused connections. This stop was user initiated; it is not evidence of a crash or an idle-watchdog failure. The model was not restarted.
+
+## Implementation research follow-up
+
+OpenCode v1.18.33 accepts agent-scoped tool rules. A new agent can deny `*`, allow the core coding tools, and deny `read` patterns `mcp:*` while allowing normal file reads. There is no built-in `list` tool. Edit/write share the edit permission, including `apply_patch`. Some MCP resource tool definitions can remain present even when their execution is denied. Existing custom agent controls must stay unchanged.
+
+Sources: [agent normalization](https://github.com/anomalyco/opencode/blob/v1.18.33/packages/core/src/v1/config/agent.ts), [tool registry](https://github.com/anomalyco/opencode/blob/v1.18.33/packages/opencode/src/tool/registry.ts), [permission filtering](https://github.com/anomalyco/opencode/blob/v1.18.33/packages/opencode/src/permission/index.ts), [request tool filtering](https://github.com/anomalyco/opencode/blob/v1.18.33/packages/opencode/src/session/llm/request.ts).
+
+The pinned `jsonc-parser` defaults accept extra syntax beyond JSONC. Disable loose keys, missing commas, single quotes, hexadecimal numbers and unary plus. Reject duplicate decoded object keys before editing. CST append may expand compact objects; use strict parsed ranges for insertions when needed to preserve unrelated bytes. Reparse the final result. Sources: [ParseOptions](https://docs.rs/jsonc-parser/0.33.2/jsonc_parser/struct.ParseOptions.html), [CST source](https://docs.rs/jsonc-parser/0.33.2/src/jsonc_parser/cst/mod.rs.html).
+
+These are source-verified implementation findings, not live runtime acceptance.
+
+Pinned llama.cpp b11118 `/slots` reports active slots but no queue count. A slot query can run before pending work because it is high priority. `/health` and `/props` do not fill this gap. Show `No active request` for inactive slots with unknown queue state. Keep queued count null. Do not add another metrics scrape. Sources: [server routes](https://github.com/ggml-org/llama.cpp/blob/b11118/tools/server/server-context.cpp), [server documentation](https://github.com/ggml-org/llama.cpp/blob/b11118/tools/server/README.md). The current shared startup flags do not disable slots.

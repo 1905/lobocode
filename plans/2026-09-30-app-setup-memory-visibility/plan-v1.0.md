@@ -1,7 +1,7 @@
 # App Setup and Runtime Visibility Implementation Plan v1.0
 
 **Date:** 2026-09-30
-**Status:** approved
+**Status:** in progress
 **Spec:** ./spec.md (approved)
 **Authorization:** The user approved implementation and testing in the expanded spec. Prior full-auto delivery authorization persists. Parent self-review completed. Execute under the approved implementation and testing instruction; no new scope permission is needed.
 **Goal:** Safely operate the app-owned runtime, configure OpenCode, and show accurate memory/activity in a normal native Mac app.
@@ -45,7 +45,7 @@ Modify:
 - `Cargo.lock`, `crates/lobo-core/Cargo.toml`, `crates/lobo-core/src/lib.rs`
 - `crates/lobo-core/src/control/{mod,up,status,cleanup,operation_state,agent_http}.rs`
 - `crates/lobo-core/src/control/{testkit,tests,up_tests}.rs`
-- `crates/lobo-core/src/connection.rs`, `crates/lobo-core/tests/cloud_connection.rs`
+- `crates/lobo-core/src/provider/mod.rs` (owned identity/delete trait hooks), `crates/lobo-core/src/connection.rs`, `crates/lobo-core/tests/cloud_connection.rs`
 - `crates/lobo-core/src/local/{mod,deps,supervise,provider}.rs`, `crates/lobo-core/src/local/deps/tests.rs`, `crates/lobo-core/tests/local_provider.rs`
 - `crates/lobo-proto/src/{lib,agent}.rs`
 - `crates/lobo-agent/src/{lib,metrics,runner,pod,api,testutil}.rs`
@@ -94,7 +94,7 @@ Use `jsonc-parser = { version = "=0.33.2", features = ["cst"] }` in core. Its [o
 - `configure(path: &Path, key_dir: &Path, binding: &Binding, make_default: bool, validate: &dyn Fn() -> Result<()>) -> Result<ConfigOutcome>` validates immediately before replacement. Preserve JSONC, detect concurrent edits, create private backup/key files and atomically replace only after validation.
 - Tauri commands: `opencode_info`, `choose_opencode_config`, `configure_opencode(path: String, make_default: bool)`; Rust-only backend setup performs fresh scoped status and authenticated `/v1/models` first.
 
-Use the running alias/context; provider IDs remain `lobo-local`/`lobo`. Preserve unrelated values and custom `agent.lobo` controls. Checked option changes top-level `model` and `default_agent`; unchecked preserves both. A new lean agent uses agent-scoped tools `"*": false` followed by an explicit core coding allowlist (`read`, `edit`, `write`, `bash`, `glob`, `grep`, `list`); validate supported OpenCode tool names against its schema. Do not grant MCP/skill wildcard access or alter global tools. Existing agents only receive the model change.
+Use the running alias/context; provider IDs remain `lobo-local`/`lobo`. Preserve unrelated values and custom `agent.lobo` controls. Checked option changes top-level `model` and `default_agent`; unchecked preserves both. A new lean agent uses agent-scoped tools `"*": false` followed by an explicit core coding allowlist (`read`, `edit`, `write`, `bash`, `glob`, `grep`); validate supported OpenCode tool names against its schema. Version 1.18.33 has no built-in `list`; edit/write also authorize its `apply_patch` alias. Do not grant MCP/skill wildcard access or alter global tools. Existing agents only receive the model change.
 
 Config key files use `{file:<absolute-private-path>}`. An unchanged repair creates no backup/key churn. Return only bounded metadata. Hold a setup-generation guard through commit so Stop/config/selection changes invalidate stale setup without holding store locks across network awaits.
 
@@ -104,7 +104,7 @@ New protocol module re-exports `RuntimeTelemetry`, `MemorySample`, `ActivitySamp
 
 - `RuntimeTelemetry { version: u32, boot_id: String, memory: Option<MemorySample>, activity: Option<ActivitySample> }`.
 - Samples carry `collected_at: GoTime`, `sample_age_ms: u64`, `sequence: u64`. Memory adds state, scope and nullable `used_bytes`, `total_bytes`, `mac_available_bytes`. Activity adds state, nullable `processed_tokens`, `total_tokens`, `tokens_per_second`, and measured `active_requests`, `queued_requests` counts.
-- `MemoryState`: available/not_started/unavailable; `MemoryScope`: model_process/device_vram. `ActivityState`: reading_prompt/generating/processing_request/idle/unavailable. Wire enum names use snake_case. `total_tokens` remains None for supported slots versions.
+- `MemoryState`: available/not_started/unavailable; `MemoryScope`: model_process/device_vram. `ActivityState`: reading_prompt/generating/processing_request/no_active_request/idle/unavailable. Wire enum names use snake_case. `total_tokens` remains None for supported slots versions.
 - `local::process_memory::ProcessIdentity { pid: i32, start_id: u64 }`; `identity(pid: i32) -> Result<ProcessIdentity>`; `footprint(identity: &ProcessIdentity) -> Result<u64>`. Inject both through function traits in tests. Query the actual child, never `LocalState.pid`.
 - `agent::telemetry::SlotSample` holds only slot/task IDs, processing and whitelisted counters; `parse_slots(text: &str) -> Result<Vec<SlotSample>>`; `ActivityTracker::observe(boot_id: &str, slots: &[SlotSample], now: Instant) -> ActivitySample`.
 - Extend the existing `Metrics` trait with `display_memory()` and `slots()` methods returning typed samples. The runner owns one two-second task with missed-tick Skip, bounded reads and cancellation. Tests/fakes implement these methods explicitly.
@@ -130,7 +130,7 @@ Use explicit remote commands below; do not reuse another task's directory. Nativ
 - [ ] Record clean master SHA and memory checkpoint `597fb1c`. Existing native run passed five cases, then disconnected at forced-denied Start; the following case failed consequently. This is unresolved acceptance, not a passing baseline.
 - [ ] Create the worktree: `rtk git worktree add /Users/kass/dev/lobocode-app-runtime -b fix/app-setup-memory-visibility master`. Inside it, merge `597fb1c` with `rtk git merge --no-edit 597fb1c`. Do not merge code into primary master now.
 - [ ] Mac baseline: `rtk pnpm -C app/ui check`, `rtk pnpm -C app/ui test`, `rtk pnpm -C app/ui build` all pass.
-- [ ] Sync Dell and run `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -lc "cargo test --locked -p lobo-core control::"'`; all existing scoped-area tests pass before new failures are added.
+- [ ] Sync Dell and run `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core control::"'`; all existing scoped-area tests pass before new failures are added.
 
 ## Task 1: Record ownership regressions
 
@@ -138,7 +138,7 @@ Files: Modify `crates/lobo-core/src/control/testkit.rs`; Create `control/app_sco
 
 - [ ] Add recording local/runpod/vast fakes and foreign pending/saved-connection fixtures. Tests fail because the app-scoped API is absent.
 - [ ] Lock tests: Local discovery/status/Stop call zero cloud methods; cloud Stop deletes only recorded instance; foreign pending records survive; reused local identity is untouched.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -lc "cargo test --locked -p lobo-core control::app_scope::"'`. Expect named red tests before implementation.
+- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core control::app_scope::"'`. Expect named red tests before implementation.
 
 ## Task 2: Implement selected-provider discovery and owned status
 
@@ -154,7 +154,7 @@ Files: Modify `control/app_scope.rs`, `control/cleanup.rs`, `control/operation_s
 
 - [ ] Add failing identity tests at the last signal/delete boundary, including PID reuse and a new local boot at the same port.
 - [ ] Implement `down_app` with exact owner matching, scoped verification and no global cleanup fallback. Already absent succeeds; unrelated connections/pending records remain unchanged.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -lc "cargo test --locked -p lobo-core control::app_scope:: && cargo test --locked -p lobo-core --test local_provider"'`. Expect zero unrelated calls and all targeted tests green.
+- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core control::app_scope:: && cargo test --locked -p lobo-core --test local_provider"'`. Expect zero unrelated calls and all targeted tests green.
 
 ## Task 4: Scope app Start without changing CLI
 
@@ -162,7 +162,7 @@ Files: Modify `control/up.rs`, `control/app_scope.rs`, `control/cleanup.rs`; Tes
 
 - [ ] Add failing tests for Local Start with broken cloud keys, foreign pending operation, cancellation before/after rent, panic and owner-record failure.
 - [ ] Implement explicit internal operation scope and `up_app`. Persist boot ownership before rent, then instance/endpoints. Existing CLI `up` retains its global behavior.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -lc "cargo test --locked -p lobo-core control::"'`. Both existing CLI-contract tests and new scope tests pass; no cloud create occurs.
+- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core control::"'`. Both existing CLI-contract tests and new scope tests pass; no cloud create occurs.
 
 ## Task 5: Wire app ownership and generation guards
 
@@ -179,7 +179,7 @@ Files: Create `opencode.rs`, `opencode/tests.rs`; Modify core `Cargo.toml`, `src
 
 - [ ] Add JSONC/comment/trailing-comma fixtures as test strings; assert unrelated byte slices and values survive. Include both checkbox states, custom agents and Q6/Q8 contexts.
 - [ ] Add/pin CST dependency and implement `patch_config` without whole-document serialization. Reject ambiguous duplicate keys and non-object containers.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -lc "cargo test --locked -p lobo-core opencode::"'`. New tests fail first, then pass. Keep CLI export fixtures unchanged.
+- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core opencode::"'`. New tests fail first, then pass. Keep CLI export fixtures unchanged.
 
 ## Task 7: Add atomic private config writes
 
@@ -219,7 +219,7 @@ Files: Create `app/e2e/runtime.spec.js`; Modify `app/e2e/{fixture.py,wdio.conf.j
 - [ ] Add `--runtime-ui-only` to the harness. Fixtures provide owned local Ready/startup/Stop and failing cloud endpoints; they never launch real inference. Keep real Start denied in UI-only fixtures.
 - [ ] Native checks cover config action/preservation, Local Stop reaching Off with zero cloud requests, Dock/Cmd+Tab/reopen, dragging/corners and no scroll. Use actual native UI evidence, not browser-only claims.
 - [ ] Prepare but do not execute these deferred commands: `rtk make app-e2e-build`; `rtk proxy python3 tools/native_app_e2e.py --runtime-ui-only`; `rtk proxy python3 tools/native_app_e2e.py --setup-only`; `rtk proxy python3 tools/native_app_e2e.py --memory-only`.
-- [ ] Add workflow_dispatch boolean input `native_e2e`, default true. Guard the native E2E step with `github.event_name != 'workflow_dispatch' || inputs.native_e2e`. Dispatch false skips only E2E, not app/core tests, lint, generation or builds. Push behavior remains unchanged.
+- [x] Add workflow_dispatch boolean input `native_e2e`, default true. Guard the native E2E step with `github.event_name != 'workflow_dispatch' || inputs.native_e2e`. Dispatch false skips only E2E, not app/core tests, lint, generation or builds. Push behavior remains unchanged.
 - [ ] Add runtime-only mode to that guarded step. Generate core TS on Dell (`cargo test --locked -p lobo-proto export_bindings`) and app fixtures on hosted macOS (`make app-fixtures`); import only generated files. Require clean generation diff.
 
 ## Task 12: Deliver phase-one QA build
@@ -239,7 +239,7 @@ Files: Create proto `telemetry.rs`; Modify proto `lib.rs`, `agent.rs`, agent `ap
 
 - [ ] Add serialization tests for absent old fields, new enums, optional/null values, boot/sequence and old-client tolerance.
 - [ ] Implement locked types. Keep legacy serialized status unchanged when telemetry is absent.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -lc "cargo test --locked -p lobo-proto && cargo test --locked -p lobo-agent api::"'`. Existing Go-compatible fixtures remain valid.
+- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-proto && cargo test --locked -p lobo-agent api::"'`. Existing Go-compatible fixtures remain valid.
 
 ## Task 14: Measure actual local child footprint
 
@@ -247,7 +247,7 @@ Files: Create `local/process_memory.rs`, its tests; Modify local `mod.rs`, `deps
 
 - [ ] Add injected tests for footprint, start identity, supervisor confusion, PID reuse, exit, invalid values and permission failure. Capture/clear identity at actual model-child spawn/exit.
 - [ ] Implement `proc_pid_rusage` physical footprint plus existing `memory::snapshot` availability. No RSS/Metal addition and no admission-policy changes.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -lc "cargo test --locked -p lobo-core local::process_memory:: && cargo test --locked -p lobo-core local::deps::"'`.
+- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core local::process_memory:: && cargo test --locked -p lobo-core local::deps::"'`.
 - [ ] Hosted `core-macos` job verifies native calls against a harmless fixture child; no model required. Mac laptop runs no adapter test suite.
 
 ## Task 15: Parse slots and derive request activity
@@ -256,7 +256,7 @@ Files: Create agent `telemetry.rs`; Modify agent `lib.rs`, `metrics.rs`; tests c
 
 - [ ] Add fixtures for zero gauges with prompt work, generation, inactive retained counters, queued/multiple requests, object/array `next_token`, unsupported fields and malformed numbers.
 - [ ] Implement whitelist parser and `ActivityTracker`. Unknown denominator stays null; reject/reset invalid deltas. Never retain prompt, params, token IDs or arbitrary fields.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -lc "cargo test --locked -p lobo-agent telemetry::"'`. Assert exact activity and absence of content in serialized results.
+- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-agent telemetry::"'`. Assert exact activity and absence of content in serialized results.
 
 ## Task 16: Run independent two-second display sampling
 
@@ -264,7 +264,7 @@ Files: Modify agent `runner.rs`, `metrics.rs`, `pod.rs`, `testutil.rs`, `api.rs`
 
 - [ ] Add fake-clock tests proving 2-second slots/memory sampling, single in-flight task, timeout/skip/cancel behavior and independent partial failures.
 - [ ] Keep exactly the existing 30-second `/metrics` reader/watchdog. Add producer age/sequence and prevent old tick writes replacing fresh telemetry.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -lc "cargo test --locked -p lobo-agent runner:: && cargo test --locked -p lobo-agent telemetry:: && cargo test --locked -p lobo-core local::deps::"'`. Assert unchanged watchdog decisions and no extra metrics scrapes.
+- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-agent runner:: && cargo test --locked -p lobo-agent telemetry:: && cargo test --locked -p lobo-core local::deps::"'`. Assert unchanged watchdog decisions and no extra metrics scrapes.
 
 ## Task 17: Poll display without provider enumeration
 
@@ -315,7 +315,7 @@ Files: Modify `results.md` only, unless fixing a demonstrated bug through a revi
 
 Files: Existing affected tests, `results.md`, scoped fixes if required.
 
-- [ ] Dell full suite: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -lc "cargo test --locked --workspace --features lobo-cli/test-fakes && cargo clippy --locked --workspace --all-targets --features lobo-cli/test-fakes -- -D warnings"'`.
+- [ ] Dell full suite: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked --workspace --features lobo-cli/test-fakes && cargo clippy --locked --workspace --all-targets --features lobo-cli/test-fakes -- -D warnings"'`.
 - [ ] Hosted Rust workflow must pass app/backend/native adapter/generator jobs for the exact revision. Deferred native E2E must also pass before final acceptance/merge. Check old CLI bulk down/up tests, stale/identity races, config recovery and unchanged watchdog policy.
 - [ ] Mac UI only: `rtk pnpm -C app/ui test`; `rtk pnpm -C app/ui check`; `rtk pnpm -C app/ui format:check`; repeat native modes only after affected fixes.
 - [ ] Read/invoke the rival-codex skill once for the complete branch against the recorded merged base. Fix substantive findings, run affected checks and record review limits. Do not run automatic per-task reviews.
@@ -339,3 +339,15 @@ Files: `README.md`, `CHANGELOG.md`, `docs/implementation-mistakes.md`, feature s
 - [ ] Two-second display reads use slots/memory only; metrics/watchdog stay at 30 seconds.
 - [ ] All five approved TL;DR items map to tasks; every created/modified file is recorded above and reconciled into the spec before implementation.
 - [ ] No task authorizes broader Mac inference, publication, rental, CLI installation, updater work or image-job resumption.
+
+New-agent permission detail: set agent-scoped `permission.read` to `{ "*": "allow", "mcp:*": "deny" }` after the lean tools map. OpenCode v1.18.33 resource tools use `read` permission patterns `mcp:<server>:...`; this denies their use while keeping file reads. Some resource tool schemas remain visible to OpenCode. Do not promise zero MCP schema overhead. Preserve all existing custom-agent permissions and never change global MCP settings.
+
+App ownership implementation detail: add Rust-only `PreparedUp` without Debug/Serialize. `Backend::prepare_up(request: UpRequest) -> Result<PreparedUp>` captures config/options and performs blocking admission without provider calls or worker creation. `Backend::up(prepared: PreparedUp, previous: Option<RuntimeTarget>, cancel: CancellationToken, owner: OwnerSink) -> Result<UpOperation>` launches from that captured config after the final generation check. Keep the core provider's independent admission guard. Track reservation/preparation/operation as one owned job so Stop/Quit can cancel before launch without blocking on Active or Store.
+
+Add private `snapshot_owned(provider, captured: Option<RuntimeTarget>) -> Result<(Option<RuntimeTarget>, Snap)>` and `load_owner() -> Result<Option<RuntimeTarget>>`. Keep `snapshot(provider) -> Snap` as a wrapper. Pair owner and snapshot in one result, persist owner before delivery, and discard stale replies. Remove an owner record only after scoped absence and only when its identity still matches. These helpers stay inside Rust and do not change CLI or frontend contracts.
+
+Telemetry source correction: pinned llama.cpp b11118 `/slots` has no queued-request count. Its high-priority slot query can overtake pending work. Set `ActivitySample.queued_requests: Option<u64>` and use null for this adapter; do not infer zero or scrape `/metrics` on the fast path. Add `ActivityState::NoActiveRequest` (`no_active_request`) and display `No active request` when a valid slots response reports no active slots and queue state is unknown. `Idle` is reserved for a future documented source that measures both counts as zero; the current adapter never emits Idle. Keep parse_slots/observe signatures unchanged. Active prompt/generation phases work with unknown queue count. The current shared local/pod flags leave `/slots` enabled by its documented default.
+
+The runner owns sample sequence per two-second batch. It saves independent monotonic observation instants for memory/activity and recomputes sample_age_ms on every status response. ActivityTracker does not own a competing sequence. Local footprint identity uses rusage ri_proc_start_abstime from the same native read as footprint; it is separate from the supervisor ownership start identifier. Identity-probe failure yields unavailable telemetry and must not drop the child exit monitor.
+
+App uncertain-create recovery must verify ownership of a discovered candidate. A single ID absent from the pre-create list is not proof: another client may have created it. Require matching local boot identity or an exact saved cloud connection record for provider/instance/boot. Without proof, keep the unresolved journal, do not delete the candidate, and do not rent again. Current cloud provider Instance data has no boot metadata; app cloud uncertain-create recovery can remain unresolved. Existing CLI adoption behavior remains unchanged.
