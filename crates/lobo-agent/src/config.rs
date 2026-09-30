@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use std::time::Duration;
 
 pub struct AgentConfig {
+    pub image_model: bool,
     pub connection: String,
     pub lobo_api_key: String,
     pub cf_tunnel_token: String,
@@ -58,9 +59,16 @@ impl AgentConfig {
             required("CF_TUNNEL_TOKEN")?
         };
         let model = required("LOBO_MODEL")?;
-        let model_url = required("LOBO_MODEL_URL")?;
-        let url = url::Url::parse(&model_url)
-            .map_err(|_| Error::msg("config: LOBO_MODEL_URL: invalid URL"))?;
+        let image_model = value("LOBO_IMAGE_MODEL") == "1";
+        let model_url = if image_model {
+            String::new()
+        } else {
+            required("LOBO_MODEL_URL")?
+        };
+        if !image_model {
+            url::Url::parse(&model_url)
+                .map_err(|_| Error::msg("config: LOBO_MODEL_URL: invalid URL"))?;
+        }
         let mut provider = value("LOBO_PROVIDER");
         if provider.is_empty() {
             provider = "runpod".into();
@@ -87,9 +95,19 @@ impl AgentConfig {
                 )));
             }
         }
-        let model_ssh_key = value("LOBO_MODEL_SSH_KEY");
-        let model_host_key = value("LOBO_MODEL_SSH_HOSTKEY");
-        if url.scheme() == "ssh" && (model_ssh_key.is_empty() || model_host_key.is_empty()) {
+        let model_ssh_key = if image_model {
+            String::new()
+        } else {
+            value("LOBO_MODEL_SSH_KEY")
+        };
+        let model_host_key = if image_model {
+            String::new()
+        } else {
+            value("LOBO_MODEL_SSH_HOSTKEY")
+        };
+        if model_url.starts_with("ssh://")
+            && (model_ssh_key.is_empty() || model_host_key.is_empty())
+        {
             return Err(Error::msg(
                 "config: LOBO_MODEL_URL is ssh://: LOBO_MODEL_SSH_KEY and LOBO_MODEL_SSH_HOSTKEY are required",
             ));
@@ -113,12 +131,17 @@ impl AgentConfig {
             })?
         };
         Ok(Self {
+            image_model,
             connection,
             lobo_api_key,
             cf_tunnel_token,
             model,
             model_url,
-            model_fallback: value("LOBO_MODEL_URL_FALLBACK"),
+            model_fallback: if image_model {
+                String::new()
+            } else {
+                value("LOBO_MODEL_URL_FALLBACK")
+            },
             provider,
             runpod_pod_id,
             runpod_api_key,
@@ -215,6 +238,33 @@ mod tests {
         assert!(load(&v).unwrap().cf_tunnel_token.is_empty());
         v.insert("LOBO_CONNECTION".into(), "plain-http".into());
         assert!(load(&v).is_err());
+    }
+    #[test]
+    fn image_mode_needs_no_source_and_ignores_obsolete_credentials() {
+        for connection in ["ssh", "cloudflare"] {
+            let mut v = vars();
+            v.insert("LOBO_IMAGE_MODEL".into(), "1".into());
+            v.insert("LOBO_CONNECTION".into(), connection.into());
+            v.remove("LOBO_MODEL_URL");
+            if connection == "ssh" {
+                v.remove("CF_TUNNEL_TOKEN");
+            }
+            let cfg = load(&v).unwrap();
+            assert!(cfg.image_model);
+            assert!(cfg.model_url.is_empty());
+            v.insert("LOBO_MODEL_URL".into(), "invalid obsolete URL".into());
+            v.insert(
+                "LOBO_MODEL_URL_FALLBACK".into(),
+                "https://private.invalid/model".into(),
+            );
+            v.insert("LOBO_MODEL_SSH_KEY".into(), "obsolete private key".into());
+            v.insert("LOBO_MODEL_SSH_HOSTKEY".into(), "obsolete host".into());
+            let cfg = load(&v).unwrap();
+            assert!(cfg.model_url.is_empty());
+            assert!(cfg.model_fallback.is_empty());
+            assert!(cfg.model_ssh_key.is_empty());
+            assert!(cfg.model_host_key.is_empty());
+        }
     }
     #[test]
     fn load_agent_errors() {

@@ -367,11 +367,11 @@ async fn cancelled_runtime_cannot_spawn() {
     assert!(!f.tmp.path().join("pid").exists());
 }
 
-struct UnusedRelease;
+struct UnusedImages;
 #[async_trait]
-impl lobo_core::control::ReleaseResolver for UnusedRelease {
-    async fn resolve(&self, _: &str) -> Result<lobo_proto::Resolved> {
-        panic!("local start must not resolve cloud releases")
+impl lobo_core::images::ImageResolver for UnusedImages {
+    async fn latest(&self, _: &str) -> Result<String> {
+        panic!("local start must not resolve cloud images")
     }
 }
 struct ReadyAgent;
@@ -395,8 +395,7 @@ fn core_deps(f: &Fixture) -> lobo_core::control::Deps {
         connection: None,
         providers: [("local".into(), Arc::new(f.p.clone()) as Arc<dyn Provider>)].into(),
         operations: Arc::new(lobo_core::control::OperationState::memory()),
-        releases: Arc::new(UnusedRelease),
-        presign: None,
+        images: Arc::new(UnusedImages),
         new_agent: Arc::new(|_| Arc::new(ReadyAgent)),
         cfg: Default::default(),
         clock: Arc::new(lobo_core::clock::SystemClock),

@@ -9,10 +9,7 @@ const FULL: &str = "RUNPOD_API_KEY=rp\nVASTAI_API_KEY=vk\nLOBO_API_KEY=sk\nCF_TU
 #[test]
 fn cloud_without_domain_and_legacy_selection() {
     for key in ["RUNPOD_API_KEY", "VASTAI_API_KEY"] {
-        let cfg = load(&format!(
-            "LOBO_API_KEY=sk\n{key}=provider\nLOBO_BUCKET_URL=https://pub.r2.dev\n"
-        ))
-        .unwrap();
+        let cfg = load(&format!("LOBO_API_KEY=sk\n{key}=provider\n")).unwrap();
         cfg.require_cloud().unwrap();
         assert!(cfg.uses_ssh());
         assert_eq!(cfg.cloud_url(), "http://127.0.0.1:8933/v1");
@@ -76,23 +73,12 @@ fn load_laptop_ignores_bad_defaults() {
 fn load_laptop_local_only() {
     let l = load("LOBO_API_KEY=sk-x\nLOBO_PROVIDER=local\n").unwrap();
     let e = l.require_cloud().unwrap_err().to_string();
-    assert!(e.contains("LOBO_BUCKET_URL"));
+    assert!(e.contains("RUNPOD_API_KEY or VASTAI_API_KEY"));
     assert!(load("LOBO_API_KEY=sk-x\nLOBO_WEIGHTS_DIR=/w\n").is_ok());
 }
 #[test]
 fn load_laptop_errors() {
-    for (text, needle) in [
-        ("", "LOBO_API_KEY"),
-        ("LOBO_API_KEY=sk\nLOBO_BUCKET_URL=bad\n", "LOBO_BUCKET_URL"),
-        (
-            "LOBO_API_KEY=sk\nLOBO_MODEL_SOURCE=ssh://u@host\n",
-            "LOBO_MODEL_SSH_KEY_FILE",
-        ),
-        (
-            "LOBO_API_KEY=sk\nLOBO_MODEL_SOURCE=http://host\n",
-            "want r2 or ssh://",
-        ),
-    ] {
+    for (text, needle) in [("", "LOBO_API_KEY"), ("LOBO_API_KEY='unclosed", "read")] {
         assert!(load(text).unwrap_err().to_string().contains(needle));
     }
 }
@@ -101,7 +87,7 @@ fn require_cloud() {
     let mut l = Laptop::default();
     assert_eq!(
         l.require_cloud().unwrap_err().to_string(),
-        "config: cloud needs LOBO_BUCKET_URL"
+        "config: set RUNPOD_API_KEY or VASTAI_API_KEY"
     );
     l.cf_tunnel_token = "t".into();
     l.domain = "d".into();

@@ -12,3 +12,5 @@ pub mod genkey;
 pub mod local;
 pub mod provider;
 pub mod release;
+
+pub mod images;

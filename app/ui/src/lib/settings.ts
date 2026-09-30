@@ -3,13 +3,10 @@ import type { Readiness } from '../proto/Readiness';
 export const PLAIN_KEYS = [
   'LOBO_CONNECTION',
   'LOBO_CLOUD_PORT',
-  'LOBO_BUCKET_URL',
-  'LOBO_MIN_MBPS',
   'LOBO_CTX',
   'LOBO_IDLE_MIN',
   'LOBO_MAX_HOURS',
   'LOBO_VAST_MAX_DPH',
-  'LOBO_POD_IMAGE',
   'LOBO_WEIGHTS_DIR',
   'LOBO_LOCAL_PORT',
   'LOBO_PROVIDER',

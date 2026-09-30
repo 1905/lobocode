@@ -42,10 +42,11 @@ fn replay_go_cli() {
     let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/go/cases.json")).unwrap();
     assert!(cases.len() >= 40);
     for mut case in cases {
-        // Intentional Rust behavior: new cloud setups no longer require a domain.
+        // Intentional Rust behavior: new cloud setups need neither domain nor bucket.
         // Keep the captured Go fixtures frozen and scope the changed contract here.
         if case.name == "override_bad_ctx" {
-            case.stderr = "error: config: cloud needs LOBO_BUCKET_URL\n".into();
+            // Valid config reaches the provider; this fixture intentionally blocks networking.
+            case.stderr_match = "provider_error".into();
         }
         if matches!(case.name.as_str(), "gen_key_new" | "gen_key_keep") {
             for text in case.files_after.values_mut() {
@@ -104,6 +105,10 @@ fn replay_go_cli() {
         );
         let stdout = normalize(&String::from_utf8(output.stdout).unwrap(), &root);
         let stderr = normalize(&String::from_utf8(output.stderr).unwrap(), &root);
+        if case.name == "override_bad_ctx" {
+            assert!(stderr.contains("runpod"), "{stderr}");
+            assert!(!stderr.contains("cloud needs"), "{stderr}");
+        }
         if case.args.contains(&"--json".into()) && !stdout.is_empty() {
             assert_eq!(
                 serde_json::from_str::<serde_json::Value>(&stdout).unwrap(),
@@ -117,6 +122,10 @@ fn replay_go_cli() {
             assert_eq!(stdout, case.stdout, "{} stdout", case.name);
         }
         match case.stderr_match.as_str() {
+            "provider_error" => {
+                assert!(stderr.starts_with("ERR runpod:"), "{stderr}");
+                assert!(stderr.contains("\nerror: runpod:"), "{stderr}");
+            }
             "exact" | "log" => assert_eq!(stderr, case.stderr, "{} stderr", case.name),
             "prefix" => assert!(stderr.starts_with("error: "), "{}: {stderr}", case.name),
             "json_error" => assert!(

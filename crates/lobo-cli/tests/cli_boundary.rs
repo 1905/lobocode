@@ -265,11 +265,7 @@ async fn gates_reject_before_dependencies() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("config");
     for (command, body, needle) in [
-        (
-            "up",
-            "LOBO_API_KEY=sk\nRUNPOD_API_KEY=rp\n",
-            "LOBO_BUCKET_URL",
-        ),
+        ("up", "LOBO_API_KEY=sk\n", "RUNPOD_API_KEY"),
         (
             "down",
             "LOBO_API_KEY=sk\n",

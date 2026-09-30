@@ -56,6 +56,14 @@ pub fn script(provider: &str) -> String {
     format!("{SCRIPT_START}{terminate}{SCRIPT_END}")
 }
 
+pub fn start_script(provider: &str, o: &CreateOpts) -> String {
+    if o.image_model {
+        "exec /lobo/start".into()
+    } else {
+        connected_script(provider, &o.connection)
+    }
+}
+
 pub fn connected_script(provider: &str, connection: &str) -> String {
     let script = script(provider);
     if connection == "ssh" {
@@ -145,6 +153,21 @@ pub fn env(o: &CreateOpts, provider: &str) -> BTreeMap<String, String> {
             o.connection_host_key.clone(),
         );
         values.remove("CF_TUNNEL_TOKEN");
+    }
+    if o.image_model {
+        values.insert("LOBO_IMAGE_MODEL".into(), "1".into());
+        for key in [
+            "LOBO_MODEL_URL",
+            "LOBO_MODEL_URL_FALLBACK",
+            "LOBO_RELEASE_URL",
+            "LOBO_RELEASE_SHA256",
+            "LOBO_MODEL_SSH_KEY",
+            "LOBO_MODEL_SSH_HOSTKEY",
+            "LOBO_DL_CONNS",
+            "LOBO_MIN_MBPS",
+        ] {
+            values.remove(key);
+        }
     }
     values
 }

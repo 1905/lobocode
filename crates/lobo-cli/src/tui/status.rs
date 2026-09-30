@@ -97,18 +97,23 @@ where
             vec![span(st.stage_detail.clone(), Style::new().fg(ERR))],
         ));
     }
-    if st.stage == Stage::Download && st.download.total > 0 {
+    if matches!(st.stage, Stage::Download | Stage::Verify) && st.download.total > 0 {
         let dl = &st.download;
+        let verifying = st.stage == Stage::Verify || dl.verifying;
         let f = dl.bytes as f64 / dl.total as f64;
         let mut value = bar(f, 24, Style::new().fg(OK));
         value.push(Span::raw(format!(
-            " {:5.1}%  {} / {}  {:.0} MB/s",
+            " {:5.1}%  {} / {}  {}",
             100.0 * f,
             gb(dl.bytes),
             gb(dl.total),
-            dl.mbps
+            if verifying {
+                "SHA-256".into()
+            } else {
+                format!("{:.0} MB/s", dl.mbps)
+            }
         )));
-        lines.push(row("download", value));
+        lines.push(row(if verifying { "verify" } else { "download" }, value));
     }
     lines.extend([
         Line::default(),

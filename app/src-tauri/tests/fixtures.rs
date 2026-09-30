@@ -15,8 +15,6 @@ fn config() -> (ConfigShow, Readiness) {
         ("LOBO_CONNECTION", "ssh"),
         ("LOBO_CLOUD_PORT", "8933"),
         ("LOBO_API_KEY", "sk-9…7e4d"),
-        ("LOBO_BUCKET_URL", "https://pub-….r2.dev"),
-        ("LOBO_MIN_MBPS", "100"),
     ]
     .into_iter()
     .map(|(k, v)| (k.into(), v.into()))
@@ -192,7 +190,9 @@ fn boot(local: bool, verify: bool) -> Store {
             download: (!verify).then_some(DownloadProgress {
                 bytes: 12_400_000_000,
                 total: 28_595_762_272,
-                mbps: if local { 88.0 } else { 713.0 },
+                mbps: if local { 88.0 } else { 0.0 },
+                verifying: !local,
+                source: if local { "Hugging Face" } else { "Docker image" }.into(),
                 ..Default::default()
             }),
             ..Default::default()
@@ -249,7 +249,7 @@ fn fixtures() -> Vec<(&'static str, Store)> {
             vec!["local: port 8931 in use (LOBO_LOCAL_PORT)"]
         } else {
             vec![
-                "image: download: host: download too slow: 41.2 MB/s after 20s from https://acc.r2.cloudflarestorage.com (min 100)",
+                "Docker image model shard failed SHA-256 verification; instance deleted",
                 "create: bad host, renting another pod (4/4)",
                 "vast 26461301, offer 51399812, 9129 Mbps down, Quebec, CA",
             ]

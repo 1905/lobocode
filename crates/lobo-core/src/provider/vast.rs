@@ -240,7 +240,7 @@ pub fn create_body(o: &CreateOpts) -> Value {
         env.insert("-p 2222:2222".into(), "1".into());
     }
     json!({"client_id":"me", "image":o.image, "disk":DISK_GB, "label":POD_NAME, "runtype":"ssh",
-        "onstart":format!("#!/bin/bash\n{}",bootstrap::connected_script("vast", &o.connection)), "env":env})
+        "onstart":format!("#!/bin/bash\n{}",bootstrap::start_script("vast", o)), "env":env})
 }
 
 pub struct VastProvider {

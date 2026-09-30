@@ -71,17 +71,6 @@ impl RunPodApi for FakeRunPod {
         Ok(())
     }
 }
-pub struct FakeReleases(pub Resolved);
-#[async_trait]
-impl ReleaseResolver for FakeReleases {
-    async fn resolve(&self, version: &str) -> Result<Resolved> {
-        if version == "missing" {
-            Err(Error::Release("release missing: HTTP 404".into()))
-        } else {
-            Ok(self.0.clone())
-        }
-    }
-}
 #[derive(Default)]
 pub struct AgentState {
     pub script: Vec<Option<Status>>,
@@ -204,26 +193,6 @@ impl Provider for FakeLocal {
         Ok(())
     }
 }
-pub fn release() -> Resolved {
-    Resolved {
-        manifest: Manifest {
-            version: "2026.09.23-1".into(),
-            llama_image: "img:b1".into(),
-            model: crate::release::ModelRef {
-                id: "q8".into(),
-                ..Default::default()
-            },
-            defaults: crate::release::Defaults {
-                ctx: 8192,
-                idle_min: 30,
-                max_hours: 12,
-            },
-            ..Default::default()
-        },
-        zip_key: "releases/lobo-2026.09.23-1.zip".into(),
-        zip_sha256: "zipsha".into(),
-    }
-}
 pub fn deps(rp: Arc<FakeRunPod>, ag: Arc<FakeAgent>, clock: Arc<dyn Clock>) -> Deps {
     Deps {
         connection: None,
@@ -236,8 +205,7 @@ pub fn deps(rp: Arc<FakeRunPod>, ag: Arc<FakeAgent>, clock: Arc<dyn Clock>) -> D
             }) as Arc<dyn Provider>,
         )]
         .into(),
-        releases: Arc::new(FakeReleases(release())),
-        presign: None,
+        images: Arc::new(FakeImages),
         new_agent: Arc::new(move |_| ag.clone()),
         clock,
         poll: Duration::from_millis(1),
@@ -323,6 +291,14 @@ pub async fn events(script: Vec<Option<Status>>, no_cap: &[&str]) -> Vec<lobo_pr
     }
     let _ = operation.wait().await;
     out
+}
+
+pub struct FakeImages;
+#[async_trait]
+impl crate::images::ImageResolver for FakeImages {
+    async fn latest(&self, model: &str) -> Result<String> {
+        Ok(format!("public-image-{model}@sha256:fixture"))
+    }
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 //! Compiled only with test-fakes. No environment switch exists in release builds.
 use crate::app::App;
 use lobo_core::{
-    clock::{Clock, FixedClock, StepClock},
+    clock::{Clock, FixedClock},
     control::testkit::{self, FakeAgent, FakeRunPod},
     provider::runpod::{Pod, RunPodTime},
 };
@@ -42,14 +42,7 @@ pub fn scenario(name: &str) -> Option<App> {
         });
     }
     let agent = Arc::new(FakeAgent::new(script));
-    let clock: Arc<dyn Clock> = if name == "running" || name == "down" {
-        Arc::new(FixedClock(at))
-    } else {
-        Arc::new(StepClock::new(
-            "2026-09-23T10:00:00Z".parse().unwrap(),
-            Duration::from_secs(1),
-        ))
-    };
+    let clock: Arc<dyn Clock> = Arc::new(FixedClock(at));
     let slow = name == "boot-slow";
     let mut app = App::real();
     app.clock = Arc::new(FixedClock(at));

@@ -87,10 +87,7 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let cfg = crate::app::load_cfg(path)?;
     let opts = prepare(app, a, changed, &cfg, path)?;
-    let mut deps = app.deps(cfg, path)?;
-    if opts.provider == "local" {
-        deps.presign = None;
-    }
+    let deps = app.deps(cfg, path)?;
     let source = opts.source.clone();
     let conns = opts.conns;
     let mut operation = control::up(deps, opts, app.cancel.child_token());

@@ -88,13 +88,6 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
             &|v| s.tunnel_token(v),
         )?;
     }
-    let bucket = p.text(
-        "2/4 · Access · Bucket URL",
-        "Public R2 URL with releases/ and models/. Cloud only.",
-        &s.bucket,
-        &s.cloud_only(&https_url),
-    )?;
-    s.bucket = bucket;
     if !s.local_ok && s.both_keys() {
         s.provider = p.select(
             "3/4 · Provider · Default provider",
@@ -103,12 +96,6 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
             &s.provider,
         )?;
     }
-    s.min_mbps = p.text(
-        "3/4 · Defaults for lobo up · Minimum download speed, MB/s",
-        "A pod slower than this 20 s into the model download is dropped and replaced. Empty = 100.",
-        &s.min_mbps,
-        &*whole_number(1),
-    )?;
     s.model = p.select(
         "3/4 · Defaults for lobo up · Model",
         "",
@@ -303,8 +290,6 @@ mod tests {
                 "RunPod API key",
                 "Vast.ai API key",
                 "LOBO API key",
-                "Bucket URL",
-                "Minimum download speed, MB/s",
                 "Model",
                 "Context size",
                 "Idle minutes",
@@ -331,7 +316,7 @@ mod tests {
             .unwrap();
         assert_eq!(r["LOBO_CTX"], "8192");
         assert_eq!(p.checks, 2);
-        assert_eq!(p.titles[5], "3/4 · Provider · Default provider");
+        assert_eq!(p.titles[4], "3/4 · Provider · Default provider");
         assert!(p.titles.iter().any(|s| s.ends_with("Vast max price, $/h")));
     }
     #[test]

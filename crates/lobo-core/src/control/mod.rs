@@ -3,7 +3,6 @@ use crate::{
     clock::Clock,
     config::Laptop,
     provider::{Instance, Provider},
-    release::Resolved,
 };
 use async_trait::async_trait;
 use lobo_proto::{Manifest, Status};
@@ -21,14 +20,6 @@ pub trait AgentApi: Send + Sync {
     async fn status(&self) -> Result<Status>;
     async fn version(&self) -> Result<Manifest>;
     async fn logs(&self, n: usize) -> Result<String>;
-}
-#[async_trait]
-pub trait ReleaseResolver: Send + Sync {
-    async fn resolve(&self, version: &str) -> Result<Resolved>;
-}
-#[async_trait]
-pub trait Presigner: Send + Sync {
-    async fn presign_get(&self, key: &str, ttl: Duration) -> Result<String>;
 }
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct UpOpts {
@@ -50,17 +41,16 @@ pub type AgentFactory = Arc<dyn Fn(&str) -> Arc<dyn AgentApi> + Send + Sync>;
 #[derive(Clone)]
 pub struct Deps {
     pub connection: Option<Arc<crate::connection::Manager>>,
+    pub images: Arc<dyn crate::images::ImageResolver>,
     pub providers: BTreeMap<String, Arc<dyn Provider>>,
     pub operations: Arc<OperationState>,
-    pub releases: Arc<dyn ReleaseResolver>,
-    pub presign: Option<Arc<dyn Presigner>>,
     pub new_agent: AgentFactory,
     pub cfg: Laptop,
     pub clock: Arc<dyn Clock>,
     pub poll: Duration,
 }
 pub const MAX_GPU_RETRIES: u32 = 4;
-pub const CONTAINER_TIMEOUT: Duration = Duration::from_secs(6 * 60);
+pub const CONTAINER_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 pub const STALE_SLACK: Duration = Duration::from_secs(15);
 pub const POD_CHECK_EVERY: Duration = Duration::from_secs(30);
 pub(crate) async fn list_all(d: &Deps) -> (Vec<Instance>, Option<Error>) {
@@ -82,18 +72,6 @@ pub(crate) async fn list_all(d: &Deps) -> (Vec<Instance>, Option<Error>) {
             Some(Error::Multi(errors))
         },
     )
-}
-#[async_trait]
-impl ReleaseResolver for crate::release::BucketReleases {
-    async fn resolve(&self, version: &str) -> Result<Resolved> {
-        self.resolve(version).await
-    }
-}
-#[async_trait]
-impl Presigner for crate::release::Store {
-    async fn presign_get(&self, key: &str, ttl: Duration) -> Result<String> {
-        Ok(self.presign_get(key, ttl))
-    }
 }
 #[cfg(test)]
 mod tests;

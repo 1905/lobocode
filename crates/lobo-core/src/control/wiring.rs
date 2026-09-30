@@ -2,7 +2,6 @@ use super::*;
 use crate::{
     local::{self, LocalHooks, LocalProvider, Spawner, StateFile},
     provider::{runpod, vast},
-    release::{BucketReleases, Store},
 };
 use std::path::PathBuf;
 pub struct Wiring {
@@ -62,12 +61,8 @@ pub fn providers_from_config(cfg: &Laptop, w: &Wiring) -> BTreeMap<String, Arc<d
 }
 pub fn deps_from_config(cfg: Laptop, w: &Wiring) -> Result<Deps> {
     let key = cfg.lobo_api_key.clone();
-    let presign = if cfg.require_r2().is_ok() {
-        Some(Arc::new(Store::new(&cfg.r2)?) as Arc<dyn Presigner>)
-    } else {
-        None
-    };
     Ok(Deps {
+        images: Arc::new(crate::images::PublicImages::new()),
         connection: if cfg.uses_ssh() {
             Some(Arc::new(crate::connection::Manager::new(
                 w.config_path.clone(),
@@ -81,8 +76,6 @@ pub fn deps_from_config(cfg: Laptop, w: &Wiring) -> Result<Deps> {
             StateFile::default_path().with_file_name("operation.json"),
         )),
         providers: providers_from_config(&cfg, w),
-        releases: Arc::new(BucketReleases::new(&cfg.bucket_url)),
-        presign,
         new_agent: Arc::new(move |base| Arc::new(HttpAgent::new(base, &key))),
         cfg,
         clock: Arc::new(crate::clock::SystemClock),
@@ -179,9 +172,8 @@ mod tests {
         };
         let w = wiring(true);
         let d = deps_from_config(cfg.clone(), &w).unwrap();
-        assert!(d.presign.is_some());
         assert_eq!(d.providers.len(), 3);
         cfg.r2 = Default::default();
-        assert!(deps_from_config(cfg, &w).unwrap().presign.is_none());
+        assert_eq!(deps_from_config(cfg, &w).unwrap().providers.len(), 3);
     }
 }

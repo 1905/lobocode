@@ -79,7 +79,7 @@ fn null_ports<'de, D: Deserializer<'de>>(
 
 pub fn build_create_payload(o: &CreateOpts, cloud: &str, min_download_mbps: f64) -> Value {
     let mut env = bootstrap::env(o, "runpod");
-    let mut start = bootstrap::connected_script("runpod", &o.connection);
+    let mut start = bootstrap::start_script("runpod", o);
     let mut ports = Vec::<&str>::new();
     if !o.ssh_pub_key.is_empty() {
         ports.push("22/tcp");

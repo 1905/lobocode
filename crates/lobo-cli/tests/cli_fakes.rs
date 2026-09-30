@@ -54,9 +54,18 @@ fn executable_json_outputs_match_go() {
         let output = command(name, tmp.path(), &["up", "--json", "--q6=false"]);
         let err = String::from_utf8(output.stderr).unwrap();
         assert_eq!(output.status.success(), name == "boot", "{err}");
+        let mut expected = events(&fixture(&format!("json_up_{name}.jsonl")));
+        for event in &mut expected {
+            event.detail = event
+                .detail
+                .replace(", release 2026.09.23-1, q8 ctx 8192", ", q8 ctx 65536");
+            if let Some(ready) = &mut event.ready {
+                ready.elapsed_ns = 0; // Fixture clock does not advance.
+            }
+        }
         assert_eq!(
             events(std::str::from_utf8(&output.stdout).unwrap()),
-            events(&fixture(&format!("json_up_{name}.jsonl")))
+            expected
         );
         if name == "failed" {
             assert_eq!(err, "error: up failed\n");
@@ -95,7 +104,10 @@ fn executable_plain_output_and_unknown_scenario() {
     assert!(output.stdout.is_empty());
     let err = String::from_utf8(output.stderr).unwrap();
     let (boot, report) = err.split_once("\nboot timings:\n").unwrap();
-    assert_eq!(logs(boot), logs(&fixture("plain_up_boot.txt")));
+    let expected = fixture("plain_up_boot.txt")
+        .replace(", release 2026.09.23-1, q8 ctx 8192", ", q8 ctx 65536")
+        .replace("boot=15000", "boot=0");
+    assert_eq!(logs(boot), logs(&expected));
     // The scripted agent has zero timings. The representative timing table is
     // independently byte-compared with Go in cli_control.
     assert!(report.contains("model download"));

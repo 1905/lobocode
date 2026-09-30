@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use lobo_agent::{Error, Result, pod, selfkill, source};
-use std::{process::ExitCode, sync::Arc, time::Duration};
+use std::{path::PathBuf, process::ExitCode, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 #[derive(Parser)]
 #[command(
@@ -13,6 +13,14 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Verify every bundled model shard without a GPU or network connection.
+    CheckImage {
+        #[arg(long)]
+        model: String,
+        /// Directory containing model.json and models/. Defaults to the image layout.
+        #[arg(long, default_value = "/lobo")]
+        root: PathBuf,
+    },
     Version {
         #[arg(hide = true)]
         extra: Vec<String>,
@@ -37,6 +45,31 @@ fn env(key: &str) -> Option<String> {
 async fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
+        Some(Command::CheckImage { model, root }) => {
+            use lobo_agent::Download;
+            let result = async {
+                let model =
+                    lobo_proto::catalog::get(&model).map_err(|e| Error::msg(e.to_string()))?;
+                let bundled = lobo_agent::image_model::ImageModel::load(
+                    &root.join("models"),
+                    &root.join("model.json"),
+                    model,
+                )
+                .await?;
+                bundled.run(CancellationToken::new(), &|_| {}).await
+            }
+            .await;
+            match result {
+                Ok(()) => {
+                    println!("bundled model verified");
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         Some(Command::Version { .. }) => {
             println!("{}", lobo_agent::VERSION);
             ExitCode::SUCCESS

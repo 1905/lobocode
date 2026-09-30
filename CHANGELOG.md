@@ -2,8 +2,12 @@
 
 ## Unreleased
 
-- Document native UI acceptance gaps, the unnecessary domain/bucket requirements, and the incomplete public install flow. Clarify standalone DMG installation and separate Homebrew CLI installation. Complete public GPU images are unfinished; cloud release acceptance remains pending.
-- Record the latest-image requirement in project memory and a written spec. Each new cloud start must resolve the current public image. Implementation is partial and uncommitted; the spec review, latest-tree checks and image acceptance remain pending.
+- Resolve the current public Q6/Q8 image digest on every new cloud start. Ignore old bucket/image settings and fail before rental if the registry cannot resolve the image.
+- Package the agent, CUDA runtime, SSH server and selected GGUF shards together. Verify model hashes offline; remove agent/model downloads from image startup.
+- Remove bucket and image fields from setup. Show SHA-256 verification in the app and TUI. Update help, README, cloud docs and screenshots.
+- Extend startup limits to 40 minutes, with a 30-minute image deadline and maximum-lifetime cleanup during startup. Require both complete image jobs before app/CLI release jobs.
+- Dell agent/core/CLI checks and clippy pass in focused runs. Nine frontend tests, 23 browser layouts and native fresh-config setup pass. Full image builds are still running. Native drag automation failed to observe movement; manual drag acceptance remains open.
+- No public release, image publication, GPU rental or CLI installation. Live provider and published-image acceptance remain pending.
 
 - Add automatic private SSH connections for cloud instances. New setups need no domain, Cloudflare account or tunnel subscription. OpenCode uses `http://127.0.0.1:8933/v1`; GPU and provider charges still apply.
 - Pin a fresh server key for each instance, restrict forwarding to the inference/control APIs, and reconnect through a detached helper. Stop closes the owned connection and removes its keys. Preserve existing complete Cloudflare configurations.

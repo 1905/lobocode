@@ -9,7 +9,15 @@ permissions:
   contents: write
 
 jobs:
+  images:
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/pod-image.yml
+    with:
+      publish: true
   release:
+    needs: images
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4

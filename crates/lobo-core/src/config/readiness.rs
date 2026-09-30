@@ -107,15 +107,22 @@ mod tests {
         assert!(!r.cloud_ready);
         assert_eq!(r.ready, r.local_supported);
         assert_eq!(r.local_port, 9000);
-        for bad in [
-            "LOBO_API_KEY=fixture\nLOBO_BUCKET_URL=bad\n",
-            "LOBO_API_KEY='unclosed",
-        ] {
+        for bad in ["LOBO_API_KEY=\n", "LOBO_API_KEY='unclosed"] {
             std::fs::write(&path, bad).unwrap();
             let r = readiness(&path);
             assert!(!r.ready && !r.cloud_ready);
             assert!(r.error.is_some());
         }
+    }
+    #[test]
+    fn public_cloud_ignores_obsolete_private_storage() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.env");
+        std::fs::write(&path, "LOBO_API_KEY=fixture\nRUNPOD_API_KEY=provider\nLOBO_BUCKET_URL=bad\nLOBO_MODEL_SOURCE=ssh://old-host\nLOBO_MODEL_SSH_KEY_FILE=/missing\nLOBO_POD_IMAGE=old:cached\n").unwrap();
+        let r = readiness(&path);
+        assert!(r.cloud_ready && r.ready);
+        assert!(r.error.is_none());
+        assert!(load_laptop(&path).unwrap().require_bucket().is_err());
     }
     #[test]
     fn validate_set_preserves_settings_rules() {

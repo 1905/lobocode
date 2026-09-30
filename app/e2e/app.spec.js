@@ -94,6 +94,7 @@ describe("native app with real Rust core and isolated local runtime", () => {
     assert.equal(fs.statSync(fixture.config).mode & 0o777, 0o600);
     await click("Cloud");
     await fits();
+    assert.equal(await $('input[aria-label="bucket url"]').isExisting(), false);
     assert.equal(await $('input[aria-label="domain"]').isExisting(), false);
     assert.equal(await $('input[aria-label="tunnel token"]').isExisting(), false);
     assert.equal(await $('input[aria-label="cloud port"]').isExisting(), true);

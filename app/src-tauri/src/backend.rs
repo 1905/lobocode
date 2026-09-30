@@ -58,11 +58,8 @@ impl Backend for CoreBackend {
         Ok(control::snapshot(&self.deps()?).await?)
     }
     fn up(&self, req: UpRequest, cancel: CancellationToken) -> Result<control::UpOperation> {
-        let mut d = self.deps()?;
+        let d = self.deps()?;
         let opts = control::resolve_up(&d.cfg, &self.path, &req, self.wiring.supported)?;
-        if opts.provider == "local" {
-            d.presign = None;
-        }
         Ok(control::up(d, opts, cancel))
     }
     async fn down(&self) -> Result<f64> {

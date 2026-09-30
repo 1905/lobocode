@@ -12,6 +12,7 @@ pub const POD_NAME: &str = "lobo";
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CreateOpts {
+    pub image_model: bool,
     pub connection: String,
     pub connection_public_key: String,
     pub connection_host_key: String,
