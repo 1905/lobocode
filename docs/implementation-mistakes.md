@@ -99,6 +99,20 @@ The release hold remains active. No new image, agent or public release was
 published for the domain-free implementation. Do not remove this limitation from
 handoffs merely because a local build passes.
 
+## 6. Local memory rejection happens too late
+
+The app currently offers local Start without checking available memory. The
+backend checks a fixed GPU budget after runtime preparation and supervisor
+startup. That check ignores memory used by other apps and the selected context
+size. A downloaded model is not proof that this Mac can load it safely.
+
+User correction: inspect Mac memory first. If the selected model cannot fit,
+show an error instead of starting it. The
+[memory-check spec](../plans/2026-09-30-local-memory-check/spec.md) records fresh
+physical-memory and Metal checks, context-dependent estimates, startup rejection
+and a second check before loading. It is pending approval, not an implemented
+fix. This Mac remains limited to UI checks with no inference.
+
 ## Acceptance required before public delivery
 
 - Install from the DMG with a fresh configuration. No CLI installation is required.
@@ -110,6 +124,8 @@ handoffs merely because a local build passes.
 - Start each supported model on RunPod and Vast. Verify streaming, tool calls,
   reconnect, Stop, cancellation, failed-boot cleanup and automatic shutdown.
 - Verify actual native window movement, rounded corners and every view without scrolling.
+- Verify local memory rejection happens before downloads or processes start;
+  an unavailable measurement must also block Start.
 - Publish the compatible GPU images before distributing the app and Homebrew release.
 
 Backend/container acceptance must run away from the development Mac. Publication

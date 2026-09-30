@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Plan only: specify a Mac memory check before local Start, with model/context estimates and blocked startup on insufficient or unknown memory. Approval and implementation are pending.
+
 - Resolve the current public Q6/Q8 image digest on every new cloud start. Ignore old bucket/image settings and fail before rental if the registry cannot resolve the image.
 - Package the agent, CUDA runtime, SSH server and selected GGUF shards together. Verify model hashes offline; remove agent/model downloads from image startup.
 - Remove bucket and image fields from setup. Show SHA-256 verification in the app and TUI. Update help, README, cloud docs and screenshots.
