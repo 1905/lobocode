@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix native app startup by keeping tray changes on the main thread. Add standard macOS title bars, rounded panel corners and Settings tabs without scrolling.
+- Size windows for their actual webview content, including the measured macOS title-bar inset. Long config paths wrap without forcing horizontal overflow.
+- Enable native dragging from the panel and Settings headers. Native movement verification remains in progress.
+- Native E2E passes setup/save, start/stop, cancellation and failure/retry with a real supervisor and isolated fake runtime. All 37 app Rust tests and 8 UI tests pass; 20 panel renders and 3 Settings tabs have no clipped controls. Live inference, reopen/resume and release acceptance remain pending.
+
 - Rust P5 app candidate: shared-core backend, owned Start/Stop/Quit, tray, native windows, local supervisor, Svelte panel and settings. The app does not launch or bundle the CLI.
 - App checks pass: 36 Rust tests, 8 UI tests, lint, generated UI fixtures and production frontend build. Failed Quit can retry cleanup without disabling polling.
 - CI now builds and verifies the macOS app bundle with frozen frontend dependencies. Native app E2E, final render acceptance and clean-runner app CI remain pending; Swift source is retained meanwhile.

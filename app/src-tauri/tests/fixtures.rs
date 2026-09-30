@@ -367,7 +367,33 @@ fn render_fixtures_cover_inventory() {
     let f = fixtures();
     assert_eq!(f.len(), 20);
     let names: std::collections::BTreeSet<_> = f.iter().map(|(n, _)| *n).collect();
-    assert_eq!(names.len(), 20);
+    assert_eq!(
+        names,
+        [
+            "off",
+            "boot",
+            "ready",
+            "fail",
+            "setup",
+            "off_local",
+            "boot_local",
+            "verify_local",
+            "ready_local",
+            "fail_local",
+            "loading",
+            "stopping",
+            "stopping_local",
+            "off_nokeys",
+            "off_one_provider",
+            "off_local_nomodels",
+            "boot_verify_sha",
+            "fail_pod",
+            "ready_warning",
+            "ready_kill_soon",
+        ]
+        .into_iter()
+        .collect()
+    );
     for p in ["SCAN", "SETUP", "OFF", "BOOT", "RUN", "STOP", "FAIL"] {
         assert!(
             f.iter().any(|(_, s)| s.view(now()).phase.word() == p),

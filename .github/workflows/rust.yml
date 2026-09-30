@@ -142,3 +142,9 @@ jobs:
           name: lobocode-macos-arm64
           path: bin/lobocode-macos-arm64.zip
           retention-days: 7
+      - name: Native startup and settings smoke
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          make app-e2e-build
+          python3 tools/native_app_e2e.py --setup-only

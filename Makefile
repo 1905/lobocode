@@ -54,7 +54,7 @@ mac:
 	cp -R app/src-tauri/target/release/bundle/macos/lobocode.app $(MAC_APP)
 	@echo "built $(MAC_APP)"
 
-.PHONY: app-test app-lint app-icons app-fixtures app-render
+.PHONY: app-test app-lint app-icons app-fixtures app-render app-e2e-build app-e2e
 app-test:
 	cargo test --locked --manifest-path $(APP_MANIFEST)
 	pnpm -C app/ui test
@@ -78,6 +78,16 @@ app-render: app-icons app-fixtures
 	mkdir -p app/ui/public/tray
 	cp bin/app-renders/tray_*.png app/ui/public/tray/
 	@echo "run: pnpm -C app/ui dev, open http://localhost:5173/?view=render"
+
+# Test-only native driver and isolated bundle identifier. Normal mac builds omit both.
+app-e2e-build:
+	pnpm -C app/ui install --frozen-lockfile
+	pnpm -C app/e2e install --frozen-lockfile
+	VITE_LOBO_E2E=1 pnpm -C app/ui build
+	cd app && ui/node_modules/.bin/tauri build --ci --debug --features e2e --bundles app --config e2e/tauri.conf.json -- --locked
+
+app-e2e: app-e2e-build
+	python3 tools/native_app_e2e.py
 
 # Drag-to-install disk image: lobocode.app next to an Applications shortcut. Unsigned (ad-hoc).
 DMG := $(BIN)/lobocode.dmg

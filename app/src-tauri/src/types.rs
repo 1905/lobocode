@@ -227,4 +227,39 @@ mod tests {
         assert_eq!(a.kind, kind);
         assert_eq!(a.message, "x");
     }
+
+    #[test]
+    fn app_types_export_without_bigint() {
+        let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ui/src");
+        let config = ts_rs::Config::default().with_out_dir(ui.join("proto"));
+        Phase::export_all(&config).unwrap();
+        Target::export_all(&config).unwrap();
+        Step::export_all(&config).unwrap();
+        StepMark::export_all(&config).unwrap();
+        PanelState::export_all(&config).unwrap();
+        AppError::export_all(&config).unwrap();
+        let dir = ui.join("gen");
+        let expected = [
+            "AppError.ts",
+            "PanelState.ts",
+            "Phase.ts",
+            "Step.ts",
+            "StepMark.ts",
+            "Target.ts",
+        ];
+        let mut actual: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        actual.sort();
+        assert_eq!(actual, expected);
+        for name in expected {
+            assert!(
+                !std::fs::read_to_string(dir.join(name))
+                    .unwrap()
+                    .contains("bigint"),
+                "{name}"
+            );
+        }
+    }
 }

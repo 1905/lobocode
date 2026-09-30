@@ -10,7 +10,7 @@
   const detail = $derived(headerDetail(panel));
 </script>
 
-<header>
+<header data-tauri-drag-region>
   <Scanlines /><Logo /><RasterBar active={active(panel)} />
   <div class="row">
     <span class="dim sys">sys:</span><GlitchText
@@ -36,5 +36,8 @@
   }
   .sys {
     font-size: 11px;
+  }
+  header :global(*) {
+    pointer-events: none;
   }
 </style>

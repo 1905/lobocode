@@ -73,7 +73,9 @@ Apple Silicon only. Same llama.cpp build and flags as the pod, Metal instead of 
 
 <img src="docs/img/menubar_ready.png" height="28" alt="menu bar: green, 45 t/s">
 
-Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. It runs the same `lobo` CLI and uses the same config file. Opening the app also shows the panel as a window, so it works when a full menu bar hides the item behind the notch.
+Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. The app uses the same Rust core and config file as the CLI. It runs local models directly. Opening the app shows a native window, so it works when a full menu bar hides the item behind the notch.
+
+Windows fit their content without scrolling. Settings groups controls into Local, Cloud and Defaults tabs.
 
 Install: download `lobocode.dmg` from the release, open it, drag **lobocode** to **Applications**. Or build it with `make install-mac` (`make dmg` builds the image).
 

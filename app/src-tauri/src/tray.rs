@@ -51,21 +51,28 @@ pub fn build(app: &tauri::AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 pub fn update(app: &tauri::AppHandle, s: &PanelState) {
-    let Some(tray) = app.tray_by_id("lobo") else {
-        return;
-    };
-    let state = app.state::<TrayState>();
-    let mut prev = state.0.lock().unwrap();
+    let a = app.clone();
     let next = look(s);
-    let (icon, title) = changes(prev.as_ref(), &next);
-    if icon {
-        let (data, w, h, template) = icons::tray_icon(&s.phase, s.boot_progress);
-        let _ = tray.set_icon_with_as_template(Some(Image::new_owned(data, w, h)), template);
-    }
-    if title {
-        let _ = tray.set_title(Some(&s.menu_text));
-    }
-    *prev = Some(next);
+    let phase = s.phase.clone();
+    let progress = s.boot_progress;
+    // Native setters dispatch synchronously to the main thread. Keep the cache
+    // there too: a worker holding it while waiting for main deadlocks startup.
+    let _ = app.run_on_main_thread(move || {
+        let Some(tray) = a.tray_by_id("lobo") else {
+            return;
+        };
+        let state = a.state::<TrayState>();
+        let mut prev = state.0.lock().unwrap();
+        let (icon, title) = changes(prev.as_ref(), &next);
+        if icon {
+            let (data, w, h, template) = icons::tray_icon(&phase, progress);
+            let _ = tray.set_icon_with_as_template(Some(Image::new_owned(data, w, h)), template);
+        }
+        if title {
+            let _ = tray.set_title(Some(&next.title));
+        }
+        *prev = Some(next);
+    });
 }
 #[cfg(test)]
 mod tests {
