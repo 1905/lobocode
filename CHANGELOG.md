@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix a cross-runtime HTTP connection pool that could stall or fail downloads. Repeated model requests keep their own client for connection reuse.
+- Regression test reproduced the old hang with two runtimes. All 399 workspace tests and clippy pass after the fix; one network test remains ignored. Candidate CI remains pending.
+
 - Rust CLI adds exact log output, streamed chat/tool checks and agent release publishing. Hidden `release --no-promote` preserves the shared latest manifest.
 - Local HTTP tests cover authentication, model selection, cancellation, tool failures and UTF-8 output. Release command construction and metadata tests pass; live publishing, packaging and app E2E remain pending.
 

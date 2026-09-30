@@ -845,7 +845,7 @@ mod tests {
             if url == "https://slow" {
                 Ok(Arc::new(Trickle))
             } else {
-                Ok(Arc::new(HttpSource { url: url.into() }))
+                Ok(Arc::new(HttpSource::new(url)))
             }
         });
         let sources = Mutex::new(Vec::new());

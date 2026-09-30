@@ -110,7 +110,8 @@ pub mod fetch  { pub async fn fetch_file(url: &str, dst: &Path, mode: u32, size:
 pub mod source {
     pub type BoxRead = Box<dyn tokio::io::AsyncRead + Send + Unpin>;
     pub trait Source: Send + Sync + std::fmt::Display { async fn open(&self, offset: i64, len: i64) -> Result<(BoxRead, i64)>; }  // Display = redacted
-    pub struct HttpSource { pub url: String }
+    pub struct HttpSource { pub url: String, /* owned HTTP client */ }
+    impl HttpSource { pub fn new(url: impl Into<String>) -> Self; }
     pub struct SshSource { pub user: String, pub addr: String, pub file: String, pub size: i64,
                            pub key: Arc<russh::keys::PrivateKey>, pub host_key: russh::keys::PublicKey }
     pub fn redact_url(raw: &str) -> String; pub fn range_total(content_range: &str) -> i64;

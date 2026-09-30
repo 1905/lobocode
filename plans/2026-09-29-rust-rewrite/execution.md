@@ -171,3 +171,7 @@ The user said "continue". Resume the authorized full-auto implementation and del
 
 - Control candidate ab1313c passed Rust CI 36659723042 and pod-image CI 36659723082. QA notification sent. The user reported the earlier befb354 failure; verified that all three jobs pass on the current pushed revision. Every later delivery still requires green CI.
 - P4 logs/test/release handlers implemented. Four real loopback HTTP tests and two release construction/metadata tests pass. Publication and its build child stay awaited once started. No live R2 write or GPU request was made. Cross-platform CLI packaging is next.
+
+- CLI handler candidate 958ff4a passed core-macos and agent-musl, but Ubuntu failed in `ensure_fetches_once` with `error sending request`. Investigated the process-global HTTP client. A two-runtime regression test reproduces a hang before the fix: the pool reuses a connection whose current-thread runtime is no longer polled. HTTP clients now belong to callers; HttpSource retains its client across model chunks. Corrected CI remains pending. Upstream evidence: https://github.com/seanmonstar/reqwest/issues/2501 and Tokio Runtime shutdown docs (https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html).
+
+- HTTP ownership fix passed its regression, all 399 workspace tests (one pinned-runtime network test ignored), formatting and all-target/all-feature clippy. P3 Go interop is not enabled in this run. The release spike has built Intel macOS; the other three targets remain in progress.

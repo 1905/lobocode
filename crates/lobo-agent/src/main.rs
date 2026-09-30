@@ -79,7 +79,7 @@ async fn main() -> ExitCode {
 async fn bench(conns: String, seconds: u64, url: Option<String>, model: String) -> Result<()> {
     let model = lobo_proto::catalog::get(&model).map_err(|e| Error::msg(e.to_string()))?;
     let src = if let Some(url) = url {
-        Arc::new(source::HttpSource { url }) as Arc<dyn source::Source>
+        Arc::new(source::HttpSource::new(url)) as Arc<dyn source::Source>
     } else {
         source::model_source(
             &env("LOBO_MODEL_URL").unwrap_or_default(),
