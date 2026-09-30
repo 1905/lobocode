@@ -335,3 +335,131 @@ mod tests {
         assert_eq!(f.state.lock().unwrap().created.len(), 2);
     }
 }
+
+#[derive(Default)]
+pub struct RecordingState {
+    pub instances: Vec<Instance>,
+    pub calls: Vec<String>,
+    pub broken: bool,
+    pub boot_id: String,
+    pub start_id: u64,
+    pub created: Vec<CreateOpts>,
+    pub delay: Duration,
+    pub panic_after_create: bool,
+    pub uncertain_create: bool,
+    pub cancel_on_rent: bool,
+    pub swap_on_delete: bool,
+    pub rents: usize,
+}
+pub struct RecordingProvider {
+    pub name: &'static str,
+    pub state: Mutex<RecordingState>,
+}
+impl RecordingProvider {
+    pub fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            state: Mutex::new(RecordingState::default()),
+        }
+    }
+    pub fn calls(&self) -> Vec<String> {
+        self.state.lock().unwrap().calls.clone()
+    }
+}
+#[async_trait]
+impl Provider for RecordingProvider {
+    fn name(&self) -> &'static str {
+        self.name
+    }
+    fn replaceable(&self) -> bool {
+        self.name != "local"
+    }
+    async fn list(&self) -> Result<Vec<Instance>> {
+        let mut s = self.state.lock().unwrap();
+        s.calls.push("list".into());
+        if s.broken {
+            return Err(Error::Other("broken cloud key".into()));
+        }
+        Ok(s.instances.clone())
+    }
+    async fn get(&self, id: &str) -> Result<Instance> {
+        let mut s = self.state.lock().unwrap();
+        s.calls.push(format!("get:{id}"));
+        s.instances
+            .iter()
+            .find(|i| i.id == id)
+            .cloned()
+            .ok_or(Error::NotFound)
+    }
+    async fn delete(&self, id: &str) -> Result<()> {
+        let mut s = self.state.lock().unwrap();
+        s.calls.push(format!("delete:{id}"));
+        s.instances.retain(|i| i.id != id);
+        Ok(())
+    }
+    async fn runtime_identity(&self, id: &str) -> Result<Option<(String, i32, u64)>> {
+        let s = self.state.lock().unwrap();
+        Ok(s.instances
+            .iter()
+            .find(|i| i.id == id)
+            .map(|_| (s.boot_id.clone(), 4242, s.start_id)))
+    }
+    async fn delete_owned(&self, id: &str, boot_id: &str, start_id: Option<u64>) -> Result<()> {
+        if self.name == "local" {
+            let mut s = self.state.lock().unwrap();
+            s.calls.push(format!("owned-delete:{id}:{boot_id}"));
+            if s.swap_on_delete {
+                s.boot_id = "replacement".into();
+                s.start_id += 1;
+            }
+            if s.boot_id != boot_id || start_id.is_some_and(|start| s.start_id != start) {
+                return Ok(());
+            }
+        }
+        self.delete(id).await
+    }
+    async fn rent(
+        &self,
+        opts: &CreateOpts,
+        cancel: CancellationToken,
+        _: &(dyn Fn(String) + Sync),
+    ) -> Result<Instance> {
+        let (delay, panic, uncertain, cancel_on_rent) = {
+            let mut s = self.state.lock().unwrap();
+            s.rents += 1;
+            s.created.push(opts.clone());
+            (
+                s.delay,
+                s.panic_after_create,
+                s.uncertain_create,
+                s.cancel_on_rent,
+            )
+        };
+        if cancel_on_rent {
+            cancel.cancel();
+        }
+        tokio::time::sleep(delay).await;
+        let i = Instance {
+            provider: self.name.into(),
+            id: "4242".into(),
+            agent_url: LOCAL_AGENT_URL.into(),
+            api_url: LOCAL_API_URL.into(),
+            ..Default::default()
+        };
+        {
+            let mut s = self.state.lock().unwrap();
+            s.boot_id = opts.boot_id.clone();
+            s.start_id = 100;
+            s.instances.push(i.clone());
+        }
+        assert!(!panic, "scoped worker exploded");
+        if uncertain {
+            return Err(Error::UnresolvedCreate {
+                provider: self.name.into(),
+                boot_id: opts.boot_id.clone(),
+                detail: "response lost".into(),
+            });
+        }
+        Ok(i)
+    }
+}

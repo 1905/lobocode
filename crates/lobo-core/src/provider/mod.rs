@@ -51,6 +51,19 @@ pub trait Provider: Send + Sync {
     async fn list(&self) -> Result<Vec<Instance>>;
     async fn get(&self, id: &str) -> Result<Instance>;
     async fn delete(&self, id: &str) -> Result<()>;
+    /// Local supervisor identity. Cloud providers use the provider's exact ID.
+    async fn runtime_identity(&self, _id: &str) -> Result<Option<(String, i32, u64)>> {
+        Ok(None)
+    }
+    /// Destructive app boundary. Local implementations must verify boot/start.
+    async fn delete_owned(&self, id: &str, boot_id: &str, _start_id: Option<u64>) -> Result<()> {
+        if boot_id.is_empty() || self.name() == "local" {
+            return Err(crate::Error::Other(
+                "runtime identity cannot be verified".into(),
+            ));
+        }
+        self.delete(id).await
+    }
 }
 
 pub fn on_domain(mut instance: Instance, domain: &str) -> Instance {

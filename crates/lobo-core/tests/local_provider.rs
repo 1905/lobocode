@@ -507,3 +507,88 @@ async fn rejected_memory_has_no_startup_side_effects() {
         assert!(!f.tmp.path().join("pid").exists());
     }
 }
+
+#[tokio::test]
+async fn owned_stop_rechecks_start_identity_at_term_boundary() {
+    let mut f = Fixture::new("ok").await;
+    let i = rent(&f.p).await;
+    let (boot, pid, start) = f.p.runtime_identity(&i.id).await.unwrap().unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let checked = calls.clone();
+    f.p.hooks.start_id = Arc::new(move |_| {
+        if checked.fetch_add(1, Ordering::SeqCst) == 0 {
+            Ok(start)
+        } else {
+            Ok(start + 1)
+        }
+    });
+    let signals = Arc::new(AtomicUsize::new(0));
+    let sent = signals.clone();
+    f.p.hooks.signal = Arc::new(move |_, _| {
+        sent.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    });
+    let before = fs::read(&f.p.state.path).unwrap();
+    f.p.delete_owned(&i.id, &boot, Some(start)).await.unwrap();
+    assert_eq!(signals.load(Ordering::SeqCst), 0);
+    assert_eq!(fs::read(&f.p.state.path).unwrap(), before);
+    assert!(lobo_core::local::state::alive(pid));
+}
+#[tokio::test]
+async fn owned_stop_preserves_new_boot_on_same_pid_and_ports() {
+    let f = Fixture::new("ok").await;
+    let i = rent(&f.p).await;
+    let (boot, pid, start) = f.p.runtime_identity(&i.id).await.unwrap().unwrap();
+    let mut replacement = f.p.state.read().unwrap().unwrap();
+    replacement.boot_id = "replacement".into();
+    let bytes = serde_json::to_vec(&replacement).unwrap();
+    fs::write(&f.p.state.path, &bytes).unwrap();
+    f.p.delete_owned(&i.id, &boot, Some(start)).await.unwrap();
+    assert_eq!(fs::read(&f.p.state.path).unwrap(), bytes);
+    assert!(lobo_core::local::state::alive(pid));
+}
+#[tokio::test]
+async fn owned_stop_rechecks_identity_before_group_kill() {
+    let mut f = Fixture::new("ok").await;
+    let i = rent(&f.p).await;
+    let (boot, pid, start) = f.p.runtime_identity(&i.id).await.unwrap().unwrap();
+    f.p.hooks.stop_wait = Duration::ZERO;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let checked = calls.clone();
+    f.p.hooks.start_id = Arc::new(move |_| {
+        if checked.fetch_add(1, Ordering::SeqCst) < 2 {
+            Ok(start)
+        } else {
+            Ok(start + 1)
+        }
+    });
+    let signals = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sent = signals.clone();
+    f.p.hooks.signal = Arc::new(move |pid, signal| {
+        sent.lock().unwrap().push((pid, signal));
+        Ok(())
+    });
+    f.p.delete_owned(&i.id, &boot, Some(start)).await.unwrap();
+    assert_eq!(*signals.lock().unwrap(), vec![(pid, Signal::SIGTERM)]);
+    assert!(lobo_core::local::state::alive(pid));
+}
+#[tokio::test]
+async fn owned_stop_deletes_matching_supervisor_and_state() {
+    let f = Fixture::new("ok").await;
+    let i = rent(&f.p).await;
+    let (boot, pid, start) = f.p.runtime_identity(&i.id).await.unwrap().unwrap();
+    f.p.delete_owned(&i.id, &boot, Some(start)).await.unwrap();
+    assert!(wait_group_gone(pid, Duration::ZERO).await);
+    assert!(!f.p.state.path.exists());
+    f.p.delete_owned(&i.id, &boot, Some(start)).await.unwrap();
+}
+
+#[tokio::test]
+async fn owned_stop_cleans_children_after_supervisor_exits() {
+    let f = Fixture::new("ok-child").await;
+    let i = rent(&f.p).await;
+    let (boot, pid, start) = f.p.runtime_identity(&i.id).await.unwrap().unwrap();
+    f.p.delete_owned(&i.id, &boot, Some(start)).await.unwrap();
+    assert!(wait_group_gone(pid, Duration::ZERO).await);
+    assert!(!f.p.state.path.exists());
+}

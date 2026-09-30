@@ -90,7 +90,86 @@ impl Events {
         error
     }
 }
+pub(crate) enum OperationScope {
+    Cli,
+    App {
+        previous: Option<Box<RuntimeTarget>>,
+        owner: OwnerSink,
+        current: Option<Box<RuntimeTarget>>,
+    },
+}
+impl OperationScope {
+    fn owned(&self) -> bool {
+        matches!(self, Self::App { .. })
+    }
+    fn record_owner(&mut self, target: RuntimeTarget) -> Result<()> {
+        if let Self::App { owner, current, .. } = self {
+            *current = Some(Box::new(target.clone()));
+            owner(target)?;
+        }
+        Ok(())
+    }
+    async fn recover(
+        &self,
+        d: &Deps,
+        guard: &mut OperationGuard<'_>,
+        selected: &str,
+    ) -> Result<()> {
+        let Some(pending) = guard.pending() else {
+            return Ok(());
+        };
+        match self {
+            Self::Cli => cleanup::pending(d, guard).await,
+            Self::App { previous, .. } => {
+                if !previous.as_ref().is_some_and(|t| {
+                    !t.boot_id.is_empty()
+                        && t.provider == selected
+                        && pending.provider == t.provider
+                        && pending.boot_id == t.boot_id
+                }) {
+                    return Err(Error::Other(
+                        "another runtime owns the pending operation; resolve it before starting"
+                            .into(),
+                    ));
+                }
+                cleanup::pending_owned(d, guard, previous.as_ref().and_then(|t| t.local_start_id))
+                    .await
+            }
+        }
+    }
+    async fn cleanup(&self, d: &Deps, guard: &mut OperationGuard<'_>) -> Result<()> {
+        match self {
+            Self::Cli => cleanup::pending(d, guard).await,
+            Self::App { current, .. } => {
+                if let Some(pending) = guard.pending() {
+                    if !current.as_ref().is_some_and(|t| {
+                        pending.provider == t.provider && pending.boot_id == t.boot_id
+                    }) {
+                        return Err(Error::Other(
+                            "pending operation belongs to another runtime".into(),
+                        ));
+                    }
+                    cleanup::pending_owned(
+                        d,
+                        guard,
+                        current.as_ref().and_then(|t| t.local_start_id),
+                    )
+                    .await?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
 pub fn up(d: Deps, o: UpOpts, cancel: CancellationToken) -> UpOperation {
+    up_scoped(d, o, cancel, OperationScope::Cli)
+}
+pub(crate) fn up_scoped(
+    d: Deps,
+    o: UpOpts,
+    cancel: CancellationToken,
+    mut scope: OperationScope,
+) -> UpOperation {
     let cancel = cancel.child_token();
     let worker_cancel = cancel.clone();
     let (tx, rx) = mpsc::channel(16);
@@ -106,10 +185,22 @@ pub fn up(d: Deps, o: UpOpts, cancel: CancellationToken) -> UpOperation {
         let result = async {
             let mut ownership = d.operations.acquire(&worker_cancel).await?;
             // Recover a prior crash/uncertain response before allowing a create.
-            cleanup::pending(&d, &mut ownership).await?;
-            let result = AssertUnwindSafe(run(&d, o, &worker_cancel, &events, &mut ownership))
-                .catch_unwind()
-                .await;
+            let selected = if o.provider.is_empty() {
+                "runpod"
+            } else {
+                &o.provider
+            };
+            scope.recover(&d, &mut ownership, selected).await?;
+            let result = AssertUnwindSafe(run(
+                &d,
+                o,
+                &worker_cancel,
+                &events,
+                &mut ownership,
+                &mut scope,
+            ))
+            .catch_unwind()
+            .await;
             let panicked = result.is_err();
             let result = match result {
                 Ok(result) => result,
@@ -122,8 +213,11 @@ pub fn up(d: Deps, o: UpOpts, cancel: CancellationToken) -> UpOperation {
                     Err(Error::Other(format!("up worker panicked: {message}")))
                 }
             };
-            if panicked || (worker_cancel.is_cancelled() && !events.finished()) {
-                cleanup::pending(&d, &mut ownership).await?;
+            if panicked
+                || (worker_cancel.is_cancelled() && !events.finished())
+                || (scope.owned() && result.is_err())
+            {
+                scope.cleanup(&d, &mut ownership).await?;
                 if worker_cancel.is_cancelled() {
                     return Err(Error::Cancelled);
                 }
@@ -181,6 +275,7 @@ async fn run(
     cancel: &CancellationToken,
     events: &Events,
     ownership: &mut OperationGuard<'_>,
+    scope: &mut OperationScope,
 ) -> Result<()> {
     check_cancel(cancel)?;
     let start = d.clock.now();
@@ -188,20 +283,38 @@ async fn run(
         o.provider = "runpod".into();
     }
     let provider = d.providers.get(&o.provider).ok_or_else(|| {
-        Error::Other(format!(
-            "provider {:?} is not configured (key missing in the config? run `lobo config`)",
-            o.provider
-        ))
+        Error::Other(if scope.owned() {
+            format!(
+                "Provider {} is not configured. Check its settings.",
+                o.provider
+            )
+        } else {
+            format!(
+                "provider {:?} is not configured (key missing in the config? run `lobo config`)",
+                o.provider
+            )
+        })
     })?;
-    let (instances, error) = tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),r=list_all(d)=>r};
+    let (instances, error) = if scope.owned() {
+        (read(cancel, provider.list()).await?, None)
+    } else {
+        tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),r=list_all(d)=>r}
+    };
     if let Some(e) = error {
         return Err(e);
     }
     if let Some(i) = instances.first() {
-        return Err(Error::AlreadyRunning(format!(
-            "lobo already running: {} {} ({}). Run `lobo down` first",
-            i.provider, i.id, i.status
-        )));
+        return Err(Error::AlreadyRunning(if scope.owned() {
+            format!(
+                "{} runtime {} is already running. Stop it before starting again.",
+                i.provider, i.id
+            )
+        } else {
+            format!(
+                "lobo already running: {} {} ({}). Run `lobo down` first",
+                i.provider, i.id, i.status
+            )
+        }));
     }
     let builtin = |version: String, llama_image: String| release::Resolved {
         manifest: Manifest {
@@ -309,6 +422,7 @@ async fn run(
             cancel,
             events,
             ownership,
+            scope,
         )
         .await?;
         if !retry {
@@ -373,9 +487,19 @@ async fn boot(
     cancel: &CancellationToken,
     events: &Events,
     ownership: &mut OperationGuard<'_>,
+    scope: &mut OperationScope,
 ) -> Result<bool> {
     use rand::RngExt;
     co.boot_id = hex::encode(rand::rng().random::<[u8; 8]>());
+    scope.record_owner(RuntimeTarget {
+        provider: p.name().into(),
+        boot_id: co.boot_id.clone(),
+        instance_id: None,
+        agent_url: None,
+        api_url: None,
+        local_pid: None,
+        local_start_id: None,
+    })?;
     let mut prepared = (p.name() != "local")
         .then(|| d.connection.clone())
         .flatten()
@@ -413,7 +537,14 @@ async fn boot(
     {
         Ok(pod) => pod,
         Err(Error::UnresolvedCreate { .. }) => {
-            tokio::time::timeout(cleanup::CLEANUP_TIMEOUT, cleanup::adopt(d, &pending))
+            let reconcile = async {
+                if scope.owned() {
+                    cleanup::adopt_owned(d, &pending).await
+                } else {
+                    cleanup::adopt(d, &pending).await
+                }
+            };
+            tokio::time::timeout(cleanup::CLEANUP_TIMEOUT, reconcile)
                 .await
                 .map_err(|_| pending.unresolved("reconciliation timed out"))??
         }
@@ -433,20 +564,52 @@ async fn boot(
     pending.instance_id = Some(pod.id.clone());
     if let Err(error) = ownership.record(pending.clone()) {
         // A failed journal update must not abandon the returned instance.
-        cleanup::delete_verified(p, &pod.id, d.poll)
-            .await
-            .map_err(|e| pending.unresolved(format!("{error}; cleanup: {e}")))?;
+        if scope.owned() {
+            cleanup::delete_owned_verified(p, &pod.id, &co.boot_id, None, d.poll).await
+        } else {
+            cleanup::delete_verified(p, &pod.id, d.poll).await
+        }
+        .map_err(|e| pending.unresolved(format!("{error}; cleanup: {e}")))?;
         ownership.clear()?;
         return Err(error);
+    }
+    let mut app_target = RuntimeTarget {
+        provider: p.name().into(),
+        boot_id: co.boot_id.clone(),
+        instance_id: Some(pod.id.clone()),
+        agent_url: (!pod.agent_url.is_empty()).then(|| pod.agent_url.clone()),
+        api_url: (!pod.api_url.is_empty()).then(|| pod.api_url.clone()),
+        local_pid: None,
+        local_start_id: None,
+    };
+    // Persist the returned instance before any further fallible setup.
+    scope.record_owner(app_target.clone())?;
+    if scope.owned() && p.name() == "local" {
+        let (boot, pid, start) = p.runtime_identity(&pod.id).await?.ok_or_else(|| {
+            Error::Other("created local runtime identity cannot be verified".into())
+        })?;
+        if boot != co.boot_id {
+            return Err(Error::Other("created local runtime boot changed".into()));
+        }
+        app_target.local_pid = Some(pid);
+        app_target.local_start_id = Some(start);
+        scope.record_owner(app_target.clone())?;
     }
     check_cancel(cancel)?;
     if p.name() != "local"
         && let Some(connection) = &d.connection
-        && let Err(e) = connection.start(&mut pod, &co).await
+        && let Err(e) = if scope.owned() {
+            connection.start_owned(&mut pod, &co).await
+        } else {
+            connection.start(&mut pod, &co).await
+        }
     {
-        cleanup::pending(d, ownership).await?;
+        scope.cleanup(d, ownership).await?;
         return Err(e);
     }
+    app_target.agent_url = (!pod.agent_url.is_empty()).then(|| pod.agent_url.clone());
+    app_target.api_url = (!pod.api_url.is_empty()).then(|| pod.api_url.clone());
+    scope.record_owner(app_target)?;
     let agent = (d.new_agent)(&pod.agent_url);
     if let Some(prepared) = &mut prepared {
         prepared.keep = true;
@@ -477,7 +640,7 @@ async fn boot(
     loop {
         check_cancel(cancel)?;
         if d.clock.now() >= co.expires_at {
-            cleanup::pending(d, ownership).await?;
+            scope.cleanup(d, ownership).await?;
             return Err(events.fail(
                 "terminated",
                 "maximum lifetime reached during startup".into(),
@@ -486,9 +649,13 @@ async fn boot(
         }
         if p.name() != "local"
             && let Some(connection) = &d.connection
-            && let Err(e) = connection.attach(&mut pod).await
+            && let Err(e) = if scope.owned() {
+                connection.attach_owned(&mut pod, &co.boot_id).await
+            } else {
+                connection.attach(&mut pod).await
+            }
         {
-            cleanup::pending(d, ownership).await?;
+            scope.cleanup(d, ownership).await?;
             return Err(e);
         }
         let mut status = match read(cancel, agent.status()).await {
@@ -497,6 +664,7 @@ async fn boot(
             Err(_) => None,
         };
         if status.is_none()
+            && (p.name() != "local" || !scope.owned())
             && let Some(connection) = &d.connection
             && let Some(detail) = connection.detail()
         {
@@ -504,7 +672,7 @@ async fn boot(
         }
         if status
             .as_ref()
-            .is_some_and(|s| !s.boot_id.is_empty() && s.boot_id != co.boot_id)
+            .is_some_and(|s| (scope.owned() || !s.boot_id.is_empty()) && s.boot_id != co.boot_id)
         {
             status = None;
         }
@@ -599,7 +767,7 @@ async fn boot(
                     let s = status.as_ref().unwrap();
                     if retriable(&s.stage_detail) && p.replaceable() {
                         events.phase("image", s.stage_detail.clone());
-                        cleanup::pending(d, ownership).await?;
+                        scope.cleanup(d, ownership).await?;
                         return Ok(true);
                     }
                     let logs = read(cancel, agent.logs(20)).await.unwrap_or_default();
@@ -610,7 +778,7 @@ async fn boot(
                         s.stage_detail.clone()
                     };
                     let error = if !p.replaceable() {
-                        cleanup::pending(d, ownership).await?;
+                        scope.cleanup(d, ownership).await?;
                         format!("local run stopped: {why} (err=none)\n{logs}")
                     } else {
                         ownership.clear()?;
@@ -633,7 +801,7 @@ async fn boot(
             && p.replaceable()
         {
             events.phase("image", "host: container not started after 30m0s".into());
-            cleanup::pending(d, ownership).await?;
+            scope.cleanup(d, ownership).await?;
             return Ok(true);
         }
         if (d.clock.now() - progress).to_std().unwrap_or_default() > o.timeout
@@ -641,7 +809,7 @@ async fn boot(
         {
             let logs = read(cancel, agent.logs(20)).await.unwrap_or_default();
             check_cancel(cancel)?;
-            cleanup::pending(d, ownership).await?;
+            scope.cleanup(d, ownership).await?;
             return Err(events.fail(
                 "terminated",
                 String::new(),

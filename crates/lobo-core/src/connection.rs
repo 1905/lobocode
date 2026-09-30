@@ -199,8 +199,22 @@ impl Manager {
         fs::remove_file(dir.join("host"))?;
         Ok(())
     }
+    pub async fn start_owned(&self, i: &mut Instance, o: &CreateOpts) -> Result<()> {
+        self.start_scoped(i, o, true).await
+    }
     pub async fn start(&self, i: &mut Instance, o: &CreateOpts) -> Result<()> {
+        self.start_scoped(i, o, false).await
+    }
+    async fn start_scoped(&self, i: &mut Instance, o: &CreateOpts, owned: bool) -> Result<()> {
         let _change = mutation_lock(&self.root).await?;
+        if owned
+            && load::<Desired>(&self.root.join("desired.json"))?
+                .is_some_and(|s| s.provider != i.provider || s.id != i.id || s.boot_id != o.boot_id)
+        {
+            return Err(Error::Other(
+                "saved cloud connection belongs to another runtime".into(),
+            ));
+        }
         let desired = Desired {
             provider: i.provider.clone(),
             id: i.id.clone(),
@@ -214,7 +228,19 @@ impl Manager {
         endpoint(i, self.port);
         Ok(())
     }
+    /// Read the exact saved owner without starting a helper or changing state.
+    pub fn recorded(&self, provider: &str, id: &str) -> Result<Option<(String, u16)>> {
+        Ok(load::<Desired>(&self.root.join("desired.json"))?
+            .filter(|s| s.provider == provider && s.id == id)
+            .map(|s| (s.boot_id, s.port)))
+    }
+    pub async fn attach_owned(&self, i: &mut Instance, boot_id: &str) -> Result<()> {
+        self.attach_scoped(i, Some(boot_id)).await
+    }
     pub async fn attach(&self, i: &mut Instance) -> Result<()> {
+        self.attach_scoped(i, None).await
+    }
+    async fn attach_scoped(&self, i: &mut Instance, boot_id: Option<&str>) -> Result<()> {
         if i.provider == "local" {
             return Ok(());
         }
@@ -228,10 +254,14 @@ impl Manager {
                 "cloud connection keys are missing; stop this instance and start it again".into(),
             ));
         };
-        if s.provider != i.provider || s.id != i.id {
-            return Err(Error::Other(
-                "cloud connection belongs to another instance; run `lobo down` first".into(),
-            ));
+        if s.provider != i.provider || s.id != i.id || boot_id.is_some_and(|boot| boot != s.boot_id)
+        {
+            return Err(Error::Other(if boot_id.is_some() {
+                "Cloud connection belongs to another runtime. Stop that runtime before connecting."
+                    .into()
+            } else {
+                "cloud connection belongs to another instance; run `lobo down` first".into()
+            }));
         }
         if let Some(h) = load::<Health>(&self.root.join("health.json"))?
             && h.boot_id == s.boot_id
@@ -281,12 +311,18 @@ impl Manager {
         });
         Ok(())
     }
+    pub async fn stop_owned(&self, provider: &str, id: &str, boot_id: &str) -> Result<()> {
+        self.stop_scoped(provider, id, Some(boot_id)).await
+    }
     pub async fn stop(&self, provider: &str, id: &str) -> Result<()> {
+        self.stop_scoped(provider, id, None).await
+    }
+    async fn stop_scoped(&self, provider: &str, id: &str, boot_id: Option<&str>) -> Result<()> {
         let _change = mutation_lock(&self.root).await?;
         let Some(s) = load::<Desired>(&self.root.join("desired.json"))? else {
             return Ok(());
         };
-        if s.provider != provider || s.id != id {
+        if s.provider != provider || s.id != id || boot_id.is_some_and(|boot| boot != s.boot_id) {
             return Ok(());
         }
         fs::remove_file(self.root.join("desired.json"))?;
