@@ -86,6 +86,13 @@ impl Fixture {
             port: free_pair(),
             hooks: LocalHooks {
                 supported: || Ok(()),
+                memory: Arc::new(|| {
+                    Ok(lobo_core::local::memory::MemorySnapshot {
+                        total_bytes: 128 << 30,
+                        available_bytes: 100 << 30,
+                        metal_limit_bytes: 96 << 30,
+                    })
+                }),
                 ensure_runtime: Arc::new(Runtime(calls.clone())),
                 free_bytes: |_| Ok(1 << 50),
                 state_wait: Duration::from_secs(5),
@@ -462,4 +469,41 @@ async fn core_cancel_during_runtime_preparation_spawns_nothing() {
     assert!(matches!(op.wait().await, Err(Error::Cancelled)));
     assert!(!f.tmp.path().join("pid").exists());
     assert_eq!(events.recv().await.unwrap().phase, "cancelled");
+}
+
+#[tokio::test]
+async fn rejected_memory_has_no_startup_side_effects() {
+    for unknown in [false, true] {
+        let mut f = Fixture::new("ok").await;
+        f.p.hooks.memory = Arc::new(move || {
+            if unknown {
+                return Err(Error::Local(
+                    "fixture native measurement unavailable".into(),
+                ));
+            }
+            Ok(lobo_core::local::memory::MemorySnapshot {
+                total_bytes: 64 << 30,
+                available_bytes: 10 << 30,
+                metal_limit_bytes: 48 << 30,
+            })
+        });
+        let error =
+            f.p.rent(&opts(), CancellationToken::new(), &|_| {})
+                .await
+                .unwrap_err()
+                .to_string();
+        assert!(
+            error.contains(if unknown {
+                "measurement unavailable"
+            } else {
+                "GiB"
+            }),
+            "{error}"
+        );
+        assert_eq!(f.calls.load(Ordering::SeqCst), 0);
+        assert!(!f.p.weights.exists());
+        assert!(!f.p.state.path.exists());
+        assert!(!log_path(&f.p.state).exists());
+        assert!(!f.tmp.path().join("pid").exists());
+    }
 }
