@@ -10,6 +10,7 @@ pub mod connection;
 pub mod control;
 pub mod genkey;
 pub mod local;
+pub mod opencode;
 pub mod provider;
 pub mod release;
 
