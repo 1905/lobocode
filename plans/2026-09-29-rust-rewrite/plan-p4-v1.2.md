@@ -136,7 +136,7 @@ Every later task names the rows it satisfies. Row IDs are stable; Task 52 ticks 
 |---|---|---|
 | R-01 | Short `Build lobo-agent, zip it with release.json, scan for secrets, upload to bucket lobo`. Order: load_cfg → check_release (R2 then bucket) → store → list keys → `next_version(keys, now)` → git_info → build agent → manifest → zip → secret scan → publish → INF `released` (version, git_sha, dirty, zip) → WRN `working tree is dirty: /api/version will say git_dirty=true` if dirty → stdout `{ver}\n`. | main.go:109-173 |
 | R-02 | git_info: `git rev-parse --short HEAD` (error `git rev-parse: …`), `git status --porcelain` non-empty = dirty (error `git status: …`). whoami = `user@host`, or host alone. | main.go:175-194 |
-| R-03 | Agent build: Go `go build … ./cmd/lobo-agent`. Rust: `cargo zigbuild --release -p lobo-agent --target x86_64-unknown-linux-musl` in the git top-level dir, env `LOBO_VERSION={ver}`, its stdout+stderr → our stderr, failure `build agent: {err}`; binary copied from `target/x86_64-unknown-linux-musl/release/lobo-agent`. Manifest: `built_at` = now UTC truncated to the second, `llama_image` = `DEFAULT_LLAMA_IMAGE`, model ref from `catalog::get(DEFAULT_MODEL)`, `defaults` = `DEFAULT_DEFAULTS`. | main.go:136-161 |
+| R-03 | Agent build: Go `go build … ./cmd/lobo-agent`. Rust: `cargo zigbuild --release --locked -p lobo-agent --target x86_64-unknown-linux-musl --target-dir <top>/target` in the git top-level dir, env `LOBO_VERSION={ver}`, its stdout+stderr → our stderr, failure `build agent: {err}`; binary copied from `target/x86_64-unknown-linux-musl/release/lobo-agent`. Manifest: `built_at` = now UTC truncated to the second, `llama_image` = `DEFAULT_LLAMA_IMAGE`, model ref from `catalog::get(DEFAULT_MODEL)`, `defaults` = `DEFAULT_DEFAULTS`. | main.go:136-161 |
 
 ### up
 
@@ -760,7 +760,7 @@ Order exactly U-02. Mode switch U-05 (`term.stdout_tty`). Presign: `if o.provide
 
 **Files:** `src/cmd/logs.rs`, `src/cmd/test.rs`. Rows: L-01, E-01.
 - [ ] Failing tests: `logs -n 5` → the fake agent's `logs(5)` text on stdout unchanged (fake returns `last log line`, no newline added). `test` with fake deps whose target base is a `wiremock` server (local, free): chat stream + tool-call bodies from `lobo_core` check fixtures → stdout = chat text, two INF lines; 250-byte reply → 200 bytes + `…`; multibyte char at byte 199 → cut at the char boundary, no panic; unreachable version → `lobo not reachable at {base}: …`; invalid tool call → `{err}\n{body}`.
-- [ ] Verify: `cargo test -p lobo-cli cmd::logs && cargo test -p lobo-cli cmd::test` → ok.
+- [x] Verify: `cargo test --locked -p lobo-cli --test agent_commands` → four tests pass. Requests are cancelled without leaving work running; exact log bytes and UTF-8 preview boundaries are covered.
 - [ ] Commit: `lobo-cli: logs and test commands`.
 
 ## Task 43 — `release`
@@ -774,7 +774,7 @@ pub fn agent_build_command(top: &Path, ver: &str) -> std::process::Command;   //
 pub fn release_manifest(ver: &str, sha: &str, dirty: bool, built_at: DateTime<Utc>, built_by: &str) -> Manifest;
 ```
 - [ ] Failing tests: `git_info` on a temp `git init` repo with one commit → 7-char sha, clean; after touching a file → dirty; outside a repo → `git rev-parse: …`. `agent_build_command` program/args/env/cwd exact. `release_manifest` truncates to the second and uses the P1 pins. Command order: missing R2 → gate error before any store call (store is never built in tests).
-- [ ] Verify: `cargo test -p lobo-cli cmd::release` → ok. No test runs the real publish.
+- [x] Verify: `cargo test --locked -p lobo-cli cmd::release` → two tests pass. No test runs the real publish. Await the build child and any started publication; cancellation is checked before publication. Explicit target-dir prevents inherited CARGO_TARGET_DIR from changing the binary path.
 - [ ] Commit: `lobo-cli: release command (agent via cargo zigbuild)`.
 
 ## Task 44 — completion + SIGINT
@@ -823,7 +823,7 @@ builds:
     builder: rust
     binary: lobo
     dir: .
-    flags: [--release, -p, lobo-cli]
+    flags: [--release, --locked, -p, lobo-cli]
     env: [LOBO_VERSION={{.Version}}, LOBO_COMMIT={{.ShortCommit}}, LOBO_DATE={{.Date}}]
     targets: [x86_64-apple-darwin, aarch64-apple-darwin, x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
 ```

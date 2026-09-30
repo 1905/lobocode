@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rust CLI adds exact log output, streamed chat/tool checks and agent release publishing. Hidden `release --no-promote` preserves the shared latest manifest.
+- Local HTTP tests cover authentication, model selection, cancellation, tool failures and UTF-8 output. Release command construction and metadata tests pass; live publishing, packaging and app E2E remain pending.
+
 - Rust P4 control commands: start, status and stop call the shared core. Inline dashboards preserve Go output; boot timings go to stderr and the local timing log.
 - Ctrl-C during startup and broken JSON output wait for owned cleanup. Cleanup failures stay errors. Stop keeps issued deletes awaited after Ctrl-C.
 - Focused checks: eight Go dashboard goldens, output replay, delayed-create cancellation, failed deletion and broken-output cleanup pass. Logs, live API checks, release packaging and app implementation remain pending.

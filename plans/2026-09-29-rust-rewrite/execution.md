@@ -10,7 +10,7 @@ Authorization: the user said, "when plan is fixed start implementation in full a
 | P1 | [Workspace and protocol](plan-p1-v1.1.md) | done: 5dfe9ab, CI 36557109125 |
 | P2 | [Pod agent](plan-p2-v1.2.md) | code/CI done at ed65ecc; live E2E pending P6 |
 | P3 | [Core](plan-p3-v1.2.md) | code/CI done at 2884464; live inference pending P6 |
-| P4 | [CLI](plan-p4-v1.2.md) | in progress: control commands, dashboards and Go replay |
+| P4 | [CLI](plan-p4-v1.2.md) | handlers implemented; packaging and phase checks pending |
 | P5 | [App](plan-p5-v1.2.md) | pending P4 |
 | P6 | [Cutover](plan-p6-v1.2.md) | pending P5 |
 
@@ -168,3 +168,6 @@ The user said "continue". Resume the authorized full-auto implementation and del
 - P4 control batch implements Tasks 30–41 and the fake-binary part of 46: eight Go dashboard goldens, terminal-buffer snapshots, boot report, start/status/stop handlers and executable JSON replay. All 43 CLI tests pass with test-fakes enabled. Cancellation waits for a 121-second fake create; failed cleanup never reports completion. Broken JSON output waits for deletion. An issued down remains owned through Ctrl-C. App E2E is still pending implementation; no live provider call was made.
 
 - Five isolated PTY checks passed for the compiled fake-provider CLI: ready, q, Ctrl-C, status quit and terminal resize. Each restores canonical input, echo, signals and cursor visibility; no alternate screen is used. Both cancelled starts exit 1 after cleanup. These checks use fake providers and verify terminal behavior, not live inference. All-target/all-feature CLI clippy and workflow actionlint pass.
+
+- Control candidate ab1313c passed Rust CI 36659723042 and pod-image CI 36659723082. QA notification sent. The user reported the earlier befb354 failure; verified that all three jobs pass on the current pushed revision. Every later delivery still requires green CI.
+- P4 logs/test/release handlers implemented. Four real loopback HTTP tests and two release construction/metadata tests pass. Publication and its build child stay awaited once started. No live R2 write or GPU request was made. Cross-platform CLI packaging is next.

@@ -2004,6 +2004,7 @@ dependencies = [
  "predicates",
  "ratatui",
  "regex-lite",
+ "reqwest",
  "serde",
  "serde_json",
  "serial_test",
