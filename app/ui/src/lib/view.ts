@@ -1,4 +1,6 @@
 import type { PanelState } from '../gen/PanelState';
+import type { OpenCodeInfo } from '../gen/OpenCodeInfo';
+import type { OpenCodeResult } from '../gen/OpenCodeResult';
 import type { Step } from '../gen/Step';
 import type { Listing } from '../proto/Listing';
 import { bar, duration, gb, tps, usd } from './fmt';
@@ -193,3 +195,177 @@ export const stopping = (s: PanelState) =>
   s.is_local
     ? 'stopping llama.cpp'
     : `deleting pod on ${s.snap?.pod?.provider ?? s.provider}`;
+
+export type SettingsTab = 'local' | 'cloud' | 'defaults' | 'clients';
+export function settingsTab(value: unknown): SettingsTab | null {
+  return ['local', 'cloud', 'defaults', 'clients'].includes(value as string)
+    ? (value as SettingsTab)
+    : null;
+}
+export type ClientsState = {
+  makeDefault: boolean;
+  busy: boolean;
+  refreshing: boolean;
+  chosenPath: string | undefined;
+  info: OpenCodeInfo | null;
+  result: OpenCodeResult | null;
+  error: string;
+  generation: number;
+};
+export function createClientsState(
+  info: OpenCodeInfo | null = null,
+): ClientsState {
+  return {
+    makeDefault: true,
+    busy: false,
+    refreshing: false,
+    chosenPath: undefined,
+    info,
+    result: null,
+    error: '',
+    generation: 0,
+  };
+}
+// Only the backend's static OpenCode errors are safe for display.
+export function clientsFailure(
+  action: 'load' | 'choose' | 'configure',
+  error?: unknown,
+): string {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'kind' in error &&
+    error.kind === 'opencode' &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    error.message.length > 0 &&
+    error.message.length <= 240 &&
+    !/[\x00-\x1f\x7f]/.test(error.message)
+  )
+    return error.message;
+  return {
+    load: 'Cannot read OpenCode setup. Refresh and retry.',
+    choose:
+      'Cannot choose that OpenCode config. Choose an existing JSON or JSONC file.',
+    configure:
+      'OpenCode setup failed. Check the config and running model, then retry.',
+  }[action];
+}
+const boundedSetupText = (text: string) => text.slice(0, 240);
+export function clientsView(s: ClientsState) {
+  const i = s.info;
+  return {
+    path: s.chosenPath ?? i?.path ?? '',
+    endpoint: i?.endpoint ?? 'No active endpoint',
+    model:
+      i?.provider && i.model_alias
+        ? `${i.provider}/${i.model_alias}`
+        : 'No running model',
+    context:
+      i?.context === null || i?.context === undefined
+        ? null
+        : `${i.context.toLocaleString('en-US')} context tokens`,
+    disabled:
+      s.busy || s.refreshing || !i?.can_configure || !(s.chosenPath ?? i?.path),
+    reason: i?.reason ? boundedSetupText(i.reason) : '',
+    warnings: [
+      ...new Set([...(i?.warnings ?? []), ...(s.result?.warnings ?? [])]),
+    ]
+      .slice(0, 4)
+      .map(boundedSetupText),
+    result: s.result
+      ? 'Saved. Restart OpenCode to reload. Project settings can override this file.'
+      : '',
+  };
+}
+export function clientsRuntimeKey(s: PanelState): string {
+  const st = s.snap?.status;
+  return JSON.stringify([
+    s.phase.kind,
+    s.target,
+    s.provider,
+    s.model,
+    s.endpoint,
+    s.snap?.pod?.provider,
+    s.snap?.pod?.id,
+    st?.boot_id,
+    st?.model,
+    st?.ctx,
+    s.config?.path,
+    s.config?.set.LOBO_API_KEY,
+  ]);
+}
+export function invalidateClients(s: ClientsState) {
+  s.generation++;
+  s.refreshing = false;
+  s.result = null;
+  // Keep the target visible while making stale metadata unusable.
+  if (s.info) s.info = { ...s.info, can_configure: false };
+}
+export async function refreshClients(
+  s: ClientsState,
+  load: (path?: string) => Promise<OpenCodeInfo>,
+) {
+  const generation = ++s.generation;
+  s.refreshing = true;
+  s.error = '';
+  try {
+    const info = await load(s.chosenPath);
+    if (generation === s.generation) s.info = info;
+  } catch (error) {
+    if (generation === s.generation) {
+      if (s.info) s.info = { ...s.info, can_configure: false };
+      s.error = clientsFailure('load', error);
+    }
+  } finally {
+    if (generation === s.generation) s.refreshing = false;
+  }
+}
+export async function enterClients(
+  s: ClientsState,
+  load: (path?: string) => Promise<OpenCodeInfo>,
+) {
+  if (!s.busy && !s.refreshing) await refreshClients(s, load);
+}
+export async function chooseClients(
+  s: ClientsState,
+  choose: () => Promise<string | null>,
+  load: (path?: string) => Promise<OpenCodeInfo>,
+) {
+  if (s.busy) return;
+  s.busy = true;
+  s.error = '';
+  try {
+    const path = await choose();
+    if (path !== null) {
+      s.chosenPath = path;
+      s.result = null;
+      await refreshClients(s, load);
+    }
+  } catch (error) {
+    s.error = clientsFailure('choose', error);
+  } finally {
+    s.busy = false;
+  }
+}
+export async function submitClients(
+  s: ClientsState,
+  configure: (path: string, makeDefault: boolean) => Promise<OpenCodeResult>,
+) {
+  if (clientsView(s).disabled) return;
+  const path = clientsView(s).path,
+    makeDefault = s.makeDefault,
+    generation = s.generation;
+  s.busy = true;
+  s.error = '';
+  s.result = null;
+  try {
+    const result = await configure(path, makeDefault);
+    if (generation === s.generation) s.result = result;
+  } catch (error) {
+    if (generation === s.generation)
+      s.error = clientsFailure('configure', error);
+  } finally {
+    s.busy = false;
+  }
+}

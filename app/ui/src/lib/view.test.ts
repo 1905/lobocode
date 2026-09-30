@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest';
 import type { PanelState } from '../gen/PanelState';
 import type { LocalMemory } from '../gen/LocalMemory';
+import type { OpenCodeInfo } from '../gen/OpenCodeInfo';
+import type { OpenCodeResult } from '../gen/OpenCodeResult';
 import * as view from './view';
 import cases from '../fixtures/time_cases.json';
 const fixtures = import.meta.glob<{
@@ -147,4 +149,227 @@ test('unavailable memory preserves the error and never invents byte values', () 
     values: null,
   });
   expect(view.canStart(s)).toBe(false);
+});
+
+const openCodeInfo: OpenCodeInfo = {
+  path: '/example/config/opencode.jsonc',
+  endpoint: 'http://127.0.0.1:8931/v1',
+  provider: 'lobo-local',
+  model_alias: 'running-q6',
+  context: 8192,
+  can_configure: true,
+  reason: null,
+  warnings: [],
+};
+const openCodeResult: OpenCodeResult = {
+  path: openCodeInfo.path,
+  provider: 'lobo-local',
+  model_alias: 'running-q6',
+  changed: true,
+  message: 'Saved.',
+  warnings: [],
+};
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+test('Clients starts checked and preserves explicit uncheck and chosen path across refresh', async () => {
+  const state = view.createClientsState(openCodeInfo);
+  expect(state.makeDefault).toBe(true);
+  state.makeDefault = false;
+  const path = '/example/custom chosen config.jsonc';
+  await view.chooseClients(
+    state,
+    async () => path,
+    async (selected) => {
+      expect(selected).toBe(path);
+      return { ...openCodeInfo, path: selected! };
+    },
+  );
+  await view.refreshClients(state, async (selected) => {
+    expect(selected).toBe(path);
+    return {
+      ...openCodeInfo,
+      path: selected!,
+      model_alias: 'actual-running-q8',
+    };
+  });
+  expect(state.makeDefault).toBe(false);
+  expect(view.clientsView(state)).toMatchObject({
+    path,
+    model: 'lobo-local/actual-running-q8',
+    endpoint: 'http://127.0.0.1:8931/v1',
+    context: '8,192 context tokens',
+    disabled: false,
+  });
+  await view.chooseClients(
+    state,
+    async () => null,
+    async () => {
+      throw new Error('cancel must not load');
+    },
+  );
+  expect(view.clientsView(state).path).toBe(path);
+  expect(state.makeDefault).toBe(false);
+});
+test('Clients captures submission values and blocks immediate duplicate submissions', async () => {
+  const state = view.createClientsState(openCodeInfo);
+  state.makeDefault = false;
+  const pending = deferred<OpenCodeResult>();
+  const calls: [string, boolean][] = [];
+  const configure = (path: string, makeDefault: boolean) => {
+    calls.push([path, makeDefault]);
+    return pending.promise;
+  };
+  const first = view.submitClients(state, configure);
+  state.makeDefault = true;
+  const second = view.submitClients(state, configure);
+  expect(state.busy).toBe(true);
+  expect(view.clientsView(state).disabled).toBe(true);
+  expect(calls).toEqual([[openCodeInfo.path, false]]);
+  pending.resolve(openCodeResult);
+  await Promise.all([first, second]);
+  expect(state.busy).toBe(false);
+  expect(view.clientsView(state).result).toBe(
+    'Saved. Restart OpenCode to reload. Project settings can override this file.',
+  );
+});
+test('Clients rejects unsafe error text, clears busy and retains restrictions after success', async () => {
+  const state = view.createClientsState({
+    ...openCodeInfo,
+    warnings: ['This provider is disabled.'],
+  });
+  await view.submitClients(state, async () => {
+    throw { message: 'secret-key ' + 'x'.repeat(5000) };
+  });
+  expect(state.busy).toBe(false);
+  expect(state.error).toBe(view.clientsFailure('configure'));
+  expect(state.error.length).toBeLessThan(160);
+  expect(state.error).not.toContain('secret-key');
+  expect(
+    view.clientsFailure('configure', {
+      kind: 'opencode',
+      message: 'x'.repeat(5000),
+    }),
+  ).toBe(view.clientsFailure('configure'));
+  await view.submitClients(state, async () => {
+    throw {
+      kind: 'opencode',
+      message: 'Runtime authentication failed. Check the API key.',
+    };
+  });
+  expect(state.error).toBe('Runtime authentication failed. Check the API key.');
+  await view.submitClients(state, async () => ({
+    ...openCodeResult,
+    changed: false,
+    warnings: ['This provider is disabled.'],
+  }));
+  expect(view.clientsView(state).warnings).toEqual([
+    'This provider is disabled.',
+  ]);
+  expect(view.clientsView(state).result).toContain(
+    'Project settings can override this file.',
+  );
+});
+test('re-entering Clients during Configure keeps the operation and success visible', async () => {
+  const state = view.createClientsState(openCodeInfo);
+  state.makeDefault = false;
+  const pending = deferred<OpenCodeResult>();
+  const submit = view.submitClients(state, () => pending.promise);
+  let loads = 0;
+  await view.enterClients(state, async () => {
+    loads++;
+    return openCodeInfo;
+  });
+  expect(loads).toBe(0);
+  expect(state.busy).toBe(true);
+  expect(state.makeDefault).toBe(false);
+  pending.resolve(openCodeResult);
+  await submit;
+  expect(state.result).toEqual(openCodeResult);
+  expect(view.clientsView(state).result).toContain('Saved. Restart OpenCode');
+});
+test('Clients disables setup without Ready metadata and ignores stale refresh results', async () => {
+  const state = view.createClientsState({
+    ...openCodeInfo,
+    can_configure: false,
+    reason: 'Start a runtime first.',
+  });
+  let calls = 0;
+  await view.submitClients(state, async () => {
+    calls++;
+    return openCodeResult;
+  });
+  expect(calls).toBe(0);
+  expect(view.clientsView(state).path).toBe(openCodeInfo.path);
+  expect(view.clientsView(state).reason).toBe('Start a runtime first.');
+  const old = deferred<OpenCodeInfo>();
+  const first = view.refreshClients(state, () => old.promise);
+  expect(view.clientsView(state).disabled).toBe(true);
+  await view.refreshClients(state, async () => ({
+    ...openCodeInfo,
+    model_alias: 'new-runtime',
+  }));
+  old.resolve(openCodeInfo);
+  await first;
+  expect(view.clientsView(state).model).toBe('lobo-local/new-runtime');
+  expect(state.refreshing).toBe(false);
+});
+test('a valid chosen file works after invalid default discovery', async () => {
+  const state = view.createClientsState();
+  await view.refreshClients(state, async () => {
+    throw new Error('invalid default');
+  });
+  expect(view.clientsView(state).disabled).toBe(true);
+  const path = '/example/valid/opencode.json';
+  await view.chooseClients(
+    state,
+    async () => path,
+    async (selected) => {
+      expect(selected).toBe(path);
+      return { ...openCodeInfo, path };
+    },
+  );
+  expect(view.clientsView(state)).toMatchObject({ path, disabled: false });
+  expect(state.error).toBe('');
+});
+test('runtime changes invalidate in-flight success; telemetry ticks do not change Clients runtime key', async () => {
+  const state = view.createClientsState(openCodeInfo);
+  const pending = deferred<OpenCodeResult>();
+  const submit = view.submitClients(state, () => pending.promise);
+  view.invalidateClients(state);
+  pending.resolve(openCodeResult);
+  await submit;
+  expect(state.result).toBeNull();
+  expect(view.clientsView(state).disabled).toBe(true);
+  const runtime = structuredClone(f('ready_local').state);
+  const key = view.clientsRuntimeKey(runtime);
+  runtime.snap!.at = '2030-01-01T00:00:00Z';
+  runtime.snap!.status!.idle_s++;
+  runtime.snap!.status!.llama!.gen_tps++;
+  expect(view.clientsRuntimeKey(runtime)).toBe(key);
+  runtime.snap!.status!.boot_id = 'replacement-boot';
+  expect(view.clientsRuntimeKey(runtime)).not.toBe(key);
+});
+test('Clients bounds reason and warnings without truncating the submitted file path', () => {
+  const path = `/example/${'long-folder/'.repeat(60)}opencode.jsonc`;
+  const state = view.createClientsState({
+    ...openCodeInfo,
+    path,
+    reason: 'x'.repeat(1000),
+    warnings: Array.from({ length: 8 }, (_, i) => `${i}${'x'.repeat(1000)}`),
+  });
+  expect(view.clientsView(state).path).toBe(path);
+  expect(view.clientsView(state).reason.length).toBe(240);
+  expect(view.clientsView(state).warnings).toHaveLength(4);
+  expect(view.clientsView(state).warnings.every((w) => w.length <= 240)).toBe(
+    true,
+  );
+  expect(view.settingsTab('clients')).toBe('clients');
+  expect(view.settingsTab('unexpected')).toBeNull();
 });

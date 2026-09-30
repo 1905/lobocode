@@ -33,7 +33,8 @@
         start: api.start,
         stop: api.stop,
         dismiss: api.dismiss,
-        settings: api.openSettings,
+        settings: () => api.openSettings(),
+        clients: () => api.openSettings('clients'),
         reveal: api.revealConfig,
         quit: api.quit,
       } as Record<string, () => Promise<void>>
@@ -94,6 +95,7 @@
         {panel}
         {nowMs}
         stop={() => action('stop')}
+        openCode={() => action('clients')}
         copy={(kind) =>
           perform(() =>
             kind === 'key'

@@ -6,6 +6,7 @@
   import Panel from './panel/Panel.svelte';
   import Settings from './settings/Settings.svelte';
   import Render from './render/Render.svelte';
+  import { settingsTab } from './lib/view';
   const params = new URLSearchParams(location.search);
   const view = params.get('view') ?? 'panel';
   let panel = $state<PanelState>();
@@ -77,6 +78,7 @@
 
 <div bind:this={surface} class="surface">
   {#if view === 'render'}<Render />{:else if view === 'settings'}<Settings
+      initialTab={settingsTab(params.get('tab')) ?? 'local'}
     />{:else if panel}<Panel {panel} nowMs={now} />{:else}<p
       class="dim"
       style="padding:14px"

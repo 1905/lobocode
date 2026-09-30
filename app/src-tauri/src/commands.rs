@@ -141,8 +141,18 @@ pub async fn configure_opencode(
     c.inner().configure_opencode(path, make_default).await
 }
 #[tauri::command]
-pub fn open_settings(app: tauri::AppHandle) -> Result<()> {
-    windows::show(&app, "settings").map_err(error)
+pub fn open_settings(app: tauri::AppHandle, tab: Option<String>) -> Result<()> {
+    if tab
+        .as_deref()
+        .is_some_and(|tab| !matches!(tab, "local" | "cloud" | "defaults" | "clients"))
+    {
+        return Err(error("Unknown settings tab."));
+    }
+    windows::show_settings(&app, tab).map_err(error)
+}
+#[tauri::command]
+pub fn consume_settings_tab(app: tauri::AppHandle) -> Option<String> {
+    windows::consume_settings_tab(&app)
 }
 #[tauri::command]
 pub fn reveal_config(c: C<'_>, app: tauri::AppHandle) -> Result<()> {

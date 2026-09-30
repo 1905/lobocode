@@ -8,11 +8,13 @@
     nowMs,
     copy,
     stop,
+    openCode,
   }: {
     panel: PanelState;
     nowMs: number;
     copy: (kind: 'url' | 'key') => Promise<void>;
     stop: () => void;
+    openCode: () => void;
   } = $props();
   const v = $derived(ready(panel, nowMs));
   let copied = $state<string | null>(null);
@@ -42,6 +44,9 @@
         }}
       />
     </div>{/each}
+  <div class="row">
+    <LinkButton label="OpenCode…" tone="cyan" onclick={openCode} />
+  </div>
   <div class="row tiles">
     {#each [{ label: 'gen', value: v.gen }, { label: 'prompt', value: v.prompt }] as tile}<div
         class="box tile"

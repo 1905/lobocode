@@ -50,12 +50,13 @@ pub fn run() {
             commands::choose_opencode_config,
             commands::configure_opencode,
             commands::open_settings,
+            commands::consume_settings_tab,
             commands::reveal_config,
             commands::open_config,
             commands::quit
         ])
         .setup(|app| {
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            app.set_activation_policy(tauri::ActivationPolicy::Regular);
             let handle = app.handle().clone();
             tray::build(&handle)?;
             let prefs_dir = app.path().app_config_dir()?;
