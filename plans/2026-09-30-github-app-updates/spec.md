@@ -6,6 +6,8 @@
 
 Approved by the user on 2026-09-30. This approves the design and preparation of the versioned implementation plan. The release hold remains active.
 
+The user also approved plan v1.0 on 2026-09-30 with the explicit limit: "do plan only, not code". Implementation has not started and requires a later user request.
+
 Plan preparation clarified the read-only inspection paths, the constrained release-page command, and version-bound signatures. These implement the approved runtime-safety and no-downgrade requirements. The implementation plan records their exact files and tests.
 
 ## TL;DR

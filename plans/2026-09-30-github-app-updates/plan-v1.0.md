@@ -1,7 +1,9 @@
 # GitHub-only App Updates Implementation Plan v1.0
 
 **Date:** 2026-09-30
-**Status:** draft
+**Status:** approved
+**Approval:** 2026-09-30 — user approved the plan with the explicit limit: "do plan only, not code".
+**Execution authorization:** Planning only. Do not create the implementation worktree, dispatch implementers, change product code, run implementation tests, or set up signing keys until the user requests implementation. The release hold remains active.
 **Spec:** [./spec.md](./spec.md) — approved on 2026-09-30
 **Goal:** Update the standalone ARM64 Mac app from signed public GitHub Releases without a developer-owned server.
 **Architecture:** One Rust service owns discovery, verified download bytes, installation, and restart. The existing controller and shared operation lock prevent conflicting runtime work. GitHub Actions assembles and validates a draft release before publication and Homebrew formula delivery.
@@ -34,11 +36,11 @@ Commands below are job commands executed at the feature checkout root on the nam
 
 The inspected committed Rust baseline is `adf8a25` on `feat/rust`. The primary checkout also contains uncommitted public-image work. Starting from the current `master` would not supply the same Tauri application.
 
-**Proposed exception for approval:** create a clean `feat/github-app-updates` worktree from `adf8a25`, then bring in only this feature's approved planning documents. Do not copy the uncommitted image changes. This is an explicit exception to the `plan` skill's clean `master`/`dev`/`main` prerequisite. Ask for this exception with plan approval, once. Without that approval, wait for an approved clean Rust base; do not begin code changes.
+**Approved future execution base:** the user approved the proposed clean `feat/github-app-updates` worktree from `adf8a25`, with only this feature's approved planning documents added. This permits an exception to the `plan` skill's clean `master`/`dev`/`main` prerequisite when implementation is later requested. Do not copy the uncommitted image changes. The explicit planning-only limit means no worktree creation or implementation now.
 
 The proposed worktree path is `/Users/kass/dev/lobocode-github-app-updates`. Check for an existing worktree/branch before creating either. If one exists, inspect it and reuse it only if it belongs to this feature.
 
-Plan approval authorizes preparation and implementation in that isolated worktree. It does not authorize pushing a branch or publishing. GitHub-hosted macOS tests require an authorized CI push/dispatch. If that access is still held, finish the available code/UI/Dell work and leave the macOS gates explicitly pending. Do not run those tests on the laptop to bypass the restriction.
+This approval covers the plan only. A later implementation request is required before executing any task below. Pushing a branch or publishing also remains held. During future authorized implementation, GitHub-hosted macOS tests require an authorized CI push/dispatch. If that access is still held, finish the available authorized code/UI/Dell work and leave the macOS gates explicitly pending. Do not run those tests on the laptop to bypass the restriction.
 
 ## File map
 
@@ -204,7 +206,7 @@ Derive release links from the validated candidate version under `https://github.
 
 This gate runs at execution time, not during this planning turn.
 
-- [ ] Confirm plan and the explicit worktree-base exception are approved. Read the current project/global instructions and both feature documents.
+- [ ] Read the recorded plan and worktree-base approvals. Confirm a later user instruction authorizes implementation. Read the current project/global instructions and both feature documents.
 - [ ] Inspect `git status --short`, `git worktree list`, and the committed Rust baseline. Preserve the dirty primary checkout.
 - [ ] Create the isolated worktree at the approved base and copy only this feature's planning documents from their committed revision. Record base/plan commit IDs in the execution notes inside this plan.
 - [ ] On Dell, run `cargo test --locked -p lobo-core --lib local::state::tests` and `cargo check --locked -p lobo-core`. Expect the existing state tests and compile check to pass.
