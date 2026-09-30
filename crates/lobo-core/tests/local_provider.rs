@@ -49,12 +49,12 @@ fn opts() -> CreateOpts {
 fn free_pair() -> u16 {
     static USED: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
     let mut used = USED.lock().unwrap();
-    for _ in 0..100 {
-        let first = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let p = first.local_addr().unwrap().port();
-        if p < 65535
-            && !used.contains(&p)
+    // Port zero chooses the ephemeral range, where unrelated outbound sockets
+    // can take the port after this probe closes. Use distinct low pairs instead.
+    for p in (10_000..30_000u16).step_by(2) {
+        if !used.contains(&p)
             && !used.contains(&(p + 1))
+            && let Ok(_first) = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, p))
             && std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, p + 1)).is_ok()
         {
             used.extend([p, p + 1]);
@@ -351,10 +351,8 @@ impl EnsureRuntime for CancelRuntime {
 async fn cancelled_runtime_cannot_spawn() {
     let mut f = Fixture::new("ok");
     f.p.hooks.ensure_runtime = Arc::new(CancelRuntime);
-    assert!(matches!(
-        f.p.rent(&opts(), CancellationToken::new(), &|_| {}).await,
-        Err(Error::Cancelled)
-    ));
+    let result = f.p.rent(&opts(), CancellationToken::new(), &|_| {}).await;
+    assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
     assert!(!f.tmp.path().join("pid").exists());
 }
 

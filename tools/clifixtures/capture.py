@@ -140,6 +140,12 @@ def cases_capture(binary, root, out):
             case["stderr_match"] = "prefix"
         elif case.get("json_error"):
             case["stderr_match"] = "json_error"
+            # Go versions differ in decoder diagnostics. The CLI-owned prefix
+            # is stable and is what the Rust parity contract compares.
+            prefix = "error: config set --stdin: want a JSON object of strings:"
+            if not case["stderr"].startswith(prefix):
+                raise RuntimeError(f"missing CLI error prefix: {case['name']}")
+            case["stderr"] = prefix + " [JSON decoder error]\n"
         elif case.get("os_error"):
             case["stderr_match"] = "os_error"
         elif re.search(r"^\d\d:\d\d:\d\d ", result.stderr):

@@ -158,3 +158,5 @@ The user said "continue". Resume the authorized full-auto implementation and del
 - P4 baseline remains master 3117f9b. Go CLI/TUI/config source diff is empty. Captured 53 isolated Go CLI cases and 19 help outputs; replay implementation is next.
 
 - P4 first CLI batch: 27 Rust test functions pass, including all 53 Go replay cases and 17 help paths. Real terminal Save/Escape checks passed; build-info override printed lobo 9.9.9. Captured fixtures regenerate without drift. CLI lint and Go capture vet passed. Control/dashboard/release handlers remain pending.
+
+- First CLI candidate befb354 passed pod-image CI 36657068951, but Rust CI 36657068815 failed. Ubuntu exposed version-dependent Go JSON decoder wording; the fixture now records the stable CLI-owned prefix. Apple Silicon exposed an ephemeral-port collision in a local process test; fixtures now allocate unique low port pairs and never re-probe a pair already assigned to another test. Focused replay and repeated process tests pass locally; corrected CI remains pending.

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rust CI repair: normalize version-dependent Go JSON decoder messages in CLI fixtures. Local process tests use unique ports outside the usual outgoing-connection range.
+- Focused checks: all 53 CLI replay cases and repeated local process tests pass. Cross-platform CI is pending.
+
 - Rust P4 partial CLI: config commands and terminal wizard, help, API-key generation, model listing and the shared local supervisor entry. The Go CLI remains the installed default.
 - Checks: 27 Rust test functions pass, covering 53 Go CLI replay cases, help metadata, key rotation and local flags. Isolated terminal Save/Escape smoke tests pass. Live control commands, dashboards, release packaging and candidate CI remain pending.
 
