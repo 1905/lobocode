@@ -166,3 +166,8 @@ Full-auto delivery uses required CI and smoke tests first, then QA notification,
 ## As-built P1
 
 Completed on feat/rust at 5dfe9ab. Rust CI 36557109125 passed. The protocol library has 35 passing tests, 15 JSON fixtures, a Go-generated model catalog and 22 generated TypeScript types. No Rust agent, CLI or desktop application ships in P1. Full rewrite acceptance remains pending.
+
+
+### P3 as built — 2026-09-30
+
+Shared core implementation passed Ubuntu and Apple Silicon CI at 2884464. Owned startup completion, persistent uncertain-create recovery and local process-group cleanup are implemented and tested. CLI/app consumers and full local/cloud inference remain pending P4–P6. See execution.md for the verified runs and current phase.

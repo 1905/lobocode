@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Rust P3 start control: owned worker completion, cancellation during cloud/local startup, persistent recovery of uncertain creates, shared boot progress and bad-host replacement.
-- Workspace tests pass, including 24 start-loop tests, 13 real local-process tests and the public API contract test. These cover a 121-second create, full/closed event queues, failed cleanup and worker panic. The Go interop checks were not enabled in this run; one network test was ignored. Full phase-close CI and live inference remain pending.
+- Workspace tests pass, including 24 start-loop tests, 13 real local-process tests and the public API contract test. These cover a 121-second create, full/closed event queues, failed cleanup and worker panic. The Go interop checks were not enabled in this run; one network test was ignored. Ubuntu, Apple Silicon and pod-image CI passed at 2884464. Explicit Go interop and Go regression checks also passed. Live inference remains pending.
 
 - Rust P3 partial start/stop ownership: persistent pending-operation records, process locks, conservative reconciliation and verified cleanup. Start integration remains pending.
 - Tests cover record reopen, lock cancellation, corrupt files, ambiguous listings and cleanup that preserves pre-existing instances. No live provider request was made.

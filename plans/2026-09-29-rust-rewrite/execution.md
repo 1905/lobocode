@@ -9,8 +9,8 @@ Authorization: the user said, "when plan is fixed start implementation in full a
 |---|---|---|
 | P1 | [Workspace and protocol](plan-p1-v1.1.md) | done: 5dfe9ab, CI 36557109125 |
 | P2 | [Pod agent](plan-p2-v1.2.md) | code/CI done at ed65ecc; live E2E pending P6 |
-| P3 | [Core](plan-p3-v1.2.md) | implementation complete; phase-close checks/CI pending |
-| P4 | [CLI](plan-p4-v1.2.md) | pending P3 |
+| P3 | [Core](plan-p3-v1.2.md) | code/CI done at 2884464; live inference pending P6 |
+| P4 | [CLI](plan-p4-v1.2.md) | in progress: CLI boundary and Go fixtures |
 | P5 | [App](plan-p5-v1.2.md) | pending P4 |
 | P6 | [Cutover](plan-p6-v1.2.md) | pending P5 |
 
@@ -153,3 +153,6 @@ The user said "continue". Resume the authorized full-auto implementation and del
 
 - Resume checks: explicit Go/Rust interop passed (3 tests); workspace formatting and tracked fixture/TypeScript drift checks passed.
 - CLI research: clap supports optional boolean values with require_equals/default_missing_value, and ValueSource::CommandLine preserves explicit false flags (https://docs.rs/clap/latest/clap/struct.Arg.html, https://docs.rs/clap/latest/clap/struct.ArgMatches.html). Ratatui supplies terminal restoration hooks (https://ratatui.rs/examples/apps/panic/); inquire distinguishes cancellation and interruption (https://docs.rs/inquire/latest/inquire/error/enum.InquireError.html). Local CLI verification remains pending.
+
+- P3 complete for frontend integration at 2884464: Rust CI 36654674144 passed on Ubuntu and Apple Silicon; static agent and image CI 36654674125 passed. Full Go regression passed locally. Live local/cloud inference remains P6.
+- P4 baseline remains master 3117f9b. Go CLI/TUI/config source diff is empty. Captured 53 isolated Go CLI cases and 19 help outputs; replay implementation is next.
