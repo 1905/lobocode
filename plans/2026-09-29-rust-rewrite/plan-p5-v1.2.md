@@ -18,6 +18,30 @@
 
 Extra rule for P5 implementers: never launch the built app, never run `cargo tauri dev`, never start `lobo-core` providers for real. The orchestrator does all app runs (Task 40).
 
+## Implementation record — 2026-09-30
+
+This record separates implementation from acceptance. Unchecked task lists below remain the original detailed acceptance inventory.
+
+| Scope | Evidence | Remaining |
+|---|---|---|
+| Shared app/core/protocol APIs, Tasks 3–8 | 255 core/proto tests; shared Rust CI 36664236686 and image CI 36664236708 green at 914ac19 | Final live inference in P6 |
+| Separate app, reducer, controller, IPC, tray, windows, supervisor, Tasks 2 and 9–25 | 36 app Rust tests; clippy/fmt; owned real-core fake-provider cancellation at 20/121 seconds, failed delete, panic, Quit and retry | Native OS behavior and remaining timing/notification acceptance |
+| Svelte panel/settings and render route, Tasks 26–34 | 8 UI tests; svelte-check has zero errors/warnings; production UI build passes | Native WKWebView E2E |
+| Make/CI, Tasks 35–36 | Actionlint passes; app checks install frozen UI dependencies and verify the bundle | First app bundle build and clean runner job in progress |
+| Renders, Task 37 | All 41 Chromium fixture screenshots inspected; four color/layout defects fixed; recapture has zero console errors, zero overflow and 14 computed-color assertions | Review page generated; QA notification pending |
+| Tasks 38–42 | Swift source retained until render verification | Removal, docs, installed app tests and P5 close |
+
+As-built corrections:
+- Use project-pinned `@tauri-apps/cli` 2.12.0 through `app/ui/node_modules/.bin/tauri`, with `app/` as the build working directory. Do not depend on the host's older global `cargo-tauri`. `make mac` installs the frozen UI dependencies first.
+- Rust app uses Tauri 2.12.0 and tauri-build 2.7.0. UI uses Svelte 5.57.1, TypeScript 6.0.3, Vite 8.3.1, Vitest 5.0.2 and pnpm 9.11.0. Exact versions and lockfiles are committed with the app.
+- The `custom-protocol` Cargo feature maps to `tauri/custom-protocol` for bundled builds. The root workspace remains unchanged.
+- Model listing reads the configured weights path before setup is complete. Starting still requires shared strict config validation.
+- Failed Quit keeps polling alive, shows the cleanup error, and retries cleanup on the next Quit. Startup remains blocked only while Quit owns cleanup.
+- The notification plugin's desktop `request_permission` returns Granted without an OS prompt. No redundant permission call is made. Actual notification delivery remains a native acceptance check.
+- Icon tile pixel (512, 100) lies on the border. The background-color test samples (512, 110). The planned rounded-rectangle approximation remains documented.
+- Browser captures use Chromium: the installed managed CLI did not install a WebKit binary. These renders do not establish native WKWebView acceptance.
+
+
 ---
 
 ## Decisions (scored for the goal "parity, no drift, works behind the notch")
@@ -42,7 +66,7 @@ Extra rule for P5 implementers: never launch the built app, never run `cargo tau
 - **A. `cargo tauri build --bundles app`, then today's `hdiutil` step — 8/10.** Same image as `fix/app-silent` (`Makefile:61-69`), proven on `macos-15`. Loses 2: one more Makefile block than the bundler.
 - **B. `cargo tauri build --bundles dmg` — 6/10.** Tauri's `bundle_dmg.sh` drives Finder via AppleScript to lay out the window; on headless CI that is a known fragile step (not measured here). Also names the file `lobocode_<ver>_aarch64.dmg`, so release.yml changes.
 
-**D5. Where `macos/` is removed:** here, in P5. Spec "File-level changes": "Removed on the branch … in the phase that replaces each part." P5 replaces the app. Removal is the last code task (Task 38), after the user approved the renders, and after the Swift baseline renders were taken (Task 0).
+**D5. Where `macos/` is removed:** here, in P5. Spec "File-level changes": "Removed on the branch … in the phase that replaces each part." P5 replaces the app. Removal is the last code task (Task 38), after render verification under the existing full-auto authorization, and after the Swift baseline renders were taken (Task 0).
 
 ---
 

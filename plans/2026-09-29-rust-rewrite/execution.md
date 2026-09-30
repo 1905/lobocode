@@ -193,3 +193,9 @@ The user said "continue". Resume the authorized full-auto implementation and del
 - P4 complete at runtime/package revision fcb8aff. All six packaging criteria, temporary Homebrew install/test, default-feature seam check and 51 CLI tests pass. Rust CI 36662757471 and pod image 36662757454 are green. Final live checks remain P6. P5 shared config/protocol and separate app workspace implementation started.
 
 - P5 shared API batch: UpRequest/Readiness and generated TS, readiness/validation, resolve_up and free_bytes_nearest implemented. 255 proto/core tests pass (one ignored network check), clippy passes. Separate app scaffold, reducer and controller are uncommitted work in progress.
+
+- Shared P5 API candidate 914ac19 passed Rust CI 36664236686 and image CI 36664236708. All three Rust jobs are green.
+- P5 native backend/UI candidate implemented. 36 Rust and 8 UI tests pass, including failed Quit retry, 121-second cleanup ownership and running-state endpoint selection. UI check has zero errors/warnings. App CI now installs frozen dependencies, checks generated files and builds/verifies a native bundle. Local bundle build is running; clean-runner app CI and actual app E2E remain pending.
+- All 41 browser fixtures were inspected in Chromium. Selected colors, the OFF icon preview and settings header/actions needed fixes; recapture is in progress. This is renderer validation, not native app E2E.
+
+- Renderer recapture passes: 41 screenshots, 14 computed-color checks, zero console errors/warnings and zero horizontal overflow. Settings differs from Swift by one CSS pixel in height. Self-contained review page generated in bin/app-renders/review/index.html. Native acceptance remains pending.

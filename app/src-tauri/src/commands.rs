@@ -1,0 +1,136 @@
+use crate::{backend::Result, controller::Controller, types::*, windows};
+use std::{collections::BTreeMap, sync::Arc};
+use tauri::{Manager, State};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
+type C<'a> = State<'a, Arc<Controller>>;
+fn error(e: impl std::fmt::Display) -> AppError {
+    AppError {
+        kind: "app".into(),
+        message: e.to_string(),
+    }
+}
+#[tauri::command]
+pub fn get_state(c: C<'_>) -> PanelState {
+    c.state()
+}
+#[tauri::command]
+pub fn start(c: C<'_>) {
+    c.inner().start();
+}
+#[tauri::command]
+pub fn stop(c: C<'_>) {
+    c.inner().stop();
+}
+#[tauri::command]
+pub fn dismiss(c: C<'_>) {
+    c.inner().dismiss();
+}
+#[tauri::command]
+pub fn choose_target(c: C<'_>, t: Target) {
+    c.choose(t);
+}
+#[tauri::command]
+pub fn set_provider(c: C<'_>, v: String) {
+    c.set_provider(v);
+}
+#[tauri::command]
+pub fn set_model(c: C<'_>, v: String) {
+    c.set_model(v);
+}
+#[tauri::command]
+pub async fn refresh(c: C<'_>, models: bool) -> Result<()> {
+    c.refresh(models).await;
+    Ok(())
+}
+#[tauri::command]
+pub async fn copy_api_key(c: C<'_>, app: tauri::AppHandle) -> Result<()> {
+    let key = c.backend.api_key().await?;
+    app.clipboard().write_text(key).map_err(error)
+}
+#[tauri::command]
+pub fn copy_text(app: tauri::AppHandle, s: String) -> Result<()> {
+    app.clipboard().write_text(s).map_err(error)
+}
+#[tauri::command]
+pub async fn config_show(c: C<'_>) -> Result<lobo_proto::ConfigShow> {
+    Ok(c.backend.config().await?.0)
+}
+#[tauri::command]
+pub async fn config_save(c: C<'_>, set: BTreeMap<String, String>) -> Result<()> {
+    c.backend.save(set).await?;
+    c.load_config(true).await;
+    c.refresh(false).await;
+    Ok(())
+}
+#[tauri::command]
+pub async fn local_models(c: C<'_>) -> Result<lobo_proto::Listing> {
+    c.backend.models().await
+}
+#[tauri::command]
+pub fn catalog() -> Vec<lobo_proto::catalog::Model> {
+    lobo_proto::catalog::all().to_vec()
+}
+#[tauri::command]
+pub fn free_bytes(path: String) -> Option<u64> {
+    lobo_core::local::free_bytes_nearest(std::path::Path::new(&path))
+}
+#[tauri::command]
+pub fn gen_api_key() -> String {
+    lobo_core::genkey::new_api_key()
+}
+#[tauri::command]
+pub async fn choose_weights(app: tauri::AppHandle, start: String) -> Result<Option<String>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cfg = lobo_core::config::Laptop {
+            weights_dir: start,
+            ..Default::default()
+        };
+        app.dialog()
+            .file()
+            .set_directory(cfg.weights())
+            .blocking_pick_folder()
+            .and_then(|p| p.into_path().ok())
+            .map(|p| p.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(error)
+}
+#[tauri::command]
+pub fn open_settings(app: tauri::AppHandle) -> Result<()> {
+    windows::show(&app, "settings").map_err(error)
+}
+#[tauri::command]
+pub fn reveal_config(c: C<'_>, app: tauri::AppHandle) -> Result<()> {
+    app.opener()
+        .reveal_item_in_dir(c.backend.config_path())
+        .map_err(error)
+}
+#[tauri::command]
+pub fn open_config(c: C<'_>, app: tauri::AppHandle) -> Result<()> {
+    let p = c.backend.config_path();
+    if p.exists() {
+        app.opener()
+            .open_path(p.to_string_lossy(), None::<&str>)
+            .map_err(error)?;
+    }
+    Ok(())
+}
+#[tauri::command]
+pub async fn quit(c: C<'_>, app: tauri::AppHandle) -> Result<()> {
+    c.inner().quit().await?;
+    app.exit(0);
+    Ok(())
+}
+pub fn request_quit(app: &tauri::AppHandle) {
+    let a = app.clone();
+    let c = app.state::<Arc<Controller>>().inner().clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = c.quit().await {
+            eprintln!("quit: {e}");
+        } else {
+            a.exit(0);
+        }
+    });
+}

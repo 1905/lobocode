@@ -1,0 +1,6 @@
+dist
+node_modules
+src/proto
+src/gen
+src/fixtures
+pnpm-lock.yaml

@@ -1,0 +1,8 @@
+{
+  "duration": [[0,"0:00"],[72,"1:12"],[8342,"2:19:02"],[-5,"0:00"],[59.6,"1:00"]],
+  "kill_left": [
+    {"kill_in_s":1634,"since_snap_s":34,"processing":0,"left_s":1600,"menu":"27m"},
+    {"kill_in_s":1634,"since_snap_s":34,"processing":1,"left_s":1634,"menu":"28m"},
+    {"kill_in_s":10,"since_snap_s":40,"processing":0,"left_s":0,"menu":"0m"}
+  ]
+}

@@ -14,3 +14,8 @@ boots.jsonl
 macos/.build/
 .superpowers/
 target/
+
+app/src-tauri/target/
+app/src-tauri/gen/
+app/ui/node_modules/
+app/ui/dist/

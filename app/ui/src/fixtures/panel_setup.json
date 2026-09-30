@@ -1,0 +1,57 @@
+{
+  "name": "setup",
+  "now_ms": 1790683200000,
+  "state": {
+    "boot_progress": 0.0,
+    "boot_start_ms": null,
+    "boot_steps": [
+      "rent",
+      "container",
+      "tunnel",
+      "gpu",
+      "download",
+      "load",
+      "ready"
+    ],
+    "catalog_ids": [
+      "q8",
+      "q6"
+    ],
+    "config": {
+      "exists": false,
+      "path": "/Users/you/.config/lobo/config.env",
+      "set": {},
+      "values": {}
+    },
+    "current_step": null,
+    "download": null,
+    "endpoint": null,
+    "is_local": false,
+    "last_detail": "",
+    "log_tail": [],
+    "menu_text": "setup",
+    "model": "",
+    "models": null,
+    "phase": {
+      "kind": "no_config"
+    },
+    "provider": "",
+    "readiness": {
+      "cloud_ready": false,
+      "default_model": "",
+      "default_provider": "",
+      "error": null,
+      "exists": false,
+      "local_port": 0,
+      "local_supported": true,
+      "providers": [],
+      "ready": false
+    },
+    "ready_url": null,
+    "snap": null,
+    "steps": [],
+    "target": "cloud",
+    "up_phase": null,
+    "warning": null
+  }
+}

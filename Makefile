@@ -41,21 +41,43 @@ release: build-lobo
 e2e: build-lobo
 	go test -tags e2e -count=1 -v -timeout 30m ./e2e/
 
-# macOS menu bar app: bundles the lobo CLI from this commit. Unsigned (ad-hoc), for this Mac.
+# Native Rust app. The pinned Tauri CLI comes from app/ui/package.json.
 MAC_APP := $(BIN)/lobocode.app
-mac: build-lobo
-	cd macos && swift build -c release
-	if [ -d $(MAC_APP).tmp ]; then mkdir -p /tmp/trash && mv $(MAC_APP).tmp /tmp/trash/lobocode.app.tmp.$$(date +%s); fi
-	mkdir -p $(MAC_APP).tmp/Contents/MacOS $(MAC_APP).tmp/Contents/Resources
-	cp macos/.build/release/Lobocode $(MAC_APP).tmp/Contents/MacOS/Lobocode
-	cp $(BIN)/lobo $(MAC_APP).tmp/Contents/Resources/lobo
-	sed 's/__VERSION__/$(subst v,,$(VERSION))/' macos/Info.plist > $(MAC_APP).tmp/Contents/Info.plist
-	macos/.build/release/Lobocode --render $(BIN)/lobo-renders >/dev/null
-	python3 macos/make_icns.py $(BIN)/lobo-renders/icon_1024.png $(MAC_APP).tmp/Contents/Resources/AppIcon.icns
-	codesign --force --deep -s - $(MAC_APP).tmp
+APP_MANIFEST := app/src-tauri/Cargo.toml
+APP_VERSION := $(shell v='$(patsubst v%,%,$(VERSION))'; if echo "$$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'; then echo "$$v"; else echo 0.0.0-dev; fi)
+mac:
+	pnpm -C app/ui install --frozen-lockfile
+	pnpm -C app/ui build
+	cd app && LOBO_VERSION=$(VERSION) LOBO_COMMIT=$(COMMIT) LOBO_DATE=$(DATE) ui/node_modules/.bin/tauri build --ci --bundles app --config '{"version":"$(APP_VERSION)"}' -- --locked
 	if [ -d $(MAC_APP) ]; then mkdir -p /tmp/trash && mv $(MAC_APP) /tmp/trash/lobocode.app.$$(date +%s); fi
-	mv $(MAC_APP).tmp $(MAC_APP)
+	mkdir -p $(BIN)
+	cp -R app/src-tauri/target/release/bundle/macos/lobocode.app $(MAC_APP)
 	@echo "built $(MAC_APP)"
+
+.PHONY: app-test app-lint app-icons app-fixtures app-render
+app-test:
+	cargo test --locked --manifest-path $(APP_MANIFEST)
+	pnpm -C app/ui test
+
+app-lint:
+	cargo fmt --manifest-path $(APP_MANIFEST) --all --check
+	cargo clippy --locked --manifest-path $(APP_MANIFEST) --all-targets -- -D warnings
+	pnpm -C app/ui check
+	pnpm -C app/ui format:check
+
+app-fixtures:
+	cargo test --locked --manifest-path $(APP_MANIFEST) export_bindings
+	cargo test --locked --manifest-path $(APP_MANIFEST) --test fixtures
+
+app-icons:
+	cargo run --locked --manifest-path $(APP_MANIFEST) --example render_icons -- bin/app-renders
+	app/ui/node_modules/.bin/tauri icon bin/app-renders/icon_1024.png -o bin/app-renders/icons
+	cp bin/app-renders/icons/icon.png bin/app-renders/icons/icon.icns app/src-tauri/icons/
+
+app-render: app-icons app-fixtures
+	mkdir -p app/ui/public/tray
+	cp bin/app-renders/tray_*.png app/ui/public/tray/
+	@echo "run: pnpm -C app/ui dev, open http://localhost:5173/?view=render"
 
 # Drag-to-install disk image: lobocode.app next to an Applications shortcut. Unsigned (ad-hoc).
 DMG := $(BIN)/lobocode.dmg
