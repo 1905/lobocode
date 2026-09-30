@@ -14,6 +14,15 @@ pub trait Source: Send + Sync + fmt::Display {
 
 pub struct HttpSource {
     pub url: String,
+    http: reqwest::Client,
+}
+impl HttpSource {
+    pub fn new(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            http: crate::http::client(),
+        }
+    }
 }
 
 pub fn redact_url(raw: &str) -> String {
@@ -47,7 +56,7 @@ pub fn range_total(content_range: &str) -> i64 {
 #[async_trait]
 impl Source for HttpSource {
     async fn open(&self, offset: i64, len: i64) -> Result<(BoxRead, i64)> {
-        let mut req = crate::http::client().get(&self.url);
+        let mut req = self.http.get(&self.url);
         let ranged = offset > 0 || len >= 0;
         if ranged {
             let end = if len >= 0 {
@@ -247,7 +256,7 @@ pub fn model_source(
     use std::sync::Arc;
     let url = url::Url::parse(raw).map_err(|_| Error::msg("invalid model URL"))?;
     if url.scheme() != "ssh" {
-        return Ok(Arc::new(HttpSource { url: raw.into() }));
+        return Ok(Arc::new(HttpSource::new(raw)));
     }
     let host = url
         .host_str()
@@ -292,9 +301,7 @@ mod tests {
             .mount(&server)
             .await;
         for base in [server.uri(), "http://127.0.0.1:1".into()] {
-            let s = HttpSource {
-                url: format!("{base}/tok3n/file?X-Amz-Signature=s3cret"),
-            };
+            let s = HttpSource::new(format!("{base}/tok3n/file?X-Amz-Signature=s3cret"));
             let e = match s.open(0, -1).await {
                 Err(e) => e,
                 Ok(_) => panic!("expected error"),
@@ -321,7 +328,7 @@ mod tests {
                 .respond_with(ResponseTemplate::new(status))
                 .mount(&server)
                 .await;
-            let e = match (HttpSource { url: server.uri() }).open(offset, -1).await {
+            let e = match HttpSource::new(server.uri()).open(offset, -1).await {
                 Err(e) => e,
                 Ok(_) => panic!("expected error"),
             };

@@ -153,9 +153,7 @@ impl MacDeps {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
         }
-        let source = lobo_agent::source::HttpSource {
-            url: format!("{}{}", self.hf_base, m.file),
-        };
+        let source = lobo_agent::source::HttpSource::new(format!("{}{}", self.hf_base, m.file));
         if let Err(e) =
             lobo_agent::download::download(cancel, &source, &dst, &m.sha256, Some(on_progress))
                 .await

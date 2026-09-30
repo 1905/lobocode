@@ -451,9 +451,7 @@ mod tests {
     async fn download_basic() {
         let data = testutil::data(500_000);
         let server = RangeServer::new(data.clone(), Fault::Normal).await;
-        let src = HttpSource {
-            url: server.url.clone(),
-        };
+        let src = HttpSource::new(server.url.clone());
         let temp = tempfile::tempdir().unwrap();
         let dst = temp.path().join("model");
         download(CancellationToken::new(), &src, &dst, &sha(&data), None)
@@ -470,9 +468,7 @@ mod tests {
         );
         assert!(!bad.exists());
         assert!(temp.path().join("bad-model.bad").exists());
-        let missing = HttpSource {
-            url: server.url.replace("/file", "/missing"),
-        };
+        let missing = HttpSource::new(server.url.replace("/file", "/missing"));
         assert!(
             download(
                 CancellationToken::new(),
@@ -495,9 +491,7 @@ mod tests {
         let dst = temp.path().join("model");
         download(
             CancellationToken::new(),
-            &HttpSource {
-                url: server.url.clone(),
-            },
+            &HttpSource::new(server.url.clone()),
             &dst,
             &sha(&data),
             None,
@@ -522,9 +516,7 @@ mod tests {
             let callback = |p| events.lock().unwrap().push(p);
             download(
                 CancellationToken::new(),
-                &HttpSource {
-                    url: server.url.clone(),
-                },
+                &HttpSource::new(server.url.clone()),
                 &dst,
                 &sha(&data),
                 Some(&callback),
@@ -559,9 +551,7 @@ mod tests {
             Duration::from_secs(1),
             download(
                 cancel,
-                &HttpSource {
-                    url: server.url.clone(),
-                },
+                &HttpSource::new(server.url.clone()),
                 &temp.path().join("model"),
                 &sha(&data),
                 None,
@@ -581,9 +571,7 @@ mod tests {
                 tune(),
                 download_parallel(
                     CancellationToken::new(),
-                    &HttpSource {
-                        url: server.url.clone(),
-                    },
+                    &HttpSource::new(server.url.clone()),
                     &temp.path().join("model"),
                     100,
                     &sha(&data),
@@ -644,9 +632,7 @@ mod tests {
                 tune(),
                 download_parallel(
                     CancellationToken::new(),
-                    &HttpSource {
-                        url: server.url.clone(),
-                    },
+                    &HttpSource::new(server.url.clone()),
                     &dst,
                     data.len() as i64,
                     &sha(&data),
@@ -690,9 +676,7 @@ mod tests {
         let dst = temp.path().join("model");
         let e = download_parallel(
             CancellationToken::new(),
-            &HttpSource {
-                url: server.url.clone(),
-            },
+            &HttpSource::new(server.url.clone()),
             &dst,
             100,
             "bad",
@@ -718,9 +702,7 @@ mod tests {
                 tune(),
                 download_parallel(
                     CancellationToken::new(),
-                    &HttpSource {
-                        url: server.url.clone(),
-                    },
+                    &HttpSource::new(server.url.clone()),
                     &dst,
                     100,
                     "bad",
@@ -745,9 +727,7 @@ mod tests {
         };
         let e = download_parallel(
             CancellationToken::new(),
-            &HttpSource {
-                url: server.url.clone(),
-            },
+            &HttpSource::new(server.url.clone()),
             &temp.path().join("model"),
             10,
             "bad",
@@ -770,9 +750,7 @@ mod tests {
             tune(),
             super::bench(
                 CancellationToken::new(),
-                &HttpSource {
-                    url: server.url.clone(),
-                },
+                &HttpSource::new(server.url.clone()),
                 4 << 20,
                 2,
                 Duration::from_secs(5),
