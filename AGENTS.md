@@ -22,8 +22,9 @@ User corrections saved on 2026-09-30.
   [memory-check spec](plans/2026-09-30-local-memory-check/spec.md) is approved.
   The guard is implemented at `b9a1966`, with documentation checkpoint `597fb1c`.
   It is integrated into the isolated app-runtime branch. Native E2E and master
-  merge remain pending. A review found a queued-Start selection race; fix it
-  in the approved app setup work. The installed app has no guard yet.
+  merge remain pending. The queued-Start selection race is fixed in the
+  isolated app-runtime branch; hosted app regressions pass. The installed
+  app has no guard yet.
 - Release remains on hold. Normal branch pushes, CI and direct merge after
   required checks are authorized by full auto and the approved app spec.
   Do not publish images, tag a release or rent GPUs.
@@ -65,11 +66,11 @@ The observed long wait was prompt processing: an 18-character user message becam
 roughly 47,000 input tokens. The app's zero rates did not prove the server was idle.
 Do not save credentials in project documents.
 
-The user then reported a Vast error during Local Stop. Source inspection confirms
-that app Stop and status call all-provider operations; Stop can delete every
-listed runtime. The new spec must isolate Start/status/Stop by runtime identity,
-including pending-operation and saved-connection cleanup. Do not contact a real
-cloud provider to reproduce the error.
+The user then reported a Vast error during Local Stop. The old app called
+all-provider operations and could delete every listed runtime. The app-runtime
+branch now isolates Start/status/Stop by recorded identity, including pending
+operations and saved connections. Hosted unit/build checks pass; native E2E is
+pending. Do not contact a real cloud provider to reproduce the old error.
 
 The user explicitly authorized a limited real-model E2E after these fixes on
 2026-09-30: use direct scripts, not OpenCode; keep token counts small, measure
