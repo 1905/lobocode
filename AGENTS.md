@@ -15,6 +15,12 @@ User corrections saved on 2026-09-30.
   without scrolling. Verify actual native behavior, not only browser renders.
 - Run only UI checks and builds on this Mac. Run backend, container and lifecycle
   checks on Dell. Do not run model inference on this Mac.
+- Before local Start, assess current Mac memory for the selected model and
+  context. If memory is insufficient or cannot be checked, show an error and
+  block startup. Do not treat installed RAM or an on-disk model as proof that
+  it fits. User correction: 2026-09-30. The new
+  [memory-check spec](plans/2026-09-30-local-memory-check/spec.md) is pending
+  approval; this guard is not implemented yet.
 - Release remains on hold from the user's explicit instruction. Do not infer
   permission to push, publish images, tag a release or rent GPUs from a local
   install, documentation update or implementation correction.
