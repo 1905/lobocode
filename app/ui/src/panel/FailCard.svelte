@@ -2,26 +2,42 @@
   import type { PanelState } from '../gen/PanelState';
   import { fail } from '../lib/view';
   import BracketButton from '../widgets/BracketButton.svelte';
-  let { panel, action }: { panel: PanelState; action: (name: string) => void } =
-    $props();
+  import StartCard from './StartCard.svelte';
+  let {
+    panel,
+    action,
+    pick,
+  }: {
+    panel: PanelState;
+    action: (name: string) => void;
+    pick: (kind: string, value: string) => void;
+  } = $props();
   const v = $derived(fail(panel));
 </script>
 
 <section class="stack failure">
   <div class="row message">
-    <strong class="red">[FAIL]</strong><span>{v.message}</span>
+    <strong class="red">[FAIL]</strong><span title={v.message}>{v.message}</span
+    >
   </div>
   {#if v.tail.length}<div class="tail">
       {#each v.tail as line}<p class="tiny faint clip" title={line}>
           {line}
         </p>{/each}
     </div>{/if}
+  {#if !panel.snap?.pod}<StartCard
+      {panel}
+      {action}
+      {pick}
+      startLabel="RETRY"
+    />{/if}
   <div class="row">
-    <BracketButton
-      label={v.primary.label}
-      tone={v.primary.tone}
-      onclick={() => action(v.primary.action)}
-    /><BracketButton
+    {#if panel.snap?.pod}
+      <BracketButton
+        label={v.primary.label}
+        tone={v.primary.tone}
+        onclick={() => action(v.primary.action)}
+      />{/if}<BracketButton
       label="DISMISS"
       tone="dim"
       onclick={() => action('dismiss')}
@@ -43,6 +59,11 @@
   }
   .message span {
     overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
   }
   .tail {
     background: var(--card);

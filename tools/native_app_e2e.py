@@ -18,17 +18,21 @@ REPO = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--setup-only", action="store_true", help="native startup/settings smoke without model memory requirements")
+    parser.add_argument("--memory-only", action="store_true", help="UI memory verdicts and forced-denied Start; never start a runtime")
     parser.add_argument("--check-drag", action="store_true", help="wait for a native title-bar drag and verify the window position changes")
     args = parser.parse_args()
-    if sys.platform == "darwin" and not args.setup_only:
-        parser.error("UI-only tests on this Mac: use --setup-only; model and lifecycle tests must run on an authorized remote host")
+    if args.setup_only and args.memory_only:
+        parser.error("choose --setup-only or --memory-only")
+    if sys.platform == "darwin" and not (args.setup_only or args.memory_only):
+        parser.error("UI-only tests on this Mac: use --setup-only or --memory-only; model and lifecycle tests must run on an authorized remote host")
     root = Path(tempfile.mkdtemp(prefix="lobo-native-e2e-"))
     spec = importlib.util.spec_from_file_location("fixture", REPO / "app/e2e/fixture.py")
     fixture = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixture)
-    info = fixture.prepare(root)
+    info = fixture.prepare(root, memory_only=args.memory_only)
     config = Path(info["config"])
-    config.rename(root / "template.env")  # The first test must create config through Settings.
+    if not args.memory_only:
+        config.rename(root / "template.env")  # The setup test creates config through Settings.
     env = {key: value for key, value in os.environ.items() if key in {
         "HOME", "PATH", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL",
         "DISPLAY", "XAUTHORITY", "TERM", "CI",
@@ -36,6 +40,8 @@ def main():
     env.update(LOBO_E2E_ROOT=str(root), LOBO_APP_CONFIG=str(config), XDG_STATE_HOME=str(root / "state"))
     if args.setup_only:
         env["LOBO_E2E_SETUP_ONLY"] = "1"
+    if args.memory_only:
+        env["LOBO_E2E_MEMORY_ONLY"] = "1"
     if args.check_drag:
         env["LOBO_E2E_CHECK_DRAG"] = "1"
     code = 1
@@ -63,7 +69,7 @@ def main():
                 pass
             process.wait()
         state = root / "state/lobo/local.json"
-        if state.exists():
+        if state.exists() and not args.memory_only:
             # The isolated config has no cloud credentials. The ordinary CLI down
             # owns identity checks and process-group cleanup even after a test fails.
             cli = REPO / "bin/lobo-rs"
@@ -88,6 +94,8 @@ def main():
         for p in root.glob("*-layout.json"):
             shutil.copy2(p, artifacts / p.name)
         for p in root.glob("drag-*.json"):
+            shutil.copy2(p, artifacts / p.name)
+        for p in root.glob("memory-*.json"):
             shutil.copy2(p, artifacts / p.name)
         if (root / "logs").exists():
             shutil.copytree(root / "logs", artifacts / "logs")

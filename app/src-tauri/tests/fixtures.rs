@@ -2,7 +2,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use lobo_proto::*;
 use lobocode_app::{
     store::Store,
-    types::{Phase, Target},
+    types::{LocalMemory, Target},
 };
 use std::collections::BTreeMap;
 fn now() -> DateTime<Utc> {
@@ -349,10 +349,53 @@ fn fixtures() -> Vec<(&'static str, Store)> {
     st.llama.as_mut().unwrap().requests_processing = 0;
     soon.apply_snap(snap, now());
     out.push(("ready_kill_soon", soon));
+    for (name, available) in [
+        ("off_local_memory_ready", 60),
+        ("off_local_memory_insufficient", 8),
+    ] {
+        let mut s = base();
+        s.choose(Target::Local);
+        s.apply_models(models());
+        let (generation, request, model) = s.begin_memory().unwrap();
+        let assessment = lobo_core::local::memory::assess(
+            &model,
+            8192,
+            &lobo_core::local::memory::MemorySnapshot {
+                total_bytes: 64 << 30,
+                available_bytes: available << 30,
+                metal_limit_bytes: 48 << 30,
+            },
+        )
+        .unwrap();
+        s.apply_memory(generation, request, assessment.into());
+        out.push((name, s));
+    }
+    for (name, message) in [
+        (
+            "off_local_memory_unavailable",
+            "Cannot assess Mac memory for q8 with 8192 context tokens.".to_string(),
+        ),
+        (
+            "fail_local_memory_long",
+            "Cannot assess Mac memory: native counters unavailable. ".repeat(40),
+        ),
+    ] {
+        let mut s = base();
+        s.choose(Target::Local);
+        if name.starts_with("fail") {
+            s.stop_failed(message.clone());
+        }
+        let (generation, request, model) = s.begin_memory().unwrap();
+        s.apply_memory(
+            generation,
+            request,
+            LocalMemory::unavailable(model, 8192, message),
+        );
+        out.push((name, s));
+    }
     out
 }
-#[test]
-fn write_render_fixtures() {
+pub fn write_render_fixtures() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ui/src/fixtures");
     std::fs::create_dir_all(&dir).unwrap();
     for (name, store) in fixtures() {
@@ -367,9 +410,13 @@ fn write_render_fixtures() {
     std::fs::write(dir.join("settings.json"),format!("{}\n",serde_json::to_string_pretty(&serde_json::json!({"config":c,"readiness":r,"models":models(),"local_supported":true})).unwrap())).unwrap();
 }
 #[test]
+fn generate_render_fixtures() {
+    write_render_fixtures();
+}
+#[test]
 fn render_fixtures_cover_inventory() {
     let f = fixtures();
-    assert_eq!(f.len(), 20);
+    assert_eq!(f.len(), 24);
     let names: std::collections::BTreeSet<_> = f.iter().map(|(n, _)| *n).collect();
     assert_eq!(
         names,
@@ -394,6 +441,10 @@ fn render_fixtures_cover_inventory() {
             "fail_pod",
             "ready_warning",
             "ready_kill_soon",
+            "off_local_memory_ready",
+            "off_local_memory_insufficient",
+            "off_local_memory_unavailable",
+            "fail_local_memory_long",
         ]
         .into_iter()
         .collect()
@@ -411,6 +462,6 @@ fn render_fixtures_cover_inventory() {
             .1
             .view(now())
             .phase,
-        Phase::Ready
+        lobocode_app::types::Phase::Ready
     );
 }

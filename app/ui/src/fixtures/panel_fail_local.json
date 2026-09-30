@@ -38,6 +38,7 @@
     "endpoint": "http://127.0.0.1:8931/v1",
     "is_local": true,
     "last_detail": "local: port 8931 in use (LOBO_LOCAL_PORT)",
+    "local_memory": null,
     "log_tail": [
       "local: port 8931 in use (LOBO_LOCAL_PORT)"
     ],

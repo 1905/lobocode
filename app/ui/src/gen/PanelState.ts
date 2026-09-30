@@ -4,9 +4,10 @@ import type { DownloadProgress } from "../proto/DownloadProgress";
 import type { Listing } from "../proto/Listing";
 import type { Readiness } from "../proto/Readiness";
 import type { Snap } from "../proto/Snap";
+import type { LocalMemory } from "./LocalMemory";
 import type { Phase } from "./Phase";
 import type { Step } from "./Step";
 import type { StepMark } from "./StepMark";
 import type { Target } from "./Target";
 
-export type PanelState = { phase: Phase, target: Target, provider: string, model: string, snap: Snap | null, config: ConfigShow | null, readiness: Readiness | null, models: Listing | null, catalog_ids: Array<string>, download: DownloadProgress | null, steps: Array<StepMark>, boot_start_ms: number | null, up_phase: string | null, last_detail: string, warning: string | null, log_tail: Array<string>, ready_url: string | null, is_local: boolean, boot_steps: Array<Step>, current_step: Step | null, endpoint: string | null, menu_text: string, boot_progress: number, };
+export type PanelState = { phase: Phase, target: Target, provider: string, model: string, local_memory: LocalMemory | null, snap: Snap | null, config: ConfigShow | null, readiness: Readiness | null, models: Listing | null, catalog_ids: Array<string>, download: DownloadProgress | null, steps: Array<StepMark>, boot_start_ms: number | null, up_phase: string | null, last_detail: string, warning: string | null, log_tail: Array<string>, ready_url: string | null, is_local: boolean, boot_steps: Array<Step>, current_step: Step | null, endpoint: string | null, menu_text: string, boot_progress: number, };

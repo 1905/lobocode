@@ -40,6 +40,7 @@
     "endpoint": "http://127.0.0.1:8933/v1",
     "is_local": false,
     "last_detail": "",
+    "local_memory": null,
     "log_tail": [],
     "menu_text": "stop",
     "model": "q8",
