@@ -1,0 +1,17 @@
+{
+  "identifier": "io.github.1905.lobocode.e2e",
+  "productName": "lobocode E2E",
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "capabilities": [
+        "default",
+        {
+          "identifier": "native-e2e",
+          "windows": ["main", "panel", "settings"],
+          "permissions": ["wdio:default", "wdio-webdriver:default"]
+        }
+      ]
+    }
+  }
+}

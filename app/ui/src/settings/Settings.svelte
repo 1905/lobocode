@@ -31,6 +31,7 @@
   let status = $state('');
   let tone = $state('dim');
   let free = $state<number | null>(null);
+  let tab = $state('local');
   const targets = $derived(readiness ? providerTargets(readiness) : null);
   const plain = [
     ['LOBO_DOMAIN', 'domain', 'lobo.example.com'],
@@ -164,17 +165,15 @@
 
 <svelte:window onkeydown={keydown} />
 <main class="settings">
-  <div class="stack title">
+  <div class="stack title" data-tauri-drag-region>
     <div class="row spread title-row">
       <Logo /><span class="small dim">config</span>
     </div>
     <RasterBar active={saving} />
   </div>
   <div class="box file">
-    <p class="selectable">{config?.path ?? '~/.config/lobo/config.env'}</p>
-    <p class="small dim">
-      plain KEY=value lines, shared with the lobo CLI. edit it by hand any time:
-      this window only touches the keys it shows.
+    <p class="selectable clip" title={config?.path}>
+      {config?.path ?? '~/.config/lobo/config.env'}
     </p>
     <div class="row">
       <LinkButton
@@ -193,180 +192,226 @@
       />
     </div>
   </div>
-  <section>
-    <h2 class="copper">// providers (one is enough)</h2>
-    {#each [['RUNPOD_API_KEY', 'runpod key'], ['VASTAI_API_KEY', 'vast key']] as [key, label]}<label
-        class="field"
-        ><span>{label}</span><input
-          aria-label={label}
-          type="password"
-          placeholder={secretHint(config, key)}
-          bind:value={fields.secrets[key]}
-          autocomplete="off"
-          spellcheck="false"
-          disabled={saving}
-        /></label
-      >{/each}
-  </section>
-  <section>
-    <h2 class="copper">// access</h2>
-    <label class="field"
-      ><span>{plain[0][1]}</span><input
-        aria-label={plain[0][1]}
-        placeholder={plain[0][2]}
-        bind:value={fields.plain.LOBO_DOMAIN}
-        disabled={saving}
-        spellcheck="false"
-      /></label
+  <div class="tabs" role="tablist" aria-label="Settings">
+    {#each [['local', 'Local'], ['cloud', 'Cloud'], ['defaults', 'Defaults']] as [id, label]}
+      <button
+        role="tab"
+        id={`tab-${id}`}
+        aria-selected={tab === id}
+        aria-controls={`section-${id}`}
+        onclick={() => (tab = id)}>{label}</button
+      >
+    {/each}
+  </div>
+  {#if tab === 'cloud'}
+    <div
+      class="tab-content"
+      role="tabpanel"
+      id="section-cloud"
+      aria-labelledby="tab-cloud"
     >
-    <div class="field">
-      <span class="dim">api key</span>
-      <div class="row grow">
-        <span class:amber={Boolean(fields.newApiKey)} class="small clip grow"
-          >{fields.newApiKey
-            ? maskNew(fields.newApiKey)
-            : (config?.values.LOBO_API_KEY ?? 'not set')}</span
-        ><LinkButton
-          label="generate"
-          tone="cyan"
-          disabled={saving}
-          onclick={() => {
-            if (!rendering)
-              void attempt(async () => {
-                fields.newApiKey = await api.genApiKey();
-              });
-          }}
-        />
-      </div>
-    </div>
-    <label class="field"
-      ><span>tunnel token</span><input
-        aria-label="tunnel token"
-        type="password"
-        placeholder={secretHint(config, 'CF_TUNNEL_TOKEN')}
-        bind:value={fields.secrets.CF_TUNNEL_TOKEN}
-        autocomplete="off"
-        spellcheck="false"
-        disabled={saving}
-      /></label
-    >
-    <label class="field"
-      ><span>{plain[1][1]}</span><input
-        aria-label={plain[1][1]}
-        placeholder={plain[1][2]}
-        bind:value={fields.plain.LOBO_BUCKET_URL}
-        disabled={saving}
-        spellcheck="false"
-      /></label
-    >
-  </section>
-  <section>
-    <h2 class="copper">// defaults for lobo up (empty = built-in)</h2>
-    {#if targets}<div class="field">
-        <span class="dim">provider</span>
-        <div class="row">
-          {#each targets.options as option}<button
-              class="pick"
-              class:green={pickerValue(fields, 'LOBO_PROVIDER', targets.def) ===
-                option}
-              aria-pressed={pickerValue(
-                fields,
-                'LOBO_PROVIDER',
-                targets.def,
-              ) === option}
-              onclick={() => (fields.plain.LOBO_PROVIDER = option)}
+      <section>
+        <h2 class="copper">// providers (one is enough)</h2>
+        {#each [['RUNPOD_API_KEY', 'runpod key'], ['VASTAI_API_KEY', 'vast key']] as [key, label]}<label
+            class="field"
+            ><span>{label}</span><input
+              aria-label={label}
+              type="password"
+              placeholder={secretHint(config, key)}
+              bind:value={fields.secrets[key]}
+              autocomplete="off"
+              spellcheck="false"
               disabled={saving}
-              >{pickerValue(fields, 'LOBO_PROVIDER', targets.def) === option
-                ? `[${option}]`
-                : ` ${option} `}</button
-            >{/each}
-        </div>
-      </div>{/if}
-    <div class="field">
-      <span class="dim">model</span>
-      <div class="row">
-        {#each ['q8', 'q6'] as option}<button
-            class="pick"
-            class:green={pickerValue(fields, 'LOBO_MODEL', 'q8') === option}
-            aria-pressed={pickerValue(fields, 'LOBO_MODEL', 'q8') === option}
-            onclick={() => (fields.plain.LOBO_MODEL = option)}
-            disabled={saving}
-            >{pickerValue(fields, 'LOBO_MODEL', 'q8') === option
-              ? `[${option}]`
-              : ` ${option} `}</button
+            /></label
           >{/each}
-      </div>
-    </div>
-    {#each numeric.slice(0, 4) as [key, label, placeholder]}<label class="field"
-        ><span>{label}</span><input
-          aria-label={label}
-          {placeholder}
-          bind:value={fields.plain[key]}
-          disabled={saving}
-        /></label
-      >{/each}
-    <div class="field">
-      <span class="dim">runpod cloud</span>
-      <div class="row">
-        {#each ['community', 'secure'] as option}<button
-            class="pick"
-            class:green={pickerValue(fields, 'LOBO_CLOUD', 'community') ===
-              option}
-            aria-pressed={pickerValue(fields, 'LOBO_CLOUD', 'community') ===
-              option}
-            onclick={() => (fields.plain.LOBO_CLOUD = option)}
-            disabled={saving}
-            >{pickerValue(fields, 'LOBO_CLOUD', 'community') === option
-              ? `[${option}]`
-              : ` ${option} `}</button
-          >{/each}
-      </div>
-    </div>
-    {#each numeric.slice(4) as [key, label, placeholder]}<label class="field"
-        ><span>{label}</span><input
-          aria-label={label}
-          {placeholder}
-          bind:value={fields.plain[key]}
-          disabled={saving}
-          spellcheck="false"
-        /></label
-      >{/each}
-  </section>
-  {#if readiness?.local_supported}<section>
-      <h2 class="copper">// local</h2>
-      <div class="field">
-        <label class="dim" for="weights">weights</label>
-        <div class="row grow">
-          <input
-            id="weights"
-            class="grow"
-            aria-label="weights"
-            placeholder={models?.weights ??
-              '~/Library/Application Support/lobo/weights'}
-            bind:value={fields.plain.LOBO_WEIGHTS_DIR}
+      </section>
+      <section>
+        <h2 class="copper">// access</h2>
+        <label class="field"
+          ><span>{plain[0][1]}</span><input
+            aria-label={plain[0][1]}
+            placeholder={plain[0][2]}
+            bind:value={fields.plain.LOBO_DOMAIN}
             disabled={saving}
             spellcheck="false"
-          /><LinkButton
-            label="[choose…]"
-            tone="cyan"
-            disabled={saving}
-            onclick={() => {
-              if (!rendering) void attempt(choose);
-            }}
-          />
+          /></label
+        >
+        <div class="field">
+          <span class="dim">api key</span>
+          <div class="row grow">
+            <span
+              class:amber={Boolean(fields.newApiKey)}
+              class="small clip grow"
+              >{fields.newApiKey
+                ? maskNew(fields.newApiKey)
+                : (config?.values.LOBO_API_KEY ?? 'not set')}</span
+            ><LinkButton
+              label="generate"
+              tone="cyan"
+              disabled={saving}
+              onclick={() => {
+                if (!rendering)
+                  void attempt(async () => {
+                    fields.newApiKey = await api.genApiKey();
+                  });
+              }}
+            />
+          </div>
         </div>
-      </div>
-      {#if free !== null}<p class="small dim free">
-          {gb(free)} GB free
-        </p>{/if}<label class="field"
-        ><span>port</span><input
-          aria-label="port"
-          placeholder="8931"
-          bind:value={fields.plain.LOBO_LOCAL_PORT}
-          disabled={saving}
-        /></label
-      >
-    </section>{/if}
+        <label class="field"
+          ><span>tunnel token</span><input
+            aria-label="tunnel token"
+            type="password"
+            placeholder={secretHint(config, 'CF_TUNNEL_TOKEN')}
+            bind:value={fields.secrets.CF_TUNNEL_TOKEN}
+            autocomplete="off"
+            spellcheck="false"
+            disabled={saving}
+          /></label
+        >
+        <label class="field"
+          ><span>{plain[1][1]}</span><input
+            aria-label={plain[1][1]}
+            placeholder={plain[1][2]}
+            bind:value={fields.plain.LOBO_BUCKET_URL}
+            disabled={saving}
+            spellcheck="false"
+          /></label
+        >
+      </section>
+    </div>
+  {:else if tab === 'defaults'}
+    <div
+      class="tab-content"
+      role="tabpanel"
+      id="section-defaults"
+      aria-labelledby="tab-defaults"
+    >
+      <section>
+        <h2 class="copper">// defaults for lobo up (empty = built-in)</h2>
+        {#if targets}<div class="field">
+            <span class="dim">provider</span>
+            <div class="row">
+              {#each targets.options as option}<button
+                  class="pick"
+                  class:green={pickerValue(
+                    fields,
+                    'LOBO_PROVIDER',
+                    targets.def,
+                  ) === option}
+                  aria-pressed={pickerValue(
+                    fields,
+                    'LOBO_PROVIDER',
+                    targets.def,
+                  ) === option}
+                  onclick={() => (fields.plain.LOBO_PROVIDER = option)}
+                  disabled={saving}
+                  >{pickerValue(fields, 'LOBO_PROVIDER', targets.def) === option
+                    ? `[${option}]`
+                    : ` ${option} `}</button
+                >{/each}
+            </div>
+          </div>{/if}
+        <div class="field">
+          <span class="dim">model</span>
+          <div class="row">
+            {#each ['q8', 'q6'] as option}<button
+                class="pick"
+                class:green={pickerValue(fields, 'LOBO_MODEL', 'q8') === option}
+                aria-pressed={pickerValue(fields, 'LOBO_MODEL', 'q8') ===
+                  option}
+                onclick={() => (fields.plain.LOBO_MODEL = option)}
+                disabled={saving}
+                >{pickerValue(fields, 'LOBO_MODEL', 'q8') === option
+                  ? `[${option}]`
+                  : ` ${option} `}</button
+              >{/each}
+          </div>
+        </div>
+        {#each numeric.slice(0, 4) as [key, label, placeholder]}<label
+            class="field"
+            ><span>{label}</span><input
+              aria-label={label}
+              {placeholder}
+              bind:value={fields.plain[key]}
+              disabled={saving}
+            /></label
+          >{/each}
+        <div class="field">
+          <span class="dim">runpod cloud</span>
+          <div class="row">
+            {#each ['community', 'secure'] as option}<button
+                class="pick"
+                class:green={pickerValue(fields, 'LOBO_CLOUD', 'community') ===
+                  option}
+                aria-pressed={pickerValue(fields, 'LOBO_CLOUD', 'community') ===
+                  option}
+                onclick={() => (fields.plain.LOBO_CLOUD = option)}
+                disabled={saving}
+                >{pickerValue(fields, 'LOBO_CLOUD', 'community') === option
+                  ? `[${option}]`
+                  : ` ${option} `}</button
+              >{/each}
+          </div>
+        </div>
+        {#each numeric.slice(4) as [key, label, placeholder]}<label
+            class="field"
+            ><span>{label}</span><input
+              aria-label={label}
+              {placeholder}
+              bind:value={fields.plain[key]}
+              disabled={saving}
+              spellcheck="false"
+            /></label
+          >{/each}
+      </section>
+    </div>
+  {:else}
+    <div
+      class="tab-content"
+      role="tabpanel"
+      id="section-local"
+      aria-labelledby="tab-local"
+    >
+      {#if readiness?.local_supported}<section>
+          <h2 class="copper">// local</h2>
+          <div class="field">
+            <label class="dim" for="weights">weights</label>
+            <div class="row grow">
+              <input
+                id="weights"
+                class="grow"
+                aria-label="weights"
+                placeholder={models?.weights ??
+                  '~/Library/Application Support/lobo/weights'}
+                bind:value={fields.plain.LOBO_WEIGHTS_DIR}
+                disabled={saving}
+                spellcheck="false"
+              /><LinkButton
+                label="[choose…]"
+                tone="cyan"
+                disabled={saving}
+                onclick={() => {
+                  if (!rendering) void attempt(choose);
+                }}
+              />
+            </div>
+          </div>
+          {#if free !== null}<p class="small dim free">
+              {gb(free)} GB free
+            </p>{/if}<label class="field"
+            ><span>port</span><input
+              aria-label="port"
+              placeholder="8931"
+              bind:value={fields.plain.LOBO_LOCAL_PORT}
+              disabled={saving}
+            /></label
+          >
+        </section>{:else}<p class="dim">
+          Local models require Apple Silicon.
+        </p>{/if}
+    </div>
+  {/if}
   <div class="row spread actions">
     <p class={`small ${tone}`} role="status">{status}</p>
     <div class="row">
@@ -395,10 +440,13 @@
     padding: 22px;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 16px;
   }
   .title {
     gap: 18px;
+  }
+  .title :global(*) {
+    pointer-events: none;
   }
   .title-row {
     align-items: flex-end;
@@ -413,6 +461,34 @@
   }
   .file .row {
     gap: 14px;
+  }
+  .tabs {
+    display: flex;
+    padding: 3px;
+    gap: 3px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+  }
+  .tabs button {
+    flex: 1;
+    padding: 7px 12px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--dim);
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 12px;
+  }
+  .tabs button[aria-selected='true'] {
+    background: var(--line);
+    color: var(--text);
+  }
+  .tab-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 280px;
   }
   section {
     display: flex;

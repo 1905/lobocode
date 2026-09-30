@@ -30,6 +30,19 @@
 body {
   margin: 0;
 }
+.native,
+.native body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.native input,
+.native .selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
 button,
 input {
   font: inherit;
@@ -118,15 +131,12 @@ pre {
 }
 .selectable {
   user-select: text;
+  overflow-wrap: anywhere;
 }
 .box {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 6px;
-}
-.window-chrome {
-  height: 28px;
-  background: var(--card);
 }
 .render {
   width: max-content;

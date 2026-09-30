@@ -8,11 +8,42 @@
   import Render from './render/Render.svelte';
   const params = new URLSearchParams(location.search);
   const view = params.get('view') ?? 'panel';
-  const chrome = params.get('chrome') === 'window';
   let panel = $state<PanelState>();
   let now = $state(Date.now());
   let error = $state('');
   let surface: HTMLDivElement | undefined = $state();
+  onMount(() => {
+    if (view === 'render' || !surface || !inTauri()) return;
+    document.documentElement.classList.add('native');
+    let previous = '';
+    let disposed = false;
+    let inset = 0;
+    const nativeWindow = getCurrentWindow();
+    const observer = new ResizeObserver(() => {
+      if (!surface) return;
+      const bounds = surface.getBoundingClientRect();
+      const width = view === 'settings' ? 520 : 340;
+      const height = Math.ceil(bounds.height + inset);
+      const size = `${width}:${height}`;
+      if (height <= 0 || previous === size) return;
+      previous = size;
+      void nativeWindow
+        .setSize(new LogicalSize(width, height))
+        .catch((e) => (error = message(e)));
+    });
+    // macOS reports a content size that includes the native title-bar inset.
+    // Measure it once before resizing; the webview needs its full content height.
+    void Promise.all([nativeWindow.innerSize(), nativeWindow.scaleFactor()])
+      .then(([size, scale]) => {
+        inset = Math.max(0, size.height / scale - window.innerHeight);
+        if (!disposed && surface) observer.observe(surface);
+      })
+      .catch((e) => (error = message(e)));
+    return () => {
+      disposed = true;
+      observer.disconnect();
+    };
+  });
   onMount(() => {
     if (view === 'render' || view === 'settings') return;
     let disposed = false,
@@ -36,37 +67,30 @@
         error = message(e);
       }
     })();
-    let lastHeight = 0;
-    const observer = new ResizeObserver((entries) => {
-      const height = Math.ceil(
-        entries[0].target.getBoundingClientRect().height,
-      );
-      if (height > 0 && height !== lastHeight && inTauri()) {
-        lastHeight = height;
-        void getCurrentWindow()
-          .setSize(new LogicalSize(340, height))
-          .catch((e) => (error = message(e)));
-      }
-    });
-    if (surface) observer.observe(surface);
     return () => {
       disposed = true;
       unlisten?.();
       clearInterval(timer);
-      observer.disconnect();
     };
   });
 </script>
 
-<div bind:this={surface}>
-  {#if chrome}<div
-      class="window-chrome"
-      data-tauri-drag-region
-    ></div>{/if}{#if view === 'render'}<Render
-    />{:else if view === 'settings'}<Settings />{:else if panel}<Panel
-      {panel}
-      nowMs={now}
-    />{:else}<p class="dim" style="padding:14px">
+<div bind:this={surface} class="surface">
+  {#if view === 'render'}<Render />{:else if view === 'settings'}<Settings
+    />{:else if panel}<Panel {panel} nowMs={now} />{:else}<p
+      class="dim"
+      style="padding:14px"
+    >
       scanning providers
     </p>{/if}{#if error}<p class="error" style="padding:14px">{error}</p>{/if}
 </div>
+
+<style>
+  .surface {
+    width: max-content;
+    min-width: 340px;
+    border-radius: 12px;
+    overflow: clip;
+    background: var(--bg);
+  }
+</style>

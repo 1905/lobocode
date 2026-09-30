@@ -26,11 +26,9 @@ fn create(app: &tauri::AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
     let settings = label == "settings";
     let panel = label == "panel";
     let url = if settings {
-        "index.html?view=settings&chrome=window"
-    } else if panel {
-        "index.html?view=panel"
+        "index.html?view=settings"
     } else {
-        "index.html?view=panel&chrome=window"
+        "index.html?view=panel"
     };
     let mut b = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
         .title(if settings {
@@ -40,17 +38,23 @@ fn create(app: &tauri::AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
         })
         .inner_size(
             if settings { 520.0 } else { 340.0 },
-            if settings { 640.0 } else { 300.0 },
+            if settings { 540.0 } else { 340.0 },
         )
         .visible(false)
         .resizable(false)
         .theme(Some(tauri::Theme::Dark))
         .background_color(tauri::webview::Color(11, 13, 16, 255));
     if panel {
-        b = b.decorations(false).always_on_top(true).skip_taskbar(true);
+        b = b
+            .decorations(false)
+            .transparent(true)
+            .background_color(tauri::webview::Color(0, 0, 0, 0))
+            .shadow(true)
+            .always_on_top(true)
+            .skip_taskbar(true);
     } else {
         b = b
-            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .title_bar_style(tauri::TitleBarStyle::Visible)
             .hidden_title(false)
             .center();
     }

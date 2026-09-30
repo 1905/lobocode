@@ -19,3 +19,5 @@ app/src-tauri/target/
 app/src-tauri/gen/
 app/ui/node_modules/
 app/ui/dist/
+app/e2e/node_modules/
+app/e2e/__pycache__/
