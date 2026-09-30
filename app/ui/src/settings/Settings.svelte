@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import type { PanelState } from '../gen/PanelState';
+  import type { OpenCodeInfo } from '../gen/OpenCodeInfo';
   import type { ConfigShow } from '../proto/ConfigShow';
   import type { Readiness } from '../proto/Readiness';
   import type { Listing } from '../proto/Listing';
-  import { api, message, onState } from '../lib/api';
+  import { api, message, onState, onSettingsTab } from '../lib/api';
   import { gb } from '../lib/fmt';
   import {
     loadFields,
@@ -18,11 +20,33 @@
   import RasterBar from '../widgets/RasterBar.svelte';
   import BracketButton from '../widgets/BracketButton.svelte';
   import LinkButton from '../widgets/LinkButton.svelte';
-  type Fixture = { config: ConfigShow; readiness: Readiness; models: Listing };
+  import Clients from './Clients.svelte';
+  import {
+    createClientsState,
+    clientsRuntimeKey,
+    invalidateClients,
+    refreshClients,
+    enterClients,
+    chooseClients,
+    submitClients,
+    settingsTab,
+    type SettingsTab,
+  } from '../lib/view';
+  type Fixture = {
+    config: ConfigShow;
+    readiness: Readiness;
+    models: Listing;
+    clients?: OpenCodeInfo;
+  };
   let {
     fixture,
     rendering = false,
-  }: { fixture?: Fixture; rendering?: boolean } = $props();
+    initialTab = 'local',
+  }: {
+    fixture?: Fixture;
+    rendering?: boolean;
+    initialTab?: SettingsTab;
+  } = $props();
   let config = $state<ConfigShow>();
   let readiness = $state<Readiness>();
   let models = $state<Listing>();
@@ -31,7 +55,29 @@
   let status = $state('');
   let tone = $state('dim');
   let free = $state<number | null>(null);
-  let tab = $state('local');
+  let tab = $state<SettingsTab>(untrack(() => initialTab));
+  const clients = $state(
+    createClientsState(untrack(() => fixture?.clients ?? null)),
+  );
+  let runtimeKey: string | undefined;
+  function updateRuntime(state: PanelState) {
+    const next = clientsRuntimeKey(state);
+    if (next === runtimeKey) return;
+    runtimeKey = next;
+    invalidateClients(clients);
+    if (tab === 'clients' && !rendering)
+      void refreshClients(clients, api.opencodeInfo);
+  }
+  function selectTab(value: unknown) {
+    const next = settingsTab(value);
+    if (next) tab = next;
+  }
+  $effect(() => {
+    if (tab === 'clients' && !rendering)
+      untrack(() => {
+        void enterClients(clients, api.opencodeInfo);
+      });
+  });
   const targets = $derived(readiness ? providerTargets(readiness) : null);
   const numeric = [
     ['LOBO_CTX', 'context', '65536'],
@@ -52,6 +98,7 @@
     fields = loadFields(config);
     const state = await api.getState();
     readiness = state.readiness ?? undefined;
+    updateRuntime(state);
     models = await api.localModels().catch(() => undefined);
   }
   onMount(() => {
@@ -67,6 +114,7 @@
       void attempt(reload);
       void onState((s) => {
         readiness = s.readiness ?? undefined;
+        updateRuntime(s);
       })
         .then((f) => {
           if (disposed) f();
@@ -77,6 +125,54 @@
           tone = 'red';
         });
     }
+    return () => {
+      disposed = true;
+      remove?.();
+    };
+  });
+  onMount(() => {
+    if (rendering) return;
+    let disposed = false,
+      remove: undefined | (() => void);
+    let consuming = false,
+      again = false;
+    async function consumeTab() {
+      again = true;
+      if (consuming) return;
+      consuming = true;
+      try {
+        while (again && !disposed) {
+          again = false;
+          const requested = await api.consumeSettingsTab();
+          if (!disposed) selectTab(requested);
+        }
+      } catch {
+        if (!disposed) {
+          status = 'Cannot open the requested settings tab. Choose it above.';
+          tone = 'red';
+        }
+      } finally {
+        consuming = false;
+      }
+    }
+    void onSettingsTab(() => {
+      void consumeTab();
+    })
+      .then((unlisten) => {
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        remove = unlisten;
+        // Subscribe first, then consume requests made while this webview loaded.
+        void consumeTab();
+      })
+      .catch(() => {
+        if (!disposed) {
+          status = 'Cannot receive settings shortcuts. Choose a tab above.';
+          tone = 'red';
+        }
+      });
     return () => {
       disposed = true;
       remove?.();
@@ -110,7 +206,7 @@
     };
   });
   async function save() {
-    if (rendering || saving) return;
+    if (rendering || saving || tab === 'clients') return;
     saving = true;
     status = '';
     try {
@@ -149,7 +245,7 @@
   function keydown(e: KeyboardEvent) {
     if (e.metaKey && e.key.toLowerCase() === 's') {
       e.preventDefault();
-      void save();
+      if (tab !== 'clients') void save();
     } else if (e.metaKey && e.key === 'q') {
       e.preventDefault();
       void attempt(api.quit);
@@ -163,41 +259,67 @@
     <div class="row spread title-row">
       <Logo /><span class="small dim">config</span>
     </div>
-    <RasterBar active={saving} />
+    <RasterBar active={saving || clients.busy || clients.refreshing} />
   </div>
-  <div class="box file">
-    <p class="selectable clip" title={config?.path}>
-      {config?.path ?? '~/.config/lobo/config.env'}
-    </p>
-    <div class="row">
-      <LinkButton
-        label="reveal in finder"
-        tone="cyan"
-        onclick={() => {
-          if (!rendering) void attempt(api.revealConfig);
-        }}
-      /><LinkButton
-        label="open in editor"
-        tone="cyan"
-        disabled={!config?.exists}
-        onclick={() => {
-          if (!rendering) void attempt(api.openConfig);
-        }}
-      />
-    </div>
-  </div>
+  {#if tab !== 'clients'}<div class="box file">
+      <p class="selectable clip" title={config?.path}>
+        {config?.path ?? '~/.config/lobo/config.env'}
+      </p>
+      <div class="row">
+        <LinkButton
+          label="reveal in finder"
+          tone="cyan"
+          onclick={() => {
+            if (!rendering) void attempt(api.revealConfig);
+          }}
+        /><LinkButton
+          label="open in editor"
+          tone="cyan"
+          disabled={!config?.exists}
+          onclick={() => {
+            if (!rendering) void attempt(api.openConfig);
+          }}
+        />
+      </div>
+    </div>{/if}
   <div class="tabs" role="tablist" aria-label="Settings">
-    {#each [['local', 'Local'], ['cloud', 'Cloud'], ['defaults', 'Defaults']] as [id, label]}
+    {#each [['local', 'Local'], ['cloud', 'Cloud'], ['defaults', 'Defaults'], ['clients', 'Clients']] as [id, label]}
       <button
         role="tab"
         id={`tab-${id}`}
         aria-selected={tab === id}
         aria-controls={`section-${id}`}
-        onclick={() => (tab = id)}>{label}</button
+        onclick={() => selectTab(id)}>{label}</button
       >
     {/each}
   </div>
-  {#if tab === 'cloud'}
+  {#if tab === 'clients'}
+    <div
+      class="tab-content"
+      role="tabpanel"
+      id="section-clients"
+      aria-labelledby="tab-clients"
+    >
+      <Clients
+        state={clients}
+        refresh={() => {
+          if (!rendering && !clients.busy)
+            void refreshClients(clients, api.opencodeInfo);
+        }}
+        choose={() => {
+          if (!rendering)
+            void chooseClients(
+              clients,
+              api.chooseOpencodeConfig,
+              api.opencodeInfo,
+            );
+        }}
+        configure={() => {
+          if (!rendering) void submitClients(clients, api.configureOpencode);
+        }}
+      />
+    </div>
+  {:else if tab === 'cloud'}
     <div
       class="tab-content"
       role="tabpanel"
@@ -402,26 +524,26 @@
         </p>{/if}
     </div>
   {/if}
-  <div class="row spread actions">
-    <p class={`small ${tone}`} role="status">{status}</p>
-    <div class="row">
-      <BracketButton
-        label="REVERT"
-        tone="dim"
-        disabled={saving}
-        onclick={() => {
-          fields = loadFields(config);
-          status = '';
-        }}
-      /><BracketButton
-        label="SAVE"
-        disabled={saving}
-        onclick={() => {
-          void save();
-        }}
-      />
-    </div>
-  </div>
+  {#if tab !== 'clients'}<div class="row spread actions">
+      <p class={`small ${tone}`} role="status">{status}</p>
+      <div class="row">
+        <BracketButton
+          label="REVERT"
+          tone="dim"
+          disabled={saving}
+          onclick={() => {
+            fields = loadFields(config);
+            status = '';
+          }}
+        /><BracketButton
+          label="SAVE"
+          disabled={saving}
+          onclick={() => {
+            void save();
+          }}
+        />
+      </div>
+    </div>{/if}
 </main>
 
 <style>

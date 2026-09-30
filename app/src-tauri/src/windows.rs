@@ -1,6 +1,28 @@
 use crate::controller::Controller;
-use std::sync::Arc;
-use tauri::{Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use std::sync::{Arc, Mutex};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+
+#[derive(Default)]
+struct SettingsNavigation {
+    pending: Mutex<Option<String>>,
+}
+impl SettingsNavigation {
+    fn request(&self, tab: String) {
+        *self.pending.lock().unwrap_or_else(|e| e.into_inner()) = Some(tab);
+    }
+    fn peek(&self) -> Option<String> {
+        self.pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+    fn consume(&self) -> Option<String> {
+        self.pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+    }
+}
 
 #[derive(Default, Debug, PartialEq)]
 pub struct LaunchFlags {
@@ -26,9 +48,13 @@ fn create(app: &tauri::AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
     let settings = label == "settings";
     let panel = label == "panel";
     let url = if settings {
-        "index.html?view=settings"
+        let tab = app.state::<SettingsNavigation>().peek();
+        match tab {
+            Some(tab) => format!("index.html?view=settings&tab={tab}"),
+            None => "index.html?view=settings".into(),
+        }
     } else {
-        "index.html?view=panel"
+        "index.html?view=panel".into()
     };
     let mut b = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
         .title(if settings {
@@ -76,9 +102,25 @@ fn create(app: &tauri::AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
     Ok(w)
 }
 pub fn prepare(app: &tauri::AppHandle) -> tauri::Result<()> {
+    app.manage(SettingsNavigation::default());
     create(app, "panel")?;
     create(app, "main")?;
     Ok(())
+}
+pub fn show_settings(app: &tauri::AppHandle, tab: Option<String>) -> tauri::Result<()> {
+    let requested = tab.is_some();
+    if let Some(tab) = tab {
+        app.state::<SettingsNavigation>().request(tab);
+    }
+    show(app, "settings")?;
+    if requested {
+        // The pending value survives creation and events before webview subscription.
+        let _ = app.emit_to("settings", "lobo://settings-tab", ());
+    }
+    Ok(())
+}
+pub fn consume_settings_tab(app: &tauri::AppHandle) -> Option<String> {
+    app.state::<SettingsNavigation>().consume()
 }
 pub fn show(app: &tauri::AppHandle, label: &str) -> tauri::Result<()> {
     let window = match app.get_webview_window(label) {
@@ -107,6 +149,16 @@ pub fn toggle_panel(app: &tauri::AppHandle) -> tauri::Result<()> {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn settings_tab_request_survives_until_consumed_and_latest_request_wins() {
+        let navigation = super::SettingsNavigation::default();
+        navigation.request("local".into());
+        navigation.request("clients".into());
+        assert_eq!(navigation.peek().as_deref(), Some("clients"));
+        assert_eq!(navigation.peek().as_deref(), Some("clients"));
+        assert_eq!(navigation.consume().as_deref(), Some("clients"));
+        assert_eq!(navigation.consume(), None);
+    }
     #[test]
     fn argv_flags() {
         assert_eq!(
