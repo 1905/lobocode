@@ -7,10 +7,7 @@ use lobo_agent::{
     process::{CleanEnv, LlamaArgs},
     runner::{Download, Exit, GpuCheck, Killer, Llama, Metrics, Tunnel},
 };
-use lobo_proto::{
-    DownloadProgress, Gpu, Host, Llama as LlamaMetrics,
-    catalog::{Model, min_free_mib},
-};
+use lobo_proto::{DownloadProgress, Gpu, Host, Llama as LlamaMetrics, catalog::Model};
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -38,7 +35,7 @@ pub struct MacDeps {
     hf_base: String,
     llama_url: String,
     poll: Duration,
-    usable_mib: Arc<dyn Fn() -> Result<i64> + Send + Sync>,
+    memory: super::memory::MemoryProbe,
     vm_stat: VmStat,
     host: std::result::Result<Gpu, String>,
     pid: AtomicU32,
@@ -71,7 +68,7 @@ impl MacDeps {
             logs,
             hf_base: models::HF_BASE.into(),
             poll: Duration::from_secs(2),
-            usable_mib: Arc::new(platform::usable_mib),
+            memory: Arc::new(super::memory::snapshot),
             vm_stat,
             host: host_gpu(&platform::sysctl_string, &platform::mem_bytes)
                 .map_err(|e| e.to_string()),
@@ -83,6 +80,11 @@ impl MacDeps {
         }
     }
     pub(crate) async fn check_gpu(&self, cancel: &CancellationToken) -> Result<()> {
+        if cancel.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        super::memory::inspect_with(&self.cfg.model.id, self.cfg.ctx, &self.memory)?
+            .ensure_fit()?;
         let output = tokio::select! {biased;
             _ = cancel.cancelled() => return Err(Error::Cancelled),
             output = tokio::time::timeout(Duration::from_secs(60),tokio::process::Command::new(&self.cfg.llama_server)
@@ -106,16 +108,6 @@ impl MacDeps {
             };
             return Err(Error::Local(format!(
                 "llama-server sees no Metal device: {detail}"
-            )));
-        }
-        let usable = (self.usable_mib)()?;
-        let need = min_free_mib(self.cfg.model.size);
-        if need > usable {
-            return Err(Error::Local(format!(
-                "{} needs {:.1} GB, this Mac allows ~{:.0} GB to the GPU",
-                self.cfg.model.id,
-                need as f64 / 1024.0,
-                usable as f64 / 1024.0
             )));
         }
         Ok(())
@@ -259,6 +251,9 @@ impl Download for MacDeps {
 #[async_trait]
 impl Llama for MacDeps {
     async fn start(&self) -> lobo_agent::Result<Exit> {
+        super::memory::inspect_with(&self.cfg.model.id, self.cfg.ctx, &self.memory)
+            .and_then(|assessment| assessment.ensure_fit())
+            .map_err(agent_error)?;
         if self.llama_started.swap(true, Ordering::AcqRel) {
             return Err(lobo_agent::Error::msg("llama-server already started"));
         }
