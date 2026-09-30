@@ -98,3 +98,5 @@ Diagnostic result: hosted build `b5617ae` failed normal memory admission before 
 ## Cloud E2E priority — 2026-09-30
 
 Latest user instruction: “local test later. do cloud e2e”, after asking about TUI and Mac. RunPod test rentals and cloud-client E2E are now authorized; local inference stays deferred. Use Q6, one GPU at a time, isolated config/state, bounded direct prompts without OpenCode and exact owned cleanup. App/CLI release remains held. Prepare the complete image before resolving the separate earlier public-image promotion hold. Track plan v1.4.
+
+Complete Q6 candidate is built and independently verified on Dell: source `528322e`, digest `sha256:83db6998106ca53b67b2bcec9cba445f91924f942b664958eebb742a8539a2d5`, 24.69 GB. Artifact root: `/storage/lobocode-cloud-e2e-q6-528322e-20260930/artifacts`. Verification-only CI run `36730862442` passed at verifier revision `505c255`; publication steps were skipped. The image is unpublished, both required public tags return 404, and live cloud acceptance remains pending. New builder is stopped; original Q8 jobs remain paused. Keep prepared native Task11 changes separate.

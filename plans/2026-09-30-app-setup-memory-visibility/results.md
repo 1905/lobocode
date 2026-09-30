@@ -122,3 +122,21 @@ Cloud preparation was committed and pushed as `bfeb9e4a406e077598845c4c2e6d0ceb5
 Image preparation checkpoint at 13:53 UTC: the existing 22,082,528,352-byte Q6 model was copied to Dell. Its SHA-256 matched the catalog in 249 seconds, then matched again inside the network-disabled model build stage. The build is writing six GGUF shards. CUDA base layers were reused through verified read-only copies from the paused builder. Original Q8 containers and drivers remain paused. Candidate export, offline acceptance and verification-only CI are still pending; no GPU has been rented.
 
 A second source review found that OCI index platform declarations were not compared with the runnable image config. The verifier now rejects mismatches throughout the descriptor path while retaining plain manifests and unknown-platform attestations. All 23 focused fixtures, Python compilation and actionlint pass on Dell. This correction changes verification only; the candidate agent source remains `528322e`.
+
+## Complete Q6 candidate — built and checked, not published
+
+The complete Linux AMD64 image built successfully from `528322e468deeab23f8c0b74e804510d98cca071`. Its digest is `sha256:83db6998106ca53b67b2bcec9cba445f91924f942b664958eebb742a8539a2d5`. The local OCI export contains 24,691,613,469 bytes. Build and export took 4,116 seconds on the bounded Dell worker.
+
+The image contains the Rust agent, llama.cpp CUDA runtime, SSH server, startup script, six verified Q6 shards, model manifest and licenses. The largest stored layer is 3,993,657,861 bytes. The built-in `check-image --model q6` passed without networking in 128.7 seconds. A separate 236-second scan verified every OCI blob, all shard hashes, required files, source labels, embedded release metadata, Linux AMD64 platform, entrypoint and absence of shared SSH host keys. These are image checks; no GPU inference ran.
+
+Provenance limit: the unchanged production Dockerfile writes `built_by=github-actions` into `release.json`. This candidate was built on Dell. Its receipts record the actual builder; that inherited field does not establish a GitHub-hosted build.
+
+Evidence is under `/storage/lobocode-cloud-e2e-q6-528322e-20260930/artifacts` on Dell: `q6-oci/`, `q6-metadata.json`, `q6-image-evidence.json`, `q6-build.log` and `q6-validation.log`. The exported files are read-only. Original Q8 work remains paused. The temporary limit on `lobo-public-image-check` was restored to its original 2 CPUs / 4 GiB after confirming it was idle.
+
+The exported image reports CUDA 12.8.1. Its exact `NVIDIA_REQUIRE_CUDA` constraint is preserved in the evidence. NVIDIA documents compatibility between newer drivers and older CUDA toolkits in its [CUDA compatibility guide](https://docs.nvidia.com/deploy/cuda-compatibility/latest/why-cuda-compatibility.html). Actual RunPod host compatibility and inference remain unverified.
+
+Verification-only [CI run 36730862442](https://github.com/1905/lobocode/actions/runs/36730862442) passed at workflow revision `505c255441e57f832ccc0b802a21ebb1d1b78f29`. Input validation, checkout and every-blob/image-identity verification passed. ORAS installation and publication were skipped. Normal image and promotion jobs were also skipped. Independent anonymous requests still return HTTP 404 for `latest-q6` and `sha-528322e468de-q6`.
+
+CI checked 29 blobs totaling 24,691,612,965 bytes in 136 seconds. Runner `21` deregistered automatically, its container exited 0 and was removed, and the temporary artifact-directory ACL was restored. The new build worker is stopped with cache and candidate preserved. Small review receipts are copied to `bin/cloud-e2e-20260930/`; private CI evidence is in `/tmp/lobocode-cloud-ci-6b028f/result.json` on the Mac.
+
+The image is not published, and no GPU has been rented. Public image publication/promotion still requires resolving the earlier release hold before normal TUI and Mac cloud starts can run. Successful cloud inference, throughput, Ready/Stop and full native acceptance remain pending.
