@@ -19,11 +19,16 @@ User corrections saved on 2026-09-30.
   context. If memory is insufficient or cannot be checked, show an error and
   block startup. Do not treat installed RAM or an on-disk model as proof that
   it fits. User correction: 2026-09-30. The new
-  [memory-check spec](plans/2026-09-30-local-memory-check/spec.md) is pending
-  approval; this guard is not implemented yet.
-- Release remains on hold from the user's explicit instruction. Do not infer
-  permission to push, publish images, tag a release or rent GPUs from a local
-  install, documentation update or implementation correction.
+  [memory-check spec](plans/2026-09-30-local-memory-check/spec.md) and plan are
+  approved for implementation and E2E. This guard is not implemented yet.
+- Release remains on hold from the user's explicit instruction. Normal branch
+  pushes and CI are now authorized by full auto. Do not publish images, tag a
+  release or rent GPUs without lifting the release hold.
+- Delivery order: merge existing work first (completed at `d2557c3`), implement
+  the separate memory feature, run E2E, merge it, then implement
+  `plans/2026-09-30-github-app-updates/plan-v1.0.md` in full auto. The updater's
+  earlier planning-only limit is superseded by the user's implementation
+  instruction on 2026-09-30. Use the newly merged baseline for each feature.
 - Keep mistakes and unresolved acceptance visible in
   [docs/implementation-mistakes.md](docs/implementation-mistakes.md).
 
