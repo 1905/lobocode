@@ -135,15 +135,9 @@ async fn execute(app: &App, argv: Vec<OsString>, io: &mut Io) -> anyhow::Result<
         }
         Some(Cmd::Down(a)) => cmd::down::run(app, &a, &path, io).await?,
         Some(Cmd::Status(a)) => cmd::status::run(app, &a, &path, io).await?,
-        Some(Cmd::Logs(_)) | Some(Cmd::Test(_)) => {
-            app::load_cfg(&path)?;
-            anyhow::bail!("agent command implementation pending");
-        }
-        Some(Cmd::Release(_)) => {
-            let cfg = app::load_cfg(&path)?;
-            lobo_core::control::check_release(&cfg)?;
-            anyhow::bail!("release command implementation pending");
-        }
+        Some(Cmd::Logs(a)) => cmd::logs::run(app, &a, &path, io).await?,
+        Some(Cmd::Test(_)) => cmd::test::run(app, &path, io).await?,
+        Some(Cmd::Release(a)) => cmd::release::run(app, &a, &path, io).await?,
         Some(Cmd::Completion(a)) => {
             if let Some(shell) = a.shell {
                 clap_complete::generate(
