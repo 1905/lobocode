@@ -37,6 +37,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "tim
 tokio-util = "0.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "stream", "json"] }
+libc = "0.2"
 tempfile = "3"
 chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
 ts-rs = { version = "12", features = ["chrono-impl", "serde-json-impl"] }
@@ -45,8 +47,9 @@ ts-rs = { version = "12", features = ["chrono-impl", "serde-json-impl"] }
 tauri-build = { version = "=2.7.0", features = [] }
 
 [dev-dependencies]
+wiremock = "0.6"
 lobo-core = { path = "../../crates/lobo-core", features = ["testkit"] }
-tokio = { version = "1", features = ["test-util"] }
+tokio = { version = "1", features = ["test-util", "net", "io-util"] }
 
 [profile.release]
 strip = true

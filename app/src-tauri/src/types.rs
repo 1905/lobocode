@@ -210,6 +210,31 @@ impl LocalMemory {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../gen/")]
+pub struct OpenCodeInfo {
+    pub path: String,
+    pub endpoint: Option<String>,
+    pub provider: Option<String>,
+    pub model_alias: Option<String>,
+    #[ts(type = "number | null")]
+    pub context: Option<u64>,
+    pub can_configure: bool,
+    pub reason: Option<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../gen/")]
+pub struct OpenCodeResult {
+    pub path: String,
+    pub provider: String,
+    pub model_alias: String,
+    pub changed: bool,
+    pub message: String,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../gen/")]
 pub struct AppError {
     pub kind: String,
     pub message: String,
@@ -305,10 +330,14 @@ mod tests {
         StepMark::export_all(&config).unwrap();
         PanelState::export_all(&config).unwrap();
         AppError::export_all(&config).unwrap();
+        OpenCodeInfo::export_all(&config).unwrap();
+        OpenCodeResult::export_all(&config).unwrap();
         let dir = ui.join("gen");
         let expected = [
             "AppError.ts",
             "LocalMemory.ts",
+            "OpenCodeInfo.ts",
+            "OpenCodeResult.ts",
             "PanelState.ts",
             "Phase.ts",
             "Step.ts",

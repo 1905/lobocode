@@ -2,6 +2,7 @@
 use crate::{
     backend::{Backend, Result},
     notify::Notifier,
+    opencode,
     prefs::Prefs,
     store::Store,
     types::*,
@@ -11,6 +12,7 @@ use lobo_core::{
     control::{OwnerSink, RuntimeTarget},
 };
 use std::{
+    cell::RefCell,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
@@ -26,6 +28,21 @@ struct Active {
     stop: Option<JoinHandle<()>>,
     submission_id: u64,
     config_writes: usize,
+    setup_id: u64,
+    setup: Option<u64>,
+}
+
+struct SetupReservation {
+    controller: Arc<Controller>,
+    id: u64,
+}
+impl Drop for SetupReservation {
+    fn drop(&mut self) {
+        let mut active = self.controller.active.lock().unwrap();
+        if active.setup == Some(self.id) {
+            active.setup = None;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -83,6 +100,179 @@ impl Controller {
     }
     pub fn state(&self) -> PanelState {
         self.store.lock().unwrap().view(self.clock.now())
+    }
+    pub fn opencode_info(&self, selected: Option<String>) -> Result<OpenCodeInfo> {
+        // Discover the path even when there is no runtime. No provider call here.
+        let path = match selected {
+            Some(path) => {
+                let path = PathBuf::from(path);
+                opencode::config_path(&path, true)?;
+                path
+            }
+            None => self.backend.opencode_path()?,
+        };
+        let mut info = OpenCodeInfo {
+            path: path.to_string_lossy().into_owned(),
+            endpoint: None,
+            provider: None,
+            model_alias: None,
+            context: None,
+            can_configure: false,
+            reason: Some("Start Lobocode and wait for Ready before configuring OpenCode.".into()),
+            warnings: vec![],
+        };
+        let binding = {
+            let active = self.active.lock().unwrap();
+            let store = self.store.lock().unwrap();
+            let view = store.view(self.clock.now());
+            if active.quitting
+                || self.shutdown.is_cancelled()
+                || store.stop_running
+                || store.up_running
+                || view.phase != Phase::Ready
+            {
+                return Ok(info);
+            }
+            match (store.runtime(), view.snap.as_ref()) {
+                (Some(owner), Some(snap)) => {
+                    opencode::binding_from_snap(&owner, snap, String::new())
+                }
+                _ => Err(opencode::error(
+                    "Ready runtime metadata is unavailable. Refresh and retry.",
+                )),
+            }
+        };
+        match binding {
+            Ok(binding) => {
+                info.endpoint = Some(binding.endpoint);
+                info.provider = Some(binding.provider.clone());
+                info.model_alias = Some(binding.model_alias);
+                info.context = Some(binding.context);
+                info.warnings = match opencode::warnings(&path, &binding.provider) {
+                    Ok(warnings) => warnings,
+                    Err(e) => {
+                        info.reason = Some(e.message);
+                        return Ok(info);
+                    }
+                };
+                info.can_configure = true;
+                info.reason = None;
+            }
+            Err(e) => info.reason = Some(e.message),
+        }
+        Ok(info)
+    }
+    pub async fn configure_opencode(
+        self: &Arc<Self>,
+        path: String,
+        make_default: bool,
+    ) -> Result<OpenCodeResult> {
+        let path = PathBuf::from(path);
+        opencode::config_path(&path, false)?;
+        let (reservation, owner, generations, expected) = {
+            let mut active = self.active.lock().unwrap();
+            let store = self.store.lock().unwrap();
+            let view = store.view(self.clock.now());
+            if active.quitting
+                || self.shutdown.is_cancelled()
+                || active.config_writes > 0
+                || active.setup.is_some()
+                || store.stop_running
+                || store.up_running
+                || view.phase != Phase::Ready
+            {
+                return Err(opencode::error(
+                    "OpenCode setup requires an idle Ready runtime. Retry after the current operation.",
+                ));
+            }
+            let owner = store.runtime().ok_or_else(|| {
+                opencode::error("Runtime ownership is missing. Refresh and retry.")
+            })?;
+            let expected = opencode::binding_from_snap(
+                &owner,
+                view.snap.as_ref().ok_or_else(|| {
+                    opencode::error("Ready runtime metadata is unavailable. Refresh and retry.")
+                })?,
+                String::new(),
+            )?;
+            active.setup_id = active.setup_id.wrapping_add(1);
+            let id = active.setup_id;
+            active.setup = Some(id);
+            (
+                SetupReservation {
+                    controller: self.clone(),
+                    id,
+                },
+                owner,
+                store.generations(),
+                expected,
+            )
+        };
+        // Network work holds neither gate. Stop and settings changes remain responsive.
+        let prepared = self.backend.prepare_opencode(owner.clone()).await?;
+        if !opencode::same_runtime(&expected, &prepared.binding) {
+            return Err(opencode::error(
+                "The running model or endpoint changed. Refresh and retry.",
+            ));
+        }
+        let c = self.clone();
+        tokio::task::spawn_blocking(move || {
+            // Core invokes this after preparing files, immediately before final checks.
+            // Keep both guards through replacement and rollback, including no-op returns.
+            let retained = RefCell::new(None);
+            let validate = || -> Result<()> {
+                if retained.borrow().is_some() {
+                    return Ok(());
+                }
+                let active = c.active.lock().unwrap();
+                let store = c.store.lock().unwrap();
+                let view = store.view(c.clock.now());
+                if active.setup != Some(reservation.id)
+                    || active.quitting
+                    || c.shutdown.is_cancelled()
+                    || active.config_writes > 0
+                    || store.generations() != generations
+                    || store.stop_running
+                    || store.up_running
+                    || view.phase != Phase::Ready
+                    || store.runtime().as_ref() != Some(&owner)
+                {
+                    return Err(opencode::error(
+                        "Runtime or settings changed. Retry OpenCode setup.",
+                    ));
+                }
+                let current = opencode::binding_from_snap(
+                    &owner,
+                    view.snap.as_ref().ok_or_else(|| {
+                        opencode::error("Ready runtime metadata is unavailable. Refresh and retry.")
+                    })?,
+                    String::new(),
+                )?;
+                if !opencode::same_runtime(&current, &prepared.binding) {
+                    return Err(opencode::error(
+                        "The running model or endpoint changed. Refresh and retry.",
+                    ));
+                }
+                *retained.borrow_mut() = Some((active, store));
+                Ok(())
+            };
+            // Catch while retained lives outside the unwinding stack. Drop the gates
+            // normally so a failed backend cannot poison Active or Store.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                c.backend
+                    .configure_opencode(&path, &prepared, make_default, &validate)
+            }))
+            .unwrap_or_else(|_| {
+                Err(opencode::error(
+                    "OpenCode setup worker failed. Retry setup.",
+                ))
+            });
+            drop(retained);
+            drop(reservation);
+            result
+        })
+        .await
+        .map_err(|_| opencode::error("OpenCode setup worker failed. Retry setup."))?
     }
     pub fn begin_config_write(&self) {
         let mut active = self.active.lock().unwrap();

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add app-owned OpenCode setup commands. Authenticate the exact Ready runtime with bounded model discovery; reject stale ownership, settings and key revisions before repair. Preserve provider restrictions and keep keys out of app metadata. Hosted app validation is pending; UI controls and E2E remain deferred.
+
 - Add the core OpenCode repair writer. Preserve JSONC comments and unrelated settings, use private key files and backups, reject concurrent changes, and avoid file churn on unchanged repairs. App controls are in progress. Dell: 15 repair fixtures, six unchanged CLI fixtures and Clippy pass.
 - Wire the app to its recorded runtime for Start, status and Stop. Capture Start before queuing memory admission; reject changed settings after the check. Guard discovered ownership against stale replies and clear old runtime status after Stop. Hosted app lint, units and generated-file checks pass; E2E is deferred.
 - Update the denied-Start regression fixture for the asynchronous worker refresh. Verify that changed memory appears as insufficient and that neither Start nor Retry launches a runtime. Hosted validation passes.

@@ -109,6 +109,38 @@ pub async fn choose_weights(app: tauri::AppHandle, start: String) -> Result<Opti
     .map_err(error)
 }
 #[tauri::command]
+pub fn opencode_info(c: C<'_>, path: Option<String>) -> Result<OpenCodeInfo> {
+    c.opencode_info(path)
+}
+#[tauri::command]
+pub async fn choose_opencode_config(app: tauri::AppHandle) -> Result<Option<String>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(selected) = app
+            .dialog()
+            .file()
+            .add_filter("OpenCode configuration", &["json", "jsonc"])
+            .blocking_pick_file()
+        else {
+            return Ok(None);
+        };
+        let path = selected.into_path().map_err(|_| {
+            crate::opencode::error("Choose an existing JSON or JSONC configuration file.")
+        })?;
+        crate::opencode::config_path(&path, true)?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    })
+    .await
+    .map_err(|_| crate::opencode::error("OpenCode file selection failed."))?
+}
+#[tauri::command]
+pub async fn configure_opencode(
+    c: C<'_>,
+    path: String,
+    make_default: bool,
+) -> Result<OpenCodeResult> {
+    c.inner().configure_opencode(path, make_default).await
+}
+#[tauri::command]
 pub fn open_settings(app: tauri::AppHandle) -> Result<()> {
     windows::show(&app, "settings").map_err(error)
 }

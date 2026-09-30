@@ -373,6 +373,234 @@ async fn memory_status(c: &Controller, status: &str) {
     panic!("memory status never became {status}");
 }
 
+fn setup_controller(b: Arc<crate::opencode::tests::FixtureBackend>) -> Arc<Controller> {
+    let c = Controller::new(
+        b.clone(),
+        Arc::new(Notes::default()),
+        Arc::new(FixedClock("2026-09-29T12:00:00Z".parse().unwrap())),
+        Prefs::default(),
+        None,
+        tokio::runtime::Handle::current(),
+        Arc::new(|_| {}),
+    );
+    c.change(|store| store.apply_snap(b.snap.lock().unwrap().clone(), c.clock.now()));
+    c
+}
+fn setup_path(b: &crate::opencode::tests::FixtureBackend) -> String {
+    b.destination().to_string_lossy().into_owned()
+}
+
+#[tokio::test]
+async fn opencode_off_info_keeps_path_and_never_queries_runtime() {
+    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "local", "q6");
+    let c = setup_controller(b.clone());
+    c.change(|s| {
+        s.set_runtime(None);
+        s.stop_done();
+        vec![]
+    });
+    let info = c.opencode_info(None).unwrap();
+    assert_eq!(info.path, setup_path(&b));
+    assert!(!info.can_configure);
+    assert!(info.endpoint.is_none() && info.model_alias.is_none());
+    assert!(info.reason.is_some());
+    assert_eq!(b.snapshots.load(Ordering::SeqCst), 0);
+    assert!(c.configure_opencode(setup_path(&b), true).await.is_err());
+    assert_eq!(b.preparations.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn opencode_selected_valid_file_remains_usable_when_default_is_invalid() {
+    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "local", "q6");
+    let c = setup_controller(b.clone());
+    std::fs::write(b.destination(), "{ bad: private-parser-secret }").unwrap();
+    let default = c.opencode_info(None).unwrap();
+    assert!(!default.can_configure);
+    assert!(
+        !serde_json::to_string(&default)
+            .unwrap()
+            .contains("private-parser-secret")
+    );
+    let selected = b.root.path().join("chosen.jsonc");
+    std::fs::write(&selected, "{}").unwrap();
+    let info = c
+        .opencode_info(Some(selected.to_string_lossy().into_owned()))
+        .unwrap();
+    assert!(info.can_configure);
+    assert_eq!(info.path, selected.to_string_lossy());
+    assert_eq!(
+        info.model_alias,
+        Some(lobo_proto::catalog::get("q6").unwrap().alias.clone())
+    );
+    assert_eq!(info.context, Some(4096));
+    assert!(info.warnings.is_empty());
+    assert_eq!(b.snapshots.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn opencode_stop_settings_and_change_back_during_http_invalidate_setup() {
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
+    for mutation in 0..5 {
+        let server = MockServer::start().await;
+        let b = crate::opencode::tests::FixtureBackend::new(
+            &format!("{}/v1", server.uri()),
+            "local",
+            "q6",
+        );
+        let c = setup_controller(b.clone());
+        let original = b.bytes();
+        let controller = c.clone();
+        Mock::given(path("/v1/models")).respond_with(move |_: &wiremock::Request| {
+            match mutation {
+                0 => controller.stop(),
+                1 => { controller.begin_config_write(); controller.end_config_write(); },
+                2 => { controller.set_model("q6".into()); controller.set_model("q8".into()); },
+                3 => { controller.set_provider("vast".into()); controller.set_provider("runpod".into()); },
+                _ => { controller.choose(Target::Local); controller.choose(Target::Cloud); },
+            }
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"data":[{"id":lobo_proto::catalog::get("q6").unwrap().alias}]}))
+        }).expect(1).mount(&server).await;
+        assert!(c.configure_opencode(setup_path(&b), true).await.is_err());
+        assert_eq!(b.bytes(), original);
+        assert!(c.active.lock().unwrap().setup.is_none());
+        assert_eq!(b.preparations.load(Ordering::SeqCst), 1);
+        if mutation == 0 {
+            join_stop(&c).await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn opencode_duplicate_and_cancelled_verification_release_reservation() {
+    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "local", "q6");
+    b.gated.store(true, Ordering::SeqCst);
+    let c = setup_controller(b.clone());
+    let controller = c.clone();
+    let chosen = setup_path(&b);
+    let task = tokio::spawn(async move { controller.configure_opencode(chosen, true).await });
+    b.started.notified().await;
+    assert!(c.configure_opencode(setup_path(&b), true).await.is_err());
+    assert_eq!(b.preparations.load(Ordering::SeqCst), 1);
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+    assert!(c.active.lock().unwrap().setup.is_none());
+    assert_eq!(std::fs::read_dir(b.root.path()).unwrap().count(), 2);
+}
+
+#[tokio::test]
+async fn opencode_stale_owner_stop_or_selection_before_final_callback_rejects() {
+    use wiremock::MockServer;
+    for mutation in 0..3 {
+        let server = MockServer::start().await;
+        crate::opencode::tests::serve_models(&server, "q6", 1).await;
+        let b = crate::opencode::tests::FixtureBackend::new(
+            &format!("{}/v1", server.uri()),
+            "local",
+            "q6",
+        );
+        let c = setup_controller(b.clone());
+        let original = b.bytes();
+        let controller = c.clone();
+        *b.before_commit.lock().unwrap() = Some(Arc::new(move || match mutation {
+            0 => controller.change(|s| {
+                let mut owner = s.runtime().unwrap();
+                owner.boot_id = "replacement-boot".into();
+                s.set_runtime(Some(owner));
+                vec![]
+            }),
+            1 => {
+                controller.stop();
+            }
+            _ => {
+                controller.set_model("q6".into());
+                controller.set_model("q8".into());
+            }
+        }));
+        assert!(c.configure_opencode(setup_path(&b), true).await.is_err());
+        assert_eq!(b.bytes(), original);
+        assert!(c.active.lock().unwrap().setup.is_none());
+        if mutation == 1 {
+            join_stop(&c).await;
+        }
+        *b.before_commit.lock().unwrap() = None; // Break the fixture-only Arc cycle.
+    }
+}
+
+#[tokio::test]
+async fn opencode_commit_and_noop_retain_both_gates_until_backend_returns() {
+    use wiremock::MockServer;
+    let server = MockServer::start().await;
+    crate::opencode::tests::serve_models(&server, "q6", 2).await;
+    let b =
+        crate::opencode::tests::FixtureBackend::new(&format!("{}/v1", server.uri()), "local", "q6");
+    let c = setup_controller(b.clone());
+    let controller = c.clone();
+    let validations = Arc::new(AtomicUsize::new(0));
+    let count = validations.clone();
+    *b.after_validate.lock().unwrap() = Some(Arc::new(move || {
+        assert!(controller.active.try_lock().is_err());
+        assert!(controller.store.try_lock().is_err());
+        count.fetch_add(1, Ordering::SeqCst);
+    }));
+    assert!(
+        c.configure_opencode(setup_path(&b), true)
+            .await
+            .unwrap()
+            .changed
+    );
+    assert!(
+        !c.configure_opencode(setup_path(&b), true)
+            .await
+            .unwrap()
+            .changed
+    );
+    assert_eq!(validations.load(Ordering::SeqCst), 4);
+    assert!(c.active.lock().unwrap().setup.is_none());
+    assert!(c.store.try_lock().is_ok());
+    *b.after_validate.lock().unwrap() = None;
+}
+
+#[tokio::test]
+async fn opencode_panic_after_validation_cleans_files_and_does_not_poison_app_gates() {
+    use wiremock::MockServer;
+    let server = MockServer::start().await;
+    crate::opencode::tests::serve_models(&server, "q6", 2).await;
+    let b =
+        crate::opencode::tests::FixtureBackend::new(&format!("{}/v1", server.uri()), "local", "q6");
+    let c = setup_controller(b.clone());
+    let original = b.bytes();
+    *b.after_validate.lock().unwrap() =
+        Some(Arc::new(|| panic!("task-owned post-validation panic")));
+    let error = c
+        .configure_opencode(setup_path(&b), true)
+        .await
+        .unwrap_err();
+    assert_eq!(error.message, "OpenCode setup worker failed. Retry setup.");
+    assert_eq!(b.bytes(), original);
+    assert!(c.active.lock().unwrap().setup.is_none());
+    assert!(c.store.try_lock().is_ok());
+    *b.after_validate.lock().unwrap() = None;
+    assert!(
+        c.configure_opencode(setup_path(&b), true)
+            .await
+            .unwrap()
+            .changed
+    );
+}
+
+#[tokio::test]
+async fn opencode_preparation_panic_releases_reservation() {
+    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "local", "q6");
+    b.panic_prepare.store(true, Ordering::SeqCst);
+    let c = setup_controller(b.clone());
+    let controller = c.clone();
+    let path = setup_path(&b);
+    let task = tokio::spawn(async move { controller.configure_opencode(path, true).await });
+    assert!(task.await.unwrap_err().is_panic());
+    assert!(c.active.lock().unwrap().setup.is_none());
+    assert!(c.store.try_lock().is_ok());
+}
+
 #[tokio::test(start_paused = true)]
 async fn refresh_models_only_when_requested() {
     let (c, b, _) = fixture(20, false, false);
