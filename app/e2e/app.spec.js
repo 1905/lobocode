@@ -96,9 +96,15 @@ describe("native app with real Rust core and isolated local runtime", () => {
     await fits();
     assert.equal(await $('input[aria-label="bucket url"]').isExisting(), false);
     assert.equal(await $('input[aria-label="domain"]').isExisting(), false);
-    assert.equal(await $('input[aria-label="tunnel token"]').isExisting(), false);
+    assert.equal(
+      await $('input[aria-label="tunnel token"]').isExisting(),
+      false,
+    );
     assert.equal(await $('input[aria-label="cloud port"]').isExisting(), true);
-    assert.match(fs.readFileSync(fixture.config, "utf8"), /^LOBO_CONNECTION=ssh$/m);
+    assert.match(
+      fs.readFileSync(fixture.config, "utf8"),
+      /^LOBO_CONNECTION=ssh$/m,
+    );
     await browser.saveScreenshot(path.join(root, "native-settings-cloud.png"));
     await click("Local");
     await fits();
@@ -107,6 +113,50 @@ describe("native app with real Rust core and isolated local runtime", () => {
     await phase("OFF");
     if (process.env.LOBO_E2E_CHECK_DRAG === "1") {
       const before = await browser.getWindowRect();
+      // Check native position readback before using it to judge mouse input.
+      await browser.setWindowRect(
+        before.x + 80,
+        before.y + 60,
+        before.width,
+        before.height,
+      );
+      const moved = await browser.getWindowRect();
+      assert.ok(
+        Math.abs(moved.x - before.x) + Math.abs(moved.y - before.y) >= 40,
+      );
+      await browser.setWindowRect(
+        before.x,
+        before.y,
+        before.width,
+        before.height,
+      );
+      const restored = await browser.getWindowRect();
+      fs.writeFileSync(
+        path.join(root, "drag-readback.json"),
+        JSON.stringify({ before, moved, restored }),
+      );
+      await browser.execute(() => {
+        window.__loboDragEvents = [];
+        for (const type of ["mousedown", "mouseup"]) {
+          document.addEventListener(
+            type,
+            (e) => {
+              window.__loboDragEvents.push({
+                type,
+                x: e.clientX,
+                y: e.clientY,
+                button: e.button,
+                buttons: e.buttons,
+                detail: e.detail,
+                trusted: e.isTrusted,
+                tag: e.target.tagName,
+              });
+            },
+            true,
+          );
+        }
+      });
+      const samples = [];
       fs.writeFileSync(
         path.join(root, "drag-ready.json"),
         JSON.stringify(before),
@@ -114,6 +164,17 @@ describe("native app with real Rust core and isolated local runtime", () => {
       await browser.waitUntil(
         async () => {
           const after = await browser.getWindowRect();
+          samples.push(after);
+          fs.writeFileSync(
+            path.join(root, "drag-samples.json"),
+            JSON.stringify(samples),
+          );
+          fs.writeFileSync(
+            path.join(root, "drag-input.json"),
+            JSON.stringify(
+              await browser.execute(() => window.__loboDragEvents),
+            ),
+          );
           if (Math.abs(after.x - before.x) + Math.abs(after.y - before.y) < 40)
             return false;
           fs.writeFileSync(
