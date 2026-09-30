@@ -1,6 +1,8 @@
 pub mod backend;
 pub mod commands;
 pub mod controller;
+#[cfg(feature = "e2e")]
+mod e2e_memory;
 pub mod fmt;
 pub mod icons;
 pub mod notify;

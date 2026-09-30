@@ -43,6 +43,7 @@
     "endpoint": "http://127.0.0.1:8931/v1",
     "is_local": true,
     "last_detail": "llama.cpp b11118 11 MB",
+    "local_memory": null,
     "log_tail": [
       "llama.cpp b11118 11 MB"
     ],

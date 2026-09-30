@@ -15,7 +15,11 @@ const binary = path.resolve(
 );
 export const config = {
   runner: "local",
-  specs: ["./app.spec.js"],
+  specs: [
+    process.env.LOBO_E2E_MEMORY_ONLY === "1"
+      ? "./memory.spec.js"
+      : "./app.spec.js",
+  ],
   maxInstances: 1,
   capabilities: [
     { browserName: "tauri", "tauri:options": { application: binary } },
@@ -28,6 +32,7 @@ export const config = {
         driverProvider: "embedded",
         embeddedPort: fixture.port + 1000,
         env: {
+          LOBO_E2E_ROOT: root,
           LOBO_APP_CONFIG: fixture.config,
           XDG_STATE_HOME: path.join(root, "state"),
         },

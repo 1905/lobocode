@@ -41,6 +41,9 @@ rand.workspace = true
 nix.workspace = true
 zip.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-metal = { version = "0.3.2", default-features = false, features = ["std", "MTLDevice"] }
+
 [dev-dependencies]
 wiremock.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

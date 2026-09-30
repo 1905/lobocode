@@ -25,6 +25,32 @@ export const phaseTone = (s: PanelState) =>
   })[s.phase.kind];
 export const active = (s: PanelState) =>
   ['loading', 'booting', 'stopping'].includes(s.phase.kind);
+export function canStart(s: PanelState): boolean {
+  if (s.target === 'cloud') return s.readiness?.cloud_ready === true;
+  const m = s.local_memory;
+  return (
+    !!m &&
+    m.model === s.model &&
+    m.status === 'ready' &&
+    m.required_bytes !== null &&
+    m.budget_bytes !== null &&
+    m.required_bytes <= m.budget_bytes
+  );
+}
+export function memoryView(s: PanelState) {
+  const m = s.local_memory?.model === s.model ? s.local_memory : null;
+  return {
+    status: m?.status ?? 'checking',
+    message:
+      m?.status === 'insufficient'
+        ? `Not enough Mac memory for ${m.model} with ${m.ctx} context tokens. Close other apps or use Cloud.`
+        : (m?.message ?? 'Checking Mac memory…'),
+    values:
+      m && m.required_bytes !== null && m.budget_bytes !== null
+        ? `${(m.required_bytes / 2 ** 30).toFixed(1)} GiB required · ${(m.budget_bytes / 2 ** 30).toFixed(1)} GiB budget`
+        : null,
+  };
+}
 export function headerDetail(s: PanelState): string {
   const p = s.snap?.pod;
   if (p)

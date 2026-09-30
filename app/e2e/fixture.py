@@ -26,7 +26,7 @@ def ports():
     raise RuntimeError("no isolated E2E port pair available")
 
 
-def prepare(root):
+def prepare(root, memory_only=False):
     root.mkdir(parents=True, exist_ok=True)
     if list(root.iterdir()):
         raise RuntimeError("E2E fixture directory must be empty")
@@ -40,11 +40,14 @@ def prepare(root):
     assert meta.st_blocks * 512 < 1_048_576, "fixture must remain sparse"
     (weights / (file.name + ".sha256-ok")).write_text(f'{model["sha256"]} {meta.st_size} {meta.st_mtime_ns}\n')
     runtime = weights / "runtime/llama-b11118"
-    runtime.mkdir(parents=True)
-    script = (Path(__file__).parent / "fake_llama.py").read_text().split("\n", 1)[1]
-    server = runtime / "llama-server"
-    server.write_text(f"#!{sys.executable}\n{script}")
-    server.chmod(0o755)
+    if not memory_only:
+        runtime.mkdir(parents=True)
+        script = (Path(__file__).parent / "fake_llama.py").read_text().split("\n", 1)[1]
+        server = runtime / "llama-server"
+        server.write_text(f"#!{sys.executable}\n{script}")
+        server.chmod(0o755)
+    else:
+        (root / "memory.json").write_text(json.dumps({"mode": "insufficient"}) + "\n")
     port = ports()
     config = root / "config.env"
     config.write_text(

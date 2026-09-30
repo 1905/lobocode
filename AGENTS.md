@@ -19,12 +19,16 @@ User corrections saved on 2026-09-30.
   context. If memory is insufficient or cannot be checked, show an error and
   block startup. Do not treat installed RAM or an on-disk model as proof that
   it fits. User correction: 2026-09-30. The new
-  memory-check spec and implementation are in the separate
-  `feat/local-memory-check` worktree at `b9a1966`. Native E2E, final review and
-  merge remain pending. The installed app does not include this guard yet.
-- Release remains on hold from the user's explicit instruction. Do not infer
-  permission to push, publish images, tag a release or rent GPUs from a local
-  install, documentation update or implementation correction.
+  [memory-check spec](plans/2026-09-30-local-memory-check/spec.md) is approved.
+  The guard is implemented at `b9a1966`, with documentation checkpoint `597fb1c`.
+  It is integrated into the isolated app-runtime branch. Native E2E and master
+  merge remain pending. A review found a queued-Start selection race; fix it
+  in the approved app setup work. The installed app has no guard yet.
+- Release remains on hold. Normal branch pushes, CI and direct merge after
+  required checks are authorized by full auto and the approved app spec.
+  Do not publish images, tag a release or rent GPUs.
+- Keep updater work and image builds paused. Finish the approved app fixes
+  with unit/build checks first. E2E is deferred at the user's request.
 - Keep mistakes and unresolved acceptance visible in
   [docs/implementation-mistakes.md](docs/implementation-mistakes.md).
 
@@ -43,14 +47,15 @@ The [earlier plan](plans/2026-09-30-public-pod-images.md) remains as a record.
 
 The user paused the earlier feature queue on 2026-09-30. Keep GPU image builds,
 validators and updater work paused until asked to resume. Preserve the memory
-worktree and its uncommitted documentation.
+worktree and its committed documentation checkpoint `597fb1c`.
 
 New requests: configure or repair OpenCode from the app, show measured memory
 through loading and normal use, and appear in the macOS app switcher. The user
 also reported misleading `0 / 0` token rates while a request was still reading
 its prompt. Track these additions in
 [the app setup and visibility spec](plans/2026-09-30-app-setup-memory-visibility/spec.md).
-This spec is pending review; these additions are not implemented.
+The expanded spec and implementation plan are approved. Implementation is in progress;
+acceptance remains pending.
 
 The local OpenCode config now uses the running Q6 model at
 `http://127.0.0.1:8931/v1`, a private credential-file reference, and the existing

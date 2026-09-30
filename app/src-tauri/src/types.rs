@@ -119,6 +119,7 @@ pub struct PanelState {
     pub target: Target,
     pub provider: String,
     pub model: String,
+    pub local_memory: Option<LocalMemory>,
     pub snap: Option<Snap>,
     pub config: Option<ConfigShow>,
     pub readiness: Option<Readiness>,
@@ -139,6 +140,65 @@ pub struct PanelState {
     pub endpoint: Option<String>,
     pub menu_text: String,
     pub boot_progress: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../gen/")]
+pub struct LocalMemory {
+    pub model: String,
+    #[ts(type = "number")]
+    pub ctx: i64,
+    #[ts(type = "'ready' | 'insufficient' | 'unavailable'")]
+    pub status: String,
+    pub message: String,
+    #[ts(type = "number | null")]
+    pub total_bytes: Option<u64>,
+    #[ts(type = "number | null")]
+    pub available_bytes: Option<u64>,
+    #[ts(type = "number | null")]
+    pub metal_limit_bytes: Option<u64>,
+    #[ts(type = "number | null")]
+    pub required_bytes: Option<u64>,
+    #[ts(type = "number | null")]
+    pub budget_bytes: Option<u64>,
+}
+impl From<lobo_core::local::memory::MemoryAssessment> for LocalMemory {
+    fn from(a: lobo_core::local::memory::MemoryAssessment) -> Self {
+        let ready = a.fits();
+        Self {
+            status: if ready { "ready" } else { "insufficient" }.into(),
+            message: if ready {
+                format!(
+                    "Memory check passed · {} · {} context tokens",
+                    a.model, a.ctx
+                )
+            } else {
+                a.message()
+            },
+            model: a.model,
+            ctx: a.ctx,
+            total_bytes: Some(a.total_bytes),
+            available_bytes: Some(a.available_bytes),
+            metal_limit_bytes: Some(a.metal_limit_bytes),
+            required_bytes: Some(a.required_bytes),
+            budget_bytes: Some(a.budget_bytes),
+        }
+    }
+}
+impl LocalMemory {
+    pub fn unavailable(model: String, ctx: i64, message: String) -> Self {
+        Self {
+            model,
+            ctx,
+            status: "unavailable".into(),
+            message,
+            total_bytes: None,
+            available_bytes: None,
+            metal_limit_bytes: None,
+            required_bytes: None,
+            budget_bytes: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -241,6 +301,7 @@ mod tests {
         let dir = ui.join("gen");
         let expected = [
             "AppError.ts",
+            "LocalMemory.ts",
             "PanelState.ts",
             "Phase.ts",
             "Step.ts",

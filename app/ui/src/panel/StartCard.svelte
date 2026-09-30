@@ -1,17 +1,20 @@
 <script lang="ts">
   import type { PanelState } from '../gen/PanelState';
-  import { limits } from '../lib/view';
+  import { limits, canStart } from '../lib/view';
   import BracketPicker from '../widgets/BracketPicker.svelte';
   import BracketButton from '../widgets/BracketButton.svelte';
   import LocalStart from './LocalStart.svelte';
+  import MemoryCheck from './MemoryCheck.svelte';
   let {
     panel,
     action,
     pick,
+    startLabel = 'START',
   }: {
     panel: PanelState;
     action: (name: string) => void;
     pick: (kind: string, value: string) => void;
+    startLabel?: string;
   } = $props();
 </script>
 
@@ -25,7 +28,12 @@
   {#if panel.target === 'local'}<LocalStart
       {panel}
       pick={(v) => pick('model', v)}
-    /><BracketButton label="START" wide onclick={() => action('start')} />
+    /><MemoryCheck {panel} /><BracketButton
+      label={startLabel}
+      disabled={!canStart(panel)}
+      wide
+      onclick={() => action('start')}
+    />
   {:else if !panel.readiness?.cloud_ready}<div class="row">
       <span class="dim target">&gt; cloud</span><span class="amber"
         >no keys</span
@@ -57,7 +65,12 @@
         >{limits(panel.config?.values ?? {})}</span
       >
     </div>
-    <BracketButton label="START" wide onclick={() => action('start')} />{/if}
+    <BracketButton
+      label={startLabel}
+      disabled={!canStart(panel)}
+      wide
+      onclick={() => action('start')}
+    />{/if}
 </section>
 
 <style>

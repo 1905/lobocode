@@ -1,4 +1,5 @@
 pub mod deps;
+pub mod memory;
 pub mod models;
 pub mod platform;
 pub mod provider;

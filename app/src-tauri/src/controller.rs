@@ -77,6 +77,12 @@ impl Controller {
     pub fn state(&self) -> PanelState {
         self.store.lock().unwrap().view(self.clock.now())
     }
+    pub fn invalidate_memory(&self) {
+        self.change(|s| {
+            s.invalidate_memory();
+            vec![]
+        });
+    }
     pub fn spawn_loops(self: &Arc<Self>) {
         let c = self.clone();
         self.runtime.spawn(async move {
@@ -142,6 +148,7 @@ impl Controller {
                 s.needs_setup();
                 vec![]
             });
+            self.refresh_memory().await;
             return;
         }
         match self.backend.snapshot().await {
@@ -162,8 +169,40 @@ impl Controller {
                 vec![]
             }),
         }
+        self.refresh_memory().await;
     }
-    pub fn start(self: &Arc<Self>) {
+    pub async fn refresh_memory(&self) {
+        let request = self.store.lock().unwrap().begin_memory();
+        let Some((generation, request, model)) = request else {
+            return;
+        };
+        let result = self.backend.local_memory(&model).await;
+        let memory = match result {
+            Ok(a) => LocalMemory::from(a),
+            Err(e) => {
+                let ctx = self
+                    .state()
+                    .config
+                    .as_ref()
+                    .and_then(|c| c.values.get("LOBO_CTX"))
+                    .and_then(|v| v.parse().ok())
+                    .filter(|ctx| *ctx > 0)
+                    .unwrap_or(lobo_core::release::DEFAULT_DEFAULTS.ctx);
+                LocalMemory::unavailable(model, ctx, e.message)
+            }
+        };
+        self.change(|s| {
+            s.apply_memory(generation, request, memory);
+            vec![]
+        });
+    }
+    fn schedule_memory(self: &Arc<Self>) {
+        let c = self.clone();
+        self.runtime.spawn(async move {
+            c.refresh_memory().await;
+        });
+    }
+    pub fn start(self: &Arc<Self>) -> Result<()> {
         let mut active = self.active.lock().unwrap();
         let req = {
             let mut s = self.store.lock().unwrap();
@@ -174,7 +213,7 @@ impl Controller {
                 || s.stop_running
                 || !matches!(v.phase, Phase::Off | Phase::Failed { .. })
             {
-                return;
+                return Ok(());
             }
             s.begin_up(self.clock.now())
         };
@@ -185,8 +224,11 @@ impl Controller {
             Ok(o) => o,
             Err(e) => {
                 drop(active);
-                self.change(|s| s.up_ended(Some(&e.message)));
-                return;
+                self.change(|s| {
+                    s.invalidate_memory();
+                    s.up_ended(Some(&e.message))
+                });
+                return Err(e);
             }
         };
         let mut events = operation.take_events().expect("new up has events");
@@ -215,6 +257,7 @@ impl Controller {
         }));
         drop(active);
         (self.emit)(self.state());
+        Ok(())
     }
     pub fn stop(self: &Arc<Self>) {
         let mut active = self.active.lock().unwrap();
@@ -343,11 +386,12 @@ impl Controller {
             c.refresh(false).await;
         });
     }
-    pub fn choose(&self, t: Target) {
+    pub fn choose(self: &Arc<Self>, t: Target) {
         self.change(|s| {
             s.choose(t);
             vec![]
         });
+        self.schedule_memory();
         if let Some(dir) = &self.prefs_dir
             && let Err(e) = (Prefs {
                 target: Some(self.state().target),
@@ -366,11 +410,12 @@ impl Controller {
             vec![]
         });
     }
-    pub fn set_model(&self, m: String) {
+    pub fn set_model(self: &Arc<Self>, m: String) {
         self.change(|s| {
             s.set_model(m);
             vec![]
         });
+        self.schedule_memory();
     }
     pub fn panel_shown(self: &Arc<Self>, open: bool) {
         self.change(|s| {

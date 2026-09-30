@@ -7,7 +7,9 @@
 - Remove package-generated SSH host keys from the GPU image during the install layer. Each cloud instance keeps its own pinned key. Final image verification is still running on Dell.
 - Bundle the model license in the Docker build context. A license download timeout previously discarded completed model packaging; rebuilding now reuses the verified source cache.
 
-- Plan only: specify a Mac memory check before local Start, with model/context estimates and blocked startup on insufficient or unknown memory. Approval and implementation are pending.
+- Check current Mac memory before local Start. Show required memory and the usable budget; block Start and Retry while checking, when insufficient, or when measurement fails. Keep model and Cloud choices available.
+- Include exact model weights, context cache, a runtime reserve and a separate system reserve. Repeat admission before runtime preparation and model load; stale displayed results cannot authorize startup.
+- Memory validation in progress: 449 workspace tests and Clippy pass on Dell; 11 frontend tests and native UI fixture compilation pass. Native E2E passed five cases, then disconnected during denied Start; the final case was blocked. Cleanup passed. E2E is now deferred at the user's request; hosted app checks remain pending. No inference or peak-memory calibration ran on this Mac.
 
 - Resolve the current public Q6/Q8 image digest on every new cloud start. Ignore old bucket/image settings and fail before rental if the registry cannot resolve the image.
 - Package the agent, CUDA runtime, SSH server and selected GGUF shards together. Verify model hashes offline; remove agent/model downloads from image startup.

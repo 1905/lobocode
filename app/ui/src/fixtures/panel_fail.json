@@ -40,6 +40,7 @@
     "endpoint": "http://127.0.0.1:8933/v1",
     "is_local": false,
     "last_detail": "vast 26461301, offer 51399812, 9129 Mbps down, Quebec, CA",
+    "local_memory": null,
     "log_tail": [
       "Docker image model shard failed SHA-256 verification; instance deleted",
       "create: bad host, renting another pod (4/4)",

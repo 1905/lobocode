@@ -85,6 +85,7 @@ impl EnsureRuntime for PinnedRuntime {
 #[derive(Clone)]
 pub struct LocalHooks {
     pub supported: fn() -> Result<()>,
+    pub memory: super::memory::MemoryProbe,
     pub ensure_runtime: Arc<dyn EnsureRuntime>,
     pub free_bytes: fn(&Path) -> Result<u64>,
     pub ps: Arc<dyn Fn(i32) -> Result<String> + Send + Sync>,
@@ -97,6 +98,7 @@ impl Default for LocalHooks {
     fn default() -> Self {
         Self {
             supported: super::platform::supported,
+            memory: Arc::new(super::memory::snapshot),
             ensure_runtime: Arc::new(PinnedRuntime),
             free_bytes: super::models::free_space,
             ps: Arc::new(command_of),
@@ -301,6 +303,7 @@ impl Provider for LocalProvider {
                 s.pid
             )));
         }
+        super::memory::inspect_with(&opts.model, opts.ctx, &self.hooks.memory)?.ensure_fit()?;
         fs::create_dir_all(&self.weights)
             .and_then(|()| {
                 tempfile::Builder::new()

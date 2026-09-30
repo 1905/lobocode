@@ -38,6 +38,7 @@
     "endpoint": "http://127.0.0.1:8931/v1",
     "is_local": true,
     "last_detail": "this Mac, q6",
+    "local_memory": null,
     "log_tail": [
       "this Mac, q6"
     ],
