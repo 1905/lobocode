@@ -6,7 +6,6 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import urllib.request
 
 MODEL_REPO = "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive"
 BASE = f"https://huggingface.co/{MODEL_REPO}/resolve/main/"
@@ -21,6 +20,15 @@ def build(model_id, output):
     catalog = json.loads(Path("/build/catalog.json").read_text())
     model = next(m for m in catalog if m["id"] == model_id)
     output.mkdir(parents=True)
+    licenses = output / "licenses"
+    licenses.mkdir()
+    # Missing license text must fail before downloading or splitting model bytes.
+    shutil.copyfile("/build/Apache-2.0.txt", licenses / "Apache-2.0.txt")
+    (licenses / "MODEL.txt").write_text(
+        f"Model: {MODEL_REPO}\nSource: https://huggingface.co/{MODEL_REPO}\n"
+        f"Original GGUF SHA-256: {model['sha256']}\nLicense: Apache-2.0\n"
+        "Packaging modification: split into GGUF shards with llama.cpp. Model tensors are unchanged.\n"
+    )
     cache = Path("/model-cache")
     cache.mkdir(parents=True, exist_ok=True)
     source = cache / model["file"]
@@ -53,15 +61,6 @@ def build(model_id, output):
         manifest["shards"].append({"file": shard.name, "size": shard.stat().st_size, "sha256": sha256(shard)})
         shutil.move(shard, output / f"{i:02}" / shard.name)
     (output / "model.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    licenses = output / "licenses"
-    licenses.mkdir()
-    (licenses / "MODEL.txt").write_text(
-        f"Model: {MODEL_REPO}\nSource: https://huggingface.co/{MODEL_REPO}\n"
-        f"Original GGUF SHA-256: {model['sha256']}\nLicense: Apache-2.0\n"
-        "Packaging modification: split into GGUF shards with llama.cpp. Model tensors are unchanged.\n"
-    )
-    with urllib.request.urlopen("https://www.apache.org/licenses/LICENSE-2.0.txt", timeout=30) as response:
-        (licenses / "Apache-2.0.txt").write_bytes(response.read())
 
 
 if __name__ == "__main__":
