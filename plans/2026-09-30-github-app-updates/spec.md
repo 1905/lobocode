@@ -2,7 +2,11 @@
 
 **Date:** 2026-09-30
 **Scope:** /Users/kass/dev/lobocode
-**Status:** pending review
+**Status:** approved
+
+Approved by the user on 2026-09-30. This approves the design and preparation of the versioned implementation plan. The release hold remains active.
+
+Plan preparation clarified the read-only inspection paths, the constrained release-page command, and version-bound signatures. These implement the approved runtime-safety and no-downgrade requirements. The implementation plan records their exact files and tests.
 
 ## TL;DR
 
@@ -87,7 +91,8 @@ GitHub supports a stable URL for an asset on the Latest release. It does not sel
 - Use the existing Rust IPC pattern. JavaScript sends commands and renders state; it does not select URLs, keys, signatures, filesystem destinations, or restart commands.
 - Add no JavaScript updater/process plugin permissions. Preserve the existing restrictive webview network policy.
 - Production builds accept only the embedded endpoint and public key. Test endpoints and ephemeral keys require a test build configuration.
-- Serialize update operations within the process. Serialize installation between app processes using a task-owned advisory lock in the app data directory. Do not delete a lock file to break a live lock.
+- Require the artifact's signed version to match the advertised version. Enable the pinned updater's `requireSignedVersion` setting and keep downgrades disabled. The pinned Tauri CLI binds the version during bundle signing. See the [updater configuration](https://github.com/tauri-apps/plugins-workspace/blob/updater-v2.13.1/plugins/updater/src/config.rs) and [CLI signing implementation](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.0/crates/tauri-cli/src/helpers/updater_signature.rs).
+- Serialize update operations within the process. Serialize installation between app processes using a task-owned advisory lock in the app config directory. Do not delete a lock file to break a live lock.
 
 Why: `app/ui/src/lib/api.ts:9` already routes actions through Rust. Reusing that boundary avoids a second installation path that bypasses the controller.
 
@@ -139,7 +144,7 @@ Use the existing native title bar, dark appearance, rounded corners, drag behavi
 
 Do not render arbitrary release Markdown in the window. **Release notes** opens the exact tag page on `github.com/1905/lobocode`. Long errors remain bounded in the UI; sanitized details go to local diagnostics.
 
-Expose commands `get_update_state`, `check_for_updates`, `install_update`, and `open_updates`. Emit `lobo://update-state` using types generated from Rust, matching the existing export pattern in `app/src-tauri/src/types.rs:232`.
+Expose commands `get_update_state`, `check_for_updates`, `install_update`, `open_updates`, and `open_update_release`. The release-page command takes no arguments; Rust derives the exact tag URL, or the fixed Latest page when no candidate exists. Emit `lobo://update-state` using types generated from Rust, matching the existing export pattern in `app/src-tauri/src/types.rs:232`.
 
 Example state delivered to the frontend:
 
@@ -168,7 +173,7 @@ The frontend's enabled button is only a hint. Rust rechecks eligibility when the
 2. Acquire the existing shared `OperationState` guard with a two-second cancellable wait. Hold it through the final idle check and installation. This prevents a cooperating CLI/app process from starting a new operation in that interval. Avoid nested acquisition of the same operation lock.
 3. If the operation record is pending or corrupt, stop preflight with an error. Never clear, adopt, or delete runtime resources merely to install an update.
 4. Inspect local process ownership and configured provider instances through a read-only backend check, with a 15-second total timeout. Active or unknown state blocks installation. Check all configured providers, not the selected panel target.
-5. Do not call the current `snapshot()` as the preflight probe: it can attach or stop connections (`crates/lobo-core/src/control/status.rs:9`). Add a small read-only inspection entry point and reuse existing provider listing and process-identity code.
+5. Do not call the current `snapshot()` as the preflight probe: it can attach or stop connections (`crates/lobo-core/src/control/status.rs:9`). The current local-state reader also removes stale records. Add a read-only local-state method and saved-cloud-reference inspection, then reuse provider listing and process-identity code without those mutations.
 6. An unconfigured fresh app can update if no local process or pending ownership record exists. Malformed existing state fails closed; missing provider keys must not be interpreted as proof that a saved runtime is absent.
 7. Reject execution from a mounted DMG or a non-writable installation directory. Offer instructions to install the DMG into `/Applications` or `~/Applications`. Do not add a privileged installation helper.
 
@@ -232,7 +237,7 @@ If public smoke fails after publication, stop formula publication and report the
 
 | File path | Planned change |
 |---|---|
-| `app/src-tauri/Cargo.toml`, `app/src-tauri/Cargo.lock` | Pin the updater plugin and required direct locking dependency. Preserve Tauri 2 compatibility. |
+| `app/src-tauri/Cargo.toml`, `app/src-tauri/Cargo.lock` | Pin the updater plugin and required direct locking, version, and hashing dependencies. Preserve Tauri 2 compatibility. |
 | `app/src-tauri/tauri.conf.json` | Embed the production updater endpoint/public key. Preserve bundle identity and existing code-signing behavior. |
 | `app/src-tauri/tauri.release.conf.json` | New overlay enabling production updater artifacts. Ordinary development builds do not require its signing secrets. |
 | `app/src-tauri/src/updater/mod.rs`, `state.rs`, `tests.rs` | Coordinator, injectable transport/installer boundaries, scheduler, candidate ownership, progress, receipt, and meaningful failure tests. |
@@ -240,13 +245,14 @@ If public smoke fails after publication, stop formula publication and report the
 | `app/src-tauri/src/controller.rs`, `controller/tests.rs` | Reversible installation guard, command exclusion, normal-Quit preservation, and failure recovery. |
 | `app/src-tauri/src/backend.rs` | Expose read-only update safety and execute installation while the shared operation guard is held. Never reuse destructive cleanup as preflight. |
 | `crates/lobo-core/src/control/update_safety.rs`, `control/mod.rs` | Minimal read-only runtime inspection shared with app backend; reuse existing listing and ownership rules. |
+| `crates/lobo-core/src/local/state.rs`, `local/state/tests.rs`, `crates/lobo-core/src/connection.rs` | Read-only state inspection needed by update preflight. Preserve existing runtime cleanup behavior for its current callers. |
 | `app/src-tauri/src/types.rs`, `app/ui/src/gen/` | Typed update state and generated TypeScript. Extend the exact generated-file test expectations. |
 | `app/src-tauri/src/windows.rs`, `capabilities/default.json` | Native Updates window and its permitted window/event operations. No direct updater/process IPC grant. |
 | `app/ui/src/App.svelte`, `lib/api.ts` | Updates route, sizing, commands, and event subscription with initial-state race handling. |
-| `app/ui/src/updates/Updates.svelte`, `updates/Updates.test.ts` | Compact update view and state/action tests. |
+| `app/ui/src/updates/Updates.svelte`, `updates/view.ts`, `updates/Updates.test.ts` | Compact update view and pure state/action presentation tests, using the existing Node-based Vitest setup. |
 | `app/ui/src/panel/Footer.svelte`, `panel/Panel.svelte`, `panel/SetupCard.svelte` | Update entry points available before provider setup. Preserve essential runtime actions. |
 | `app/ui/src/render/`, `app/src-tauri/tests/fixtures.rs` | Representative update states in the established fixture/render pipeline. |
-| `app/e2e/app.spec.js`, `tools/native_app_e2e.py` | UI-only update tests on Mac; explicit separate install mode for remote macOS acceptance. |
+| `app/e2e/app.spec.js`, `app/e2e/wdio.conf.js`, `app/e2e/tauri.conf.json`, `tools/native_app_e2e.py` | UI-only update tests on Mac, driver access to the Updates window, and explicit separate install mode for remote macOS acceptance. |
 | `tools/test_app_updater.py`, `app/e2e/tauri.updater-test.conf.json` | Isolated A-to-B bundle test with disposable keys, receipt inspection, and task-owned cleanup. |
 | `Makefile`, `.github/workflows/rust.yml` | Release overlay/output paths, remote updater tests, UI fixture checks, and relevant CI path filters. |
 | `.github/workflows/release.yml`, `.goreleaser.yaml` | Complete-draft publication, updater assets, serial release ordering, and delayed formula upload. |
