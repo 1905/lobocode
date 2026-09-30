@@ -47,3 +47,9 @@ Run `36706410556` at `70855c3` was cancelled after a fixture correction. Replace
 Run `36707086020` at `ff959e8` found app lint failures: public helpers exposed private StartSubmission, and the test preparation gate needed a type alias. Commit `aad828b` corrects both. Source formatting/whitespace pass; hosted app tests still await a passing build. No local compilation ran.
 
 Run `36707493061` at `aad828b` passes Linux/core-macos/static-agent and app lint. App units: 52 pass, one fails. The old denied-Start assertion expected no display sample; the asynchronous worker now refreshes after admission failure. Its fake still returned sufficient memory, independently of its forced admission denial. The fixture now changes the displayed sample to insufficient before denial and waits for that fresh sample. It still requires zero runtime launches/rentals and two independent rejected admission attempts. Production admission logic is unchanged; hosted retest is pending.
+
+Hosted run `36708630935` at `ca76f55`: app lint, Rust/UI unit tests and generated fixture/TypeScript checks pass. The corrected denied-Start fixture passes. Core macOS, Linux protocol/workspace and static-agent jobs pass. Native bundle is still building; native E2E remains disabled. Task 5 source review and unit acceptance are complete.
+
+## Core OpenCode repair checkpoint
+
+Commit `739ca5b` completes Tasks 6–7. Parent source review passes strict parsing, leaf edits, unrelated-byte preservation, private key/backup files, no-op validation, rotation, and final fingerprint checks. Dell: 15 OpenCode fixtures, six unchanged CLI export fixtures and Clippy pass. Both lockfiles add only jsonc-parser 0.33.2. The final fingerprint check is optimistic; it cannot synchronize an external writer after that check. App authentication and controls remain in progress. No personal config was read or changed.

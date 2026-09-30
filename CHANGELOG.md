@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- Wire the app to its recorded runtime for Start, status and Stop. Capture Start before queuing memory admission; reject changed settings after the check. Guard discovered ownership against stale replies and clear old runtime status after Stop. Hosted app checks are pending; E2E is deferred.
-- Update the denied-Start regression fixture for the asynchronous worker refresh. Verify that changed memory appears as insufficient and that neither Start nor Retry launches a runtime. Hosted validation is pending.
+- Add the core OpenCode repair writer. Preserve JSONC comments and unrelated settings, use private key files and backups, reject concurrent changes, and avoid file churn on unchanged repairs. App controls are in progress. Dell: 15 repair fixtures, six unchanged CLI fixtures and Clippy pass.
+- Wire the app to its recorded runtime for Start, status and Stop. Capture Start before queuing memory admission; reject changed settings after the check. Guard discovered ownership against stale replies and clear old runtime status after Stop. Hosted app lint, units and generated-file checks pass; E2E is deferred.
+- Update the denied-Start regression fixture for the asynchronous worker refresh. Verify that changed memory appears as insufficient and that neither Start nor Retry launches a runtime. Hosted validation passes.
 
 - Add app-scoped runtime operations in the shared core. Match provider, instance and boot identity before cleanup; preserve unrelated pending operations and connections. App integration is in progress.
 - Core checks pass on Dell: 74 control tests, 19 local-provider tests and the scoped connection fixture. Final discovery fixes pass 24 scoped tests. Native E2E remains deferred; no inference or provider requests ran.

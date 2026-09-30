@@ -170,26 +170,26 @@ Files: Modify `control/up.rs`, `control/app_scope.rs`, `control/cleanup.rs`; Tes
 
 Files: Modify app `backend.rs`, `controller.rs`, `store.rs`, `types.rs`, `controller/tests.rs`, `store/tests.rs`.
 
-- [ ] Add failing app tests for target changes during Stop/setup, persisted restart ownership, foreign operation and local Ready despite a failing Vast fake.
-- [ ] Add the whole-branch review's queued-worker regression: hold the blocking worker, submit Local Start, select Cloud/change model/config, then release it. Assert no Cloud rent, no second accepted submission and a stale-submission error or correctly bound local request. Reserve startup and capture StartSubmission before queueing, preserving error recovery.
-- [ ] Persist ownership in backend, capture immutable Stop identity, wire scoped Start/status/Stop and retain worker-owned startup cleanup. Stop's final refresh uses the same identity.
-- [ ] Hosted macOS command: `CARGO_BUILD_JOBS=2 cargo test --locked --manifest-path app/src-tauri/Cargo.toml`. Expect named ownership cases green. Do not run this on the laptop.
+- [x] Add failing app tests for target changes during Stop/setup, persisted restart ownership, foreign operation and local Ready despite a failing Vast fake.
+- [x] Add the whole-branch review's queued-worker regression: hold the blocking worker, submit Local Start, select Cloud/change model/config, then release it. Assert no Cloud rent, no second accepted submission and a stale-submission error or correctly bound local request. Reserve startup and capture StartSubmission before queueing, preserving error recovery.
+- [x] Persist ownership in backend, capture immutable Stop identity, wire scoped Start/status/Stop and retain worker-owned startup cleanup. Stop's final refresh uses the same identity.
+- [x] Hosted macOS command: `CARGO_BUILD_JOBS=2 cargo test --locked --manifest-path app/src-tauri/Cargo.toml`. Expect named ownership cases green. Do not run this on the laptop.
 
 ## Task 6: Preserve JSONC with exact provider/agent patches
 
 Files: Create `opencode.rs`, `opencode/tests.rs`; Modify core `Cargo.toml`, `src/lib.rs`, root/app lockfiles.
 
-- [ ] Add JSONC/comment/trailing-comma fixtures as test strings; assert unrelated byte slices and values survive. Include both checkbox states, custom agents and Q6/Q8 contexts.
-- [ ] Add/pin CST dependency and implement `patch_config` without whole-document serialization. Reject ambiguous duplicate keys and non-object containers.
-- [ ] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core opencode::"'`. New tests fail first, then pass. Keep CLI export fixtures unchanged.
+- [x] Add JSONC/comment/trailing-comma fixtures as test strings; assert unrelated byte slices and values survive. Include both checkbox states, custom agents and Q6/Q8 contexts.
+- [x] Add/pin CST dependency and implement `patch_config` without whole-document serialization. Reject ambiguous duplicate keys and non-object containers.
+- [x] Dell: `rtk proxy ssh dell 'docker exec -e CARGO_TARGET_DIR=/memory-target -e CARGO_BUILD_JOBS=2 -w /app-runtime lobo-public-image-check sh -c "cargo test --locked -p lobo-core opencode::"'`. New tests fail first, then pass. Keep CLI export fixtures unchanged.
 
 ## Task 7: Add atomic private config writes
 
 Files: Modify `opencode.rs`, `opencode/tests.rs`.
 
-- [ ] Test config discovery precedence, file-key substitution, private permissions, no-op repair, changed key backups, concurrent edits and interrupted replacement.
-- [ ] Implement `discover_config` and `configure`; call validation immediately before commit. No error includes secrets or parser excerpts. Unsupported symlink target leaves original intact.
-- [ ] Repeat Task 6's Dell command. Assert byte-identical originals on failures and no leaked key/backup files outside the task tempdir.
+- [x] Test config discovery precedence, file-key substitution, private permissions, no-op repair, changed key backups, concurrent edits and interrupted replacement.
+- [x] Implement `discover_config` and `configure`; call validation immediately before commit. No error includes secrets or parser excerpts. Unsupported symlink target leaves original intact.
+- [x] Repeat Task 6's Dell command. Assert byte-identical originals on failures and no leaked key/backup files outside the task tempdir.
 
 ## Task 8: Authenticate current OpenCode binding in Rust
 
@@ -368,4 +368,6 @@ OpenCodeResult { path: String, provider: String, model_alias: String, changed: b
 
 The shared restriction inspector uses the same strict JSONC parser and validates string arrays. It reports existing provider restrictions without changing them. IPC warnings/reasons are bounded static messages. ConfigOutcome retains its four fields. `opencode_info` still reports the discovered config path when no Ready runtime exists, with configure disabled and a clear reason.
 
-Use a setup-specific bounded HTTP client with redirects disabled. Capture the private raw Lobocode config generation/fingerprint as well as Store generations; masked ConfigShow cannot detect external key rotation. Hold Active and Store through the bounded local configure/replace call, including its validation callback; never hold either across network awaits. Releasing guards after validate but before replacement would allow Stop to race the write. No new runtime or model request is permitted.
+Use a setup-specific bounded HTTP client with redirects disabled. Capture the private raw Lobocode config generation/fingerprint as well as Store generations; masked ConfigShow cannot detect external key rotation. Hold Active and Store through the bounded local configure/replace call, including its validation callback; never hold either across network awaits. Releasing guards after validate but before replacement would allow Stop to race the write. No runtime start or generation request is permitted.
+
+Setup module file-map addition: create `app/src-tauri/src/opencode.rs` (and its `opencode/tests.rs` if useful) for private binding/revision/HTTP helpers. Keep backend wiring, command registration and controller generation gates in their existing files. This avoids adding all parsing/HTTP/revision logic to backend.rs; it adds no new public API beyond the locked metadata. Read `/tmp/lobocode-setup-binding-design.md` as source guidance; the two-flag ConfigRestrictions contract above is authoritative.
