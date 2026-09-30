@@ -243,3 +243,21 @@ below. It does not lift the release hold or the Mac testing limit.
   RunPod/Vast provisioning, GPU inference, real sleep/wake and native window
   movement still need acceptance. The installed app and old DMG were not replaced
   with this domain-free feature.
+
+## Public distribution correction — 2026-09-30
+
+- The user requested a fresh Mac install. Installed and opened build `3dec9ad` in
+  `/Applications/lobocode.app`; signature and binary identity passed. Config and
+  models were preserved. The local DMG now contains the same verified app.
+- The user clarified that the CLI installs separately through Homebrew. Stopped
+  the attempted manual CLI installation before it wrote a binary. Do not bundle
+  or manually replace the CLI as part of a DMG installation.
+- The user rejected the retained bucket dependency: this is a public app with no
+  dependency on the developer's infrastructure. All GPU software and model weights
+  must be in the public Docker image selected by the app.
+- Wrote the replacement plan before implementation. Q8 and Q6 get separate images.
+  The agent, runtime and SSH daemon are included. No agent/model download or package
+  installation belongs in normal cloud boot.
+- At the user's request, recorded the mistakes and their actual status in
+  [implementation-mistakes.md](../../docs/implementation-mistakes.md). The Docker
+  replacement is planned, not yet implemented or accepted. Release remains held.

@@ -4,6 +4,8 @@ Your own uncensored coding model, on demand. `lobo up` rents one RTX 5090, serve
 
 **Development status:** this branch contains the unreleased Rust rewrite. Release is on hold for manual testing. Homebrew installs the published version. Screenshots below show the Rust app with sample data.
 
+Cloud onboarding is not ready for public delivery. The current bucket dependency is being replaced with complete public GPU images. See the [implementation mistakes and remaining acceptance](docs/implementation-mistakes.md).
+
 <p align="center">
   <img src="docs/img/panel_boot.png" width="340" alt="booting: rent, container, tunnel, gpu, model download at 713 MB/s">
   <img src="docs/img/panel_ready.png" width="340" alt="ready: endpoint, api key, 45 tok/s, VRAM, idle-kill timer, stop">
@@ -24,6 +26,8 @@ lobo down       # or just walk away
 ```
 
 ## Install
+
+The desktop app installs from its DMG and does not require the CLI. Install the optional CLI separately through Homebrew.
 
 **Homebrew** (macOS, Linux):
 

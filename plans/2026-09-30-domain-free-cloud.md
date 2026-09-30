@@ -3,6 +3,10 @@
 Status: implemented locally on 2026-09-30. Plan written before code changes.
 Release remains on hold. Do not rent GPUs or publish builds for this work.
 
+Distribution correction: the bucket dependency retained by this plan was a mistake.
+The [public-image plan](2026-09-30-public-pod-images.md) supersedes it. SSH transport
+is implemented; the standalone public cloud installation remains incomplete.
+
 ## Outcome
 
 A new cloud setup needs no purchased domain, Cloudflare account, or tunnel token.

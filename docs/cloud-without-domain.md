@@ -2,6 +2,8 @@
 
 Updated: 2026-09-30. Status: implemented in the unreleased Rust branch. Real SSH fixture tests pass on Dell. Live GPU-provider acceptance is still pending. Release remains on hold.
 
+Distribution correction: the bucket requirement below describes the current implementation, not the intended public setup. The user rejected that dependency. It must be replaced with complete public Docker images containing the agent, runtime and selected model. See the [replacement plan](../plans/2026-09-30-public-pod-images.md) and [mistake record](implementation-mistakes.md).
+
 Use a Lobocode-managed SSH tunnel as the default cloud connection. It needs no domain purchase, Cloudflare account or paid tunnel subscription. GPU rental and any provider bandwidth charges still apply.
 
 ## User flow
