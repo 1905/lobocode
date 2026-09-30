@@ -351,7 +351,7 @@ impl Controller {
         cancel: CancellationToken,
         reply: tokio::sync::oneshot::Sender<Result<()>>,
     ) -> Result<()> {
-        let admitted = async {
+        let admitted: Result<lobo_core::control::UpOperation> = async {
             {
                 let active = self.active.lock().unwrap();
                 self.check_submission(&active, id, &submission, &cancel)?;
