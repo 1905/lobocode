@@ -17,8 +17,8 @@ The active artifact transfer acknowledged about 1.18 MB/s early in the run. A 24
 Files: modify `.github/workflows/pod-image.yml`, `spec.md`, `results.md`, `AGENTS.md`, `CHANGELOG.md`; create this version. Preserve every other workflow job and dirty Task11 file.
 
 - [x] C1i: Change only prebuilt.timeout-minutes from360 to720. Self-review the diff; validate workflow syntax and shell blocks on Dell. No new test harness or image rebuild is needed.
-- [ ] C1j: After the reviewed commit is pushed, cancel only run36802508956, wait for its job to end, remove its exact runner/container and restore its candidate ACL. Preserve completed image files and paused Q8 work.
-- [ ] C1k: Start one isolated replacement runner with a matching twelve-hour watchdog. Dispatch the same source/digest and publication/promotion inputs. Inspect only runtime-token timestamp claims during verification. Require enough credential lifetime for the planned transfer; otherwise stop before another long attempt. Signed upload URL expiry remains a separate unverified limit.
+- [x] C1j: After the reviewed commit is pushed, cancel only run36802508956, wait for its job to end, remove its exact runner/container and restore its candidate ACL. Preserve completed image files and paused Q8 work.
+- [x] C1k: Start one isolated replacement runner with a matching twelve-hour watchdog. Dispatch the same source/digest and publication/promotion inputs. Inspect only runtime-token timestamp claims during verification. Require enough credential lifetime for the planned transfer; otherwise stop before another long attempt. Signed upload URL expiry remains a separate unverified limit.
 - [ ] C1l: Record accepted bytes separately from network transmission. Verify publication, remove only the exact transfer artifact and runner, then continue C3/C4. No GPU rental before anonymous latest-q6 digest verification.
 
 This is an execution correction within the existing image-publication authorization. No new user decision or release permission is required. Parent self-review is the approval gate for this narrow change.

@@ -258,3 +258,33 @@ The memory guard is implemented through `b9a1966`; it is not installed in the us
 ### Direct comparison stopped by real memory admission
 
 The later explicit request authorized one 47,000-input-token direct test without OpenCode. The isolated supervisor from hosted build `b5617ae` rejected Q6/65,536 context: 26.7 GiB required, 9.4 GiB available after reserves. Zero models or generation requests started. The supervisor stopped with zero errors and no remaining task processes. Do not report this as either a model failure or a successful reply test. The original title completion still does not establish the main request can finish.
+
+## 9. A valid complete image did not prove it could be published
+
+The complete Q6 image passed offline verification on Dell. Its OCI export is
+24.69 GB, with every layer below GHCR's 10 GB limit. That size check missed a
+second constraint: GHCR limits each upload to ten minutes. At the measured
+Dell rate, a 3.99 GB monolithic layer cannot finish within that limit.
+See [GitHub's registry limits](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+
+The first ORAS attempt was cancelled before publication. The replacement
+regctl attempt used 32 MiB chunks but GHCR returned HTTP 416. The available
+logs do not establish which chunk failed or why. Neither attempt published a
+manifest. Offline copy fixtures did not prove live registry compatibility.
+
+The revised workflow stages the exact verified image through a temporary
+GitHub Actions artifact. A hosted runner rechecks all image hashes before
+publishing to GHCR. This artifact is build transport; the application never
+uses it or asks users for a bucket. The first staging run acknowledged about
+1.2 MB/s. Its six-hour limit left too little margin for the full transfer.
+The replacement allows twelve hours and checks credential expiry separately.
+Publication remains pending until anonymous digest checks pass.
+
+The user authorized Q6 publication and RunPod cloud E2E on 2026-10-01. Test one
+GPU at a time, use direct bounded prompts, and delete only the recorded test
+instance. Local inference, OpenCode and app/CLI releases remain on hold.
+
+A complete custom image removes package installation and separate model
+downloads during startup. It does not guarantee cached layers on a new GPU
+host. Measure image startup and model loading during the live tests before
+claiming fast startup.
