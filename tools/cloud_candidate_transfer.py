@@ -106,8 +106,14 @@ def entries(path):
 
 def source_files(layout, metadata):
     directory(layout)
-    require(entries(layout) == ["blobs", "index.json", "oci-layout"],
+    names = entries(layout)
+    require(names in (["blobs", "index.json", "oci-layout"],
+                      ["blobs", "index.json", "ingest", "oci-layout"]),
             "Unexpected or missing OCI layout entries.")
+    if "ingest" in names:
+        # The exporter may leave its empty ingestion directory outside the OCI graph.
+        directory(layout / "ingest")
+        require(not entries(layout / "ingest"), "OCI ingestion directory must be empty.")
     directory(layout / "blobs")
     require(entries(layout / "blobs") == ["sha256"], "Unexpected OCI blob directory.")
     directory(layout / "blobs" / "sha256")

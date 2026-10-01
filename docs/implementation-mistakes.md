@@ -289,6 +289,12 @@ and original image byte before publication. Prove part completion and reuse
 before another long transfer. This workflow is still under implementation;
 publication remains pending until anonymous digest checks pass.
 
+The first multipart run passed image verification, then failed because the
+packer rejected BuildKit's empty `ingest/` directory. The fixture had omitted
+this real export detail. Accept only that empty, real directory and keep all
+file-byte checks. Add the observed layout to the fixtures and inspect the real
+candidate shape before another run. Nothing was uploaded; exact cleanup passed.
+
 The user authorized Q6 publication and RunPod cloud E2E on 2026-10-01. Test one
 GPU at a time, use direct bounded prompts, and delete only the recorded test
 instance. Local inference, OpenCode and app/CLI releases remain on hold.

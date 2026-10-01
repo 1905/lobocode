@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Add independent 512 MiB CI transfer parts with completed-part reuse, isolated upload logging and exact image reconstruction before hosted publication. Dell fixtures and workflow checks pass. Live transfer, publication and RunPod E2E remain pending.
+- Correct transfer packing for BuildKit exports containing an empty `ingest/` directory. The first live packing attempt rejected this valid export detail before upload; the image passed verification and task cleanup passed.
 - Add a direct cloud diagnostic with RunPod instance/boot checks, private saved-connection validation and a fixed 47,000-input/32-output limit. Dell fake checks pass; live inference is pending.
 - Actual Mac app and 80×24 TUI cloud starts report missing public Q6 image (HTTP 404) before rental. RunPod inventory stays empty. Complete-image preparation and live cloud acceptance remain in progress.
 - Prepare an optional CI path to verify and publish a complete Q6 image built elsewhere. Verification is the default; publication and latest-tag promotion require explicit inputs. Dell fixture checks and workflow lint pass. Actual image verification and publication remain pending.

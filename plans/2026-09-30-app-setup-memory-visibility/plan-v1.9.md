@@ -1,7 +1,7 @@
-# App Setup and Runtime Visibility Implementation Plan v1.8
+# App Setup and Runtime Visibility Implementation Plan v1.9
 
 **Date:** 2026-10-01
-**Status:** superseded by v1.9
+**Status:** in-progress
 **Spec:** ./spec.md (approved)
 **Authorization:** The user approved implementation and testing in the expanded spec. Prior full-auto delivery authorization persists. Parent self-review completed. Execute under the approved implementation and testing instruction; no new scope permission is needed.
 **Goal:** Safely operate the app-owned runtime, configure OpenCode, and show accurate memory/activity in a normal native Mac app.
@@ -9,6 +9,17 @@
 **Tech Stack:** Rust/Tokio/serde, jsonc-parser 0.33.2 CST, macOS libproc, Svelte/Tauri, Vitest, WebdriverIO and Python native harnesses.
 
 > For agentic workers: use superpowers:subagent-driven-development to implement task-by-task. Checkbox syntax tracks completion.
+
+## Empty BuildKit directory correction — 2026-10-01
+
+Run `36812163531` passed full image verification and SDK installation, then packing rejected an empty `ingest/` directory. No upload ran. The exact runner, scratch and temporary candidate ACL are cleaned up. The image remains unchanged.
+
+Modify only `tools/cloud_candidate_transfer.py`, `tools/test_cloud_candidate_transfer.py`, this spec/plan/results, `AGENTS.md`, `CHANGELOG.md` and `docs/implementation-mistakes.md`. Preserve all workflow/action code and unrelated Task11 files.
+
+- [x] C1s: Accept an optional empty, real `ingest/` directory in the source OCI layout. It contains no file bytes and is omitted from transfer payloads. Nonempty ingest, symlinks, regular files, FIFO and other unexpected entries remain rejected. Parent review and all 22 Dell fixtures passed. Read-only selection of the real candidate passed without opening any file bodies. The original image was not modified or rebuilt.
+- [ ] C1t: Parent review, commit and push this correction with matching docs. Start a fresh two-part checkpoint run at the new workflow revision after exact prior cleanup. Continue C1p–r with the same candidate digest, isolation and same-run retry proof.
+
+Source: [OCI Image Layout](https://github.com/opencontainers/image-spec/blob/main/image-layout.md) permits additional layout entries. This correction accepts only the observed empty BuildKit work directory. The allowed file payloads and all image verification rules stay unchanged. Existing image-publication authorization covers this implementation fix; no new user decision is needed.
 
 ## Independently completed transfer parts — 2026-10-01
 
