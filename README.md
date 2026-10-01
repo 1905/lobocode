@@ -4,7 +4,7 @@ Your own uncensored coding model, on demand. `lobo up` rents one RTX 5090, serve
 
 **Development status:** this branch contains the unreleased Rust rewrite. Release is on hold for manual testing. Homebrew installs the published version. Screenshots below show the Rust app with sample data.
 
-The Rust cloud path uses complete public GPU images and resolves the latest image on each new start. These images are not published yet. Full image builds and live provider acceptance remain pending. See the [implementation record](docs/implementation-mistakes.md).
+The Rust cloud path resolves the latest complete public image on each new start. Q6 is published and passed a direct RunPod TUI inference check. Native Mac cloud acceptance and Q8 publication remain pending. See the [implementation record](docs/implementation-mistakes.md).
 
 <p align="center">
   <img src="docs/img/panel_boot.png" width="340" alt="booting: rent, image pull, private connection, GPU check and bundled-model verification">
@@ -14,7 +14,7 @@ The Rust cloud path uses complete public GPU images and resolves the latest imag
 ## TL;DR
 
 - **What:** start a 5090 on RunPod or Vast.ai from the standalone Mac app or optional CLI. The Rust candidate connects through private SSH at `http://127.0.0.1:8933/v1`. No domain or bucket is required.
-- **Speed:** about 45 tok/s generation, 500+ tok/s prompt, 64K context.
+- **Measured Q6 cloud check:** 47,000 uncached input tokens at 2,186.7 prompt tok/s; first content after 24.04 seconds. Sustained output speed remains unmeasured.
 - **Cost:** $0.69–0.99/h while it runs. It deletes itself after 30 min idle, and after 12 h in any case.
 - **Safe to forget:** the pod kills itself. Your account keys never leave your laptop.
 
@@ -59,7 +59,7 @@ New Rust configurations use a [private SSH connection](docs/cloud-without-domain
 
 The connection survives closing the app or finishing `lobo up`. It reconnects after a network interruption. The endpoint works only on that computer. Stop deletes the instance and closes the connection.
 
-Existing complete domain/token configurations keep their public connection. Select **use private connection** in Cloud Settings, or set `LOBO_CONNECTION=ssh`, before the next start. The SSH mode needs the matching new cloud agent. No updated agent image or release has been published yet; live provider validation remains pending.
+Existing complete domain/token configurations keep their public connection. Select **use private connection** in Cloud Settings, or set `LOBO_CONNECTION=ssh`, before the next start. The SSH mode needs the matching cloud agent. The public Q6 image includes it and passed the direct RunPod TUI check. Native Mac cloud acceptance and the app/CLI release remain pending.
 
 The GPU pulls a complete public Docker image. It includes the agent, inference runtime, SSH server and selected model weights. There is no separate agent install, private bucket or developer credential to configure.
 
@@ -77,7 +77,7 @@ Every new cloud start looks up the current `latest-q8` or `latest-q6` tag and se
 
 Useful flags for `lobo up`: `--provider vast`, `--q6`, `--ctx 16384`, `--idle-min 10`, `--max-life 4h`.
 
-The terminal dashboard updates in place. Press `q` to leave status; press `q` or Ctrl-C during startup to cancel and wait for cleanup. Short terminals use a compact layout that retains metrics, shutdown timers and the quit hint.
+The terminal dashboard updates in place. Press `q` to leave status; press `q` or Ctrl-C during startup to cancel and wait for cleanup. Short terminals use a compact layout that retains metrics, shutdown timers and the quit hint. The real RunPod check confirmed Ready and status fit 80 columns. Some startup detail lines still clip at that width.
 
 ## Run on this Mac
 
@@ -127,9 +127,11 @@ The optional CLI retains its separate export command: `lobo gen-api-key` writes 
 
 ## Pod image
 
-The Rust candidate uses two public image tags: `ghcr.io/1905/lobocode:latest-q8` and `ghcr.io/1905/lobocode:latest-q6`. Both include all software and model weights needed at GPU boot. These complete-image tags are not published yet.
+The Rust candidate uses separate complete images for Q6 and Q8. Each image includes the agent, inference runtime, SSH server and model weights. The Q6 tag, `ghcr.io/1905/lobocode:latest-q6`, is public and passed anonymous manifest verification on October 1, 2026. Q8 publication remains pending. The direct RunPod TUI check passed; native Mac cloud acceptance is pending. App and CLI releases remain on hold.
 
 The app resolves the selected tag again before each new start. The provider receives `ghcr.io/1905/lobocode@sha256:<digest>`. It may reuse identical layers, but cannot substitute an older image digest.
+
+A controlled Q6 check used a 65,536-token context and exactly 47,000 uncached synthetic input tokens. It returned the expected `4` in two output tokens. First content arrived after 24.040 seconds; the server reported 2,186.677 prompt tok/s. Its reported 45.271 output tok/s covers only two tokens and is not a sustained benchmark. Exact test-pod and tunnel cleanup passed. This does not validate local Metal inference or OpenCode.
 
 Model weights use native GGUF shards in separate image layers. Startup verifies each shard before loading. Missing or corrupt files fail startup and trigger instance cleanup. Boot never downloads replacement weights, an agent archive or OS packages.
 
@@ -142,6 +144,8 @@ lobo up --image ghcr.io/1905/lobocode@sha256:<digest>
 Normal starts ignore old `LOBO_POD_IMAGE`, bucket and model-source settings. The obsolete `--release`, `--source`, `--conns` and debug `--ssh` options return an error before rental.
 
 Image pulls can transfer roughly 22–29 GB of weights plus the runtime. The default startup limit is 40 minutes. A host that cannot start the container within 30 minutes is removed. Cancellation also removes the owned instance.
+
+A new host may need to download the full image. The complete image removes separate boot-time software and model downloads. It does not guarantee that a RunPod host already has the image cached.
 
 ## Config reference
 

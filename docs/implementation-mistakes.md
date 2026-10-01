@@ -303,3 +303,44 @@ A complete custom image removes package installation and separate model
 downloads during startup. It does not guarantee cached layers on a new GPU
 host. Measure image startup and model loading during the live tests before
 claiming fast startup.
+
+
+## Publication host correction — 2026-10-01
+
+The chosen Dell-to-registry/artifact path was too slow for the23GiB image. Several failed transport attempts preceded a working multipart upload at roughly1.1MB/s. The user explicitly moved this work to feesh. Dell staging was cancelled and exact cleanup passed, preserving the original candidate and5GiB of completed artifacts. Use feesh for Lobocode image, publication, backend and cloud TUI work from now on. This does not change the separate Fleet host instruction.
+
+Do not copy23GiB through the same slow path merely to change the publisher host. Feesh already has a Q6 source candidate; verify its catalog hash, rebuild in isolation and verify the new image digest. Record measured throughput before giving an ETA. The earlier complete image and retry proof remain valid evidence, but neither establishes publication or live inference success.
+
+
+## Diagnostic fixtures did not match the real runtime — 2026-10-01
+
+The first RunPod request processed 47,000 input tokens and generated two output
+tokens, then our validator rejected valid response metadata. The fixture invented
+a nested `generation_settings` response. llama.cpp b11118 instead returns literal
+flat keys for selected nested paths and does not echo `n_cmpl`. The failure also
+discarded first-content timing before it reached the numeric receipt. Preserve
+that failure; do not relabel it as a passed diagnostic or a stalled model.
+
+A separate preflight failed because Feesh Python 3.10 rejected Rust nanosecond
+expiry timestamps. Syntax checks alone missed this host compatibility problem.
+Normalize only parser input and retain exact original bytes for ownership checks.
+
+The corrected fixtures validate the literal `generation_settings/n_predict`
+key and do not require unsupported `n_cmpl` response metadata. The request still
+limits generation to one completion and at most 32 output tokens. Full fake
+checks passed on Feesh in 1.968 seconds before the controlled v1.11 repeat.
+
+That repeat passed with 47,000 uncached input tokens, two output tokens and the
+expected answer `4`. First content took 24.040 seconds; prompt processing was
+2,186.677 tok/s. Reported output speed was 45.271 tok/s over only two tokens.
+This does not establish sustained output speed, local Metal behavior or the
+OpenCode integration. Preserve the first validator failure separately.
+
+Exact pod and tunnel cleanup passed at 07:35:07 UTC. The provider returned 404;
+owned desired state, listeners and boot keys were removed without process
+signals. Full evidence is in the [results document](../plans/2026-09-30-app-setup-memory-visibility/results.md).
+Native Mac cloud acceptance and broader feature acceptance remain pending.
+App/CLI releases remain held.
+
+The real TUI Ready and status views fit 80 columns. Some startup detail lines
+still clip at that width. Passing inference does not close this display issue.

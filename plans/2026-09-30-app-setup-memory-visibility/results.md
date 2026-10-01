@@ -196,3 +196,221 @@ That run failed before upload. Full OCI verification passed in 139 seconds; lock
 The empty-ingest correction passed parent review and all 22 Dell fixtures. Its accepted fixture produces identical transfer bytes and preserves the source. Nonempty ingest, file/symlink/dangling-symlink/FIFO replacements and unrelated directories fail before output. Read-only selection of the actual candidate also passed with file opening blocked. No real packing or upload occurred in this check.
 
 Size accounting correction: the OCI tree has 31 files totaling 24,691,613,469 bytes. The transfer also includes the 648-byte `q6-metadata.json`, making 32 files and 24,691,614,117 bytes. The earlier total described the OCI tree alone. No content changed.
+
+Correction `aa32c246d8cbbbc7659c25a6c88f9f9b2f805072` is pushed. Fresh [run 36812995172](https://github.com/1905/lobocode/actions/runs/36812995172) started at 03:59 UTC with staging job110211932581 and runner27. Source and image digests are unchanged. Private state: `/tmp/lobocode-cloud-transfer-helpers-3bf43610/attempt-6e176160124a7d93/state.json`. The same controlled two-part checkpoint and cleanup apply. No GPU is rented.
+
+That run passed full image verification, SDK installation and packing. It produced 46 data parts; manifest SHA256 is `1fdf93a34500da5da59a69215de74d95dfe3ac56afc52b5e3da6d1fc2924d369`. The manifest artifact finalized, and the first data part is uploading. Live transmission counters are not acknowledged payload or finalization evidence.
+
+Live action receipts are buffered by the runner. Its current page/block files did not yet contain gate or upload receipt lines, and the in-progress job-log endpoint returned 404. The [pinned runner logger](https://github.com/actions/runner/blob/v2.337.0/src/Runner.Common/Logging.cs) uses buffered writers and flushes them at page/block end. Keep the controlled two-part cancellation unchanged. After exact cleanup, collect actual numeric gate events from that exact terminal job log and bind its hash to the checkpoint before accepting it. The action enforces those gates before uploads; external receipt collection happens after cancellation. Do not claim unseen live receipt lines. A separate reviewed private finalizer validates the run/job/SHA, cleanup, surviving artifact IDs and lifetime formula before updating acceptance.
+
+The checkpoint passed. Manifest artifact11140903248 and data artifacts11141190713 (part0) /11141022672 (part1) finalized. Each data payload is536,870,912bytes; upload durations were438.29 and480.95seconds. The monitor cancelled only run36812995172 at04:30:27UTC. Runner27, its container and scratch were removed; candidate ACL restoration passed at04:31:09UTC. All three artifacts survive. Part2 began but did not finalize.
+
+Four actual terminal-log token gates passed. Their issued/expiry timestamps are1790827150/1790870950; each has300seconds beyond the required remaining-job budget. The saved terminal log SHA256 is `e8f7bee7a5a224a57d9571e0425f121c2fd1fce8ff3d5c8aa842dc8ff0a403c0`. The reviewed finalizer accepted this evidence at04:35:17UTC after checking exact run/job/SHA, cleanup and surviving IDs. This proves completed parts survive cancellation; cross-attempt reuse remains pending.
+
+At04:36UTC, the original staging job was rerun in the same workflow run at unchanged revision `aa32c246`. Attempt2 is job110220721178, runner28, with the original requested label and a fresh isolated scratch/container. Private state: `/tmp/lobocode-cloud-transfer-helpers-3bf43610/attempt-156058fb1b3bf124/state.json`. The retry must reuse those exact three artifact IDs, finish remaining parts, reconstruct and verify the image, then publish. No GPU has been rented.
+
+Attempt2 regenerated the identical manifest hash. At04:53:26UTC, its first SDK upload worker was reading part-000002; the original manifest/part0/part1 artifacts remained present and unexpired. This observes skipping completed uploads. It does not replace terminal exact-ID reuse receipts, which remain pending. Private safe receipt: `attempt-156058fb1b3bf124/resume-skip-observation.json` under the helper root.
+
+Eight data artifacts are now finalized across the two attempts, totaling4,294,967,296raw bytes (4GiB). This exceeds the earlier single-artifact failure's3,867,148,288acknowledged bytes. The new transfer remains active without failure. This is partial-transfer evidence, not complete publication or live inference acceptance.
+
+By05:54UTC, nine data parts were finalized (4.5GiB). Fresh uploads had continued for more than one hour since the04:53 observation without the previous authentication failure. The original failure's signed-URL-expiry cause remains unproved; this only records the new path crossing that elapsed-time boundary successfully.
+
+Cloud execution readiness review found two operational corrections. Use Dell idle30minutes, not the stale10-minute example. Stop unattended startup before25minutes, and require at least34minutes of the one-hour lifetime remaining before the32-minute large-request harness. Run the TUI from a fresh private evidence directory because `boots.jsonl` uses its working directory. The Mac tiny request keeps idle10minutes. These are execution bounds, not completed live checks.
+
+RunPod's [Pod templates](https://docs.runpod.io/pods/templates/overview) save image and launch settings; creating one does not establish a faster cold pull. The [RunPod Docker guide](https://www.runpod.io/articles/guides/docker-setup-pytorch-cuda-12-8-python-3-11) explicitly says image caching is possible but warm-host placement is not guaranteed. No ordinary-Pod cache-pinning control was found in the reviewed documentation. Separate Serverless features and paid network volumes are not part of this image or acceptance claim.
+
+
+## Feesh host correction — 2026-10-01
+
+The user stopped Dell execution and explicitly selected feesh for the remaining image/publication/backend and TUI work. Run36812995172 attempt2 was cancelled; exact runner28/container/scratch cleanup and candidate ACL restoration passed at06:01:44UTC. Original image/cache and paused Q8 remain untouched. Eleven artifacts survive: the manifest plus ten512MiB data parts (5GiB). Terminal logs prove reuse of original IDs11140903248,11141190713,11141022672, and all nine actual token gates passed. No image was published. Private receipts: `attempt-156058fb1b3bf124/{cleanup.json,artifacts-before-cleanup.json,cancelled-retry-receipts.json}` under `/tmp/lobocode-cloud-transfer-helpers-3bf43610`.
+
+Feesh resolves to the configured feesh9 SSH host. Read-only checks found24CPUs,118GiB available RAM,397GiB free disk and Docker24.0.2/buildx0.10.5. Existing services are outside this task. A bounded32MiB range of the public Q6 file returned HTTP206 in1.599seconds (~21MB/s). This is download evidence, not measured registry upload. The existing22,082,528,352-byte Q6 seed passed the separate capped hash check below. Planv1.10 rebuilds from exact runtime source528322e and requires fresh full image verification before publication.
+
+Feesh Q6 seed verification passed:22,082,528,352bytes, SHA256 `9fc4e4768045cb187a86f42b19f3d74754406680c3688502020556a8f3b70c4b`,219.370seconds at a96MiB/s cap. It remained a regular nonsymlink file with stable device/inode/size/mtime/ctime. The local0600receipt is `/tmp/lobo-feesh-q6-sha256-20261001.json`. This permits a private seed copy; it does not establish the rebuilt image yet.
+
+Feesh source packet contains307 tracked files from528322e. The task Dockerfile hash is `0629aaff7ac95dfcf980ccc91f0d0889c4b078395ea67cc5a664246adbafaf92`; its sole change exactly matches the earlier readonly model-seed substitution. The private seed copy verified22,082,528,352bytes in36.083seconds without changing the original.
+
+A logging-key collision in the private build launcher stopped the worker before compilation. The corrected driver and narrow resume rechecked source, seed, stopped container, cache volume, resource caps and mounts. Actual image build started at06:19:34UTC in container `131af52c36b96df5aaf9ea35fbe4969d40168dd4ed0c0d3491576efdc8f9f962`, capped at4CPUs/8GiB with no extra swap and a180-minute deadline. Cache is `lobo-feesh-q6-528322e-20261001-cache`; task root is `/srv/lobo-cloud-e2e-q6-528322e-20261001`.
+
+High host load average was investigated before adding CLI compilation. Measured CPU idle was52.4%, I/O wait13.4% and available RAM about111GiB; unrelated mysqld work stayed untouched. The public full-cuda base pulled in102seconds. Local seed-context transfer reached16.18GB in101seconds, about160MB/s. These are build preparation measurements, not registry upload or GPU startup results.
+
+## Feesh Q6 build and independent validation — passed
+
+The complete Q6 image built and exported in 734.401 seconds (12m14s) from `528322e468deeab23f8c0b74e804510d98cca071`. Its new digest is `sha256:aa590424f7862b5664c943cc5753bb72d447cbdaec5ed03a66642e138e3857f4`. The earlier Dell digest does not identify this image. Model packaging passed in 93.3 seconds, agent compilation in 2m49s, and the built-in offline image check in 38.4 seconds.
+
+Independent validation passed in 168.798 seconds. The canonical verifier hashed all 28 OCI blobs, totaling 24,623,685,411 bytes, and checked source, model and Linux AMD64 identity. A separate stream checked all 29 decoded layers against their uncompressed hashes. Final filesystem checks passed for nine required files, executable architecture, the exact startup script, licenses and embedded release metadata. All six shard hashes passed, with 851 tensors matching the verified source. No shared SSH host keys remain. These checks do not establish GPU inference or startup speed.
+
+The exact 4 CPU / 8 GiB worker stopped at 06:31:49 UTC without an OOM event. Its named BuildKit cache remains intact. The production Dockerfile still writes `built_by=github-actions`; the build receipts identify Feesh as the actual builder.
+
+The first transfer-space projection exceeded the 160 GiB task budget. After validation, only the verified private seed copy was removed. Its path, regular-file identity, size and timestamps matched the copy receipt. The original `/srv/lobo/models/` seed kept the same device, inode, size, mtime and ctime. Source files, candidate, evidence and BuildKit cache were preserved. Projected task use, including the complete transfer and an extra 512 MiB reserve, is now 150,659,781,539 bytes (140.31 GiB). Projected host free space is 272,008,719,453 bytes, above the 200 GiB floor.
+
+The transfer input has 31 files totaling 24,623,686,563 bytes, including `q6-metadata.json`. Publishable files are mode `0444`; OCI directories are `0555`. The artifact root remains private, with temporary access delegated to the reviewed CI helper. Logs and evidence remain private.
+
+Safe receipts are under `/private/tmp/lobo-feesh-build-2036z5kf/receipts/`: `build-result.json`, `validation-result.json`, `canonical-verification.json`, `q6-image-evidence.json`, `resume-worker-stop.json`, `private-seed-cleanup.json` and `publication-permissions.json`. Original receipts and image files remain under `/srv/lobo-cloud-e2e-q6-528322e-20261001/artifacts/` on Feesh. Only small JSON receipts were copied to the Mac.
+
+The isolated Feesh CLI is also ready from the same full source SHA. Binary: `/srv/lobo-cloud-client-e2e-20261001/bin/lobo`; SHA256: `07150da1ebfcec9b1d7e23d36810a51b47624cffd512dd17eaf0096aa3f60591`. Its bounded build wrapper took 544.795 seconds. Compilation passed, but the wrapper returned 1 because it used unsupported `--version`. Corrected `version` and help checks both returned 0 without rebuilding. Exact container `ecb458f920db60e8d6ae0e6bf5d4df41ee205a8af453e069349a8f4ab7b5dc16` was absent at 06:37:23 UTC; unrelated containers were preserved.
+
+CLI preparation passed syntax checks for six Python files and the shell script. Its private `0600` config selects RunPod Secure Cloud, SSH, Q6, context 65,536, idle 30 minutes and a one-hour maximum life. No provider call or inference request ran during preparation. Safe receipts: `/tmp/lobo-feesh-client-prep-20261001.3b5rZE/{cli-readiness.json,build-result.json,cli-container-cleanup.json,client-preflight.json,rust-image-pin.json}`. These are preparation and smoke results; broad fixtures and live cloud E2E are not claimed.
+
+## Feesh Q6 publication — passed
+
+[Run 36826266337](https://github.com/1905/lobocode/actions/runs/36826266337), attempt 1, passed at unchanged workflow revision `aa32c246d8cbbbc7659c25a6c88f9f9b2f805072`. Staging job `110252539483` ran from 06:43:09 to 06:56:08 UTC. Hosted publisher `110256224372` completed successfully at 07:04:56 UTC.
+
+Feesh helper validation passed before launch. Python 3.10 checked seven modules and eight embedded scripts. Focused fixtures covered state mismatches, token claims, complete upload counts, cache-inclusive capacity and exact owned stops. The dummy entrypoint passed with networking disabled and UID 1001. Its first fixture required unavailable `memory.peak`; the corrected fixture used `memory.current`. The production entrypoint stayed unchanged.
+
+All 46 data parts and the manifest finalized. The payload was 24,623,686,563 bytes. Upload took 663.292 seconds, from the first gate at 06:45:01.378958 to finalization at 06:56:04.671282 UTC. Average raw-payload throughput was 37.123 MB/s; this is not registry wire speed. All 47 actual terminal-log gates passed numeric claim, ordering, lifetime-formula and exact-count checks. The fresh run reused no artifacts.
+
+The actual runner stayed capped at 1 CPU / 2 GiB. Maximum sampled working memory was 445,054,976 bytes, with no observed OOM event. All sampled capacity checks passed, including the task root and exact named BuildKit cache. Maximum observed task usage was 150,123,134,976 bytes.
+
+Hosted download passed in 116 seconds, reconstruction in 171 seconds and full OCI verification in 74 seconds. Registry publication and latest promotion passed in 130 seconds. These measurements do not establish GPU startup or inference speed.
+
+At 07:06:19 UTC, independent anonymous reads verified both `ghcr.io/1905/lobocode:sha-528322e468de-q6` and `ghcr.io/1905/lobocode:latest-q6`. Response-body SHA256 and `Docker-Content-Digest` matched `sha256:aa590424f7862b5664c943cc5753bb72d447cbdaec5ed03a66642e138e3857f4`. Each manifest had 29 layers. The runtime source remains `528322e468deeab23f8c0b74e804510d98cca071`.
+
+Runner 29, exact container `7335798fe73a8910e7a81b4cf1abda32bea27795688f1258f2430ca566cedcc1` and its transfer scratch were removed at 06:57:33 UTC. Candidate ACL restoration passed. The hosted job deleted its 47 exact artifact IDs; the monitor independently confirmed all were absent. Previous artifacts, the candidate, original model and BuildKit cache were preserved.
+
+Private receipts are under `/private/tmp/lobocode-cloud-feesh-helpers-8jcvwm2h/attempt-283de63452d3005c/`: `staging-proof.json`, `runtime-token-gate-source.json`, `transfer-performance.json`, `cleanup.json`, `publication-ci-result.json` and `public-verification-feesh.json`. The last file is a 499-byte copy of Feesh `artifacts/public-verification.json`; SHA256 is `730ccc1816243cf34e927868113cb0015349528e6a4cafcef866024436c1eb13`.
+
+Live TUI and Mac cloud E2E remain pending. No GPU was rented during publication. App/CLI release, Q8 and broader feature acceptance remain held.
+
+
+## RunPod response schema check before rental — 2026-10-01
+
+The private provider receipt fixtures covered legacy response fields. Current
+[GET Pod documentation](https://docs.runpod.io/api-reference/pods/GET/pods/podId)
+and the public [v1 schema](https://rest.runpod.io/v1/openapi.json) instead describe
+`image`, `gpu.count` and `lastStartedAt`. The documented create request uses
+`imageName` and `gpuCount`; the response schema does not promise `createdAt`.
+Empty inventory checks could not establish the live populated response format.
+
+The first live Pod response at 07:12–07:14 UTC returned legacy `imageName`,
+`gpuCount` and a string `createdAt`. Its `lastStartedAt` used the Go-style date
+format. Therefore, the original helper was not proved incompatible with the
+actual API. The correction supports both documented and live response shapes,
+with stricter boot ownership. Do not report this as a proved production API bug.
+
+The scoped helper correction requires the exact provider-reported `LOBO_BOOT_ID`,
+pod ID, name, image digest, one GPU, and unchanged private config/connection state.
+It accepts current response fields and rejects conflicting legacy aliases.
+`lastStartedAt` is supplemental evidence when present, with exact later matching.
+An absent timestamp is recorded as absent rather than invented. All 13 focused
+helper fixtures passed on Feesh with fake responses. These checks do not prove
+acceptance of a populated live provider response. Live cloud E2E remains pending.
+
+The schema declares `costPerHr` as a number but shows a string example. That
+inconsistency does not establish a live production parsing failure. The app/CLI
+parser remains unchanged pending actual evidence.
+
+The [RunPod API overview](https://docs.runpod.io/api-reference/overview) announces
+REST v1 retirement on November 15, 2026. The production provider uses v1. A v2
+migration is a separate follow-up; this cloud test does not implement or verify it.
+
+## Live TUI startup and diagnostic correction — 2026-10-01
+
+The production CLI reached Ready through an actual 80×24 PTY on Feesh. Its process
+completed in 230.178 seconds with exit 0. The saved boot record reports 174.911
+seconds from rental to container start, 19.500 seconds for weight verification
+and 28.318 seconds for model load. The model source was `Docker image`.
+The CLI observed COMMUNITY capacity at $0.69/hour. This differs from the prepared
+Secure Cloud setting; it is the observed rental, not a Secure Cloud acceptance claim.
+
+The startup detail line clipped at 80 columns. Ready and status views fit.
+These are real terminal observations, not fixture renders. Provider allocation,
+image pull and container scheduling are combined in the rental-to-container
+measurement. There is no cache-hit receipt or separate image-pull duration, so
+these timings do not prove image or host cache reuse.
+
+Startup evidence is under `/srv/lobo-cloud-client-e2e-20261001/evidence/`:
+`pty-up-001/result.json`, `pty-up-001/boots.jsonl`, the private raw/frame logs and
+`pty-status-001/`. The synthetic PTY check had already passed fragmented cursor
+queries and the exact 80×24 screen. It did not call the CLI or a provider.
+
+The first real diagnostic did generate tokens, but its acceptance receipt failed.
+`large-request-001/summary.json` records one attempt, error
+`response_settings_invalid` and an empty measurements list. Read-only recovery
+at 07:24:14 UTC found 47,000 processed input tokens, two generated tokens and
+21.4864 seconds of server prompt processing. It found no active slot or request.
+The recovery made zero generation requests and kept the same runtime identity.
+Receipt: `post-request-numeric-recovery.json` in the same evidence root.
+
+The validator discarded the final response before saving a measurement. Therefore,
+the first receipt cannot prove time to first content, returned content, answer
+correctness, cache-count acceptance or complete request timing. Aggregate server
+metrics confirm processing and generation; they do not replace the missing receipt.
+The failed receipt remains intact.
+
+Two test-contract mistakes caused the rejection. Pinned llama.cpp b11118 returns
+the requested nested response path as a literal flat key, and its generation
+settings do not serialize `n_cmpl`. The fix reads
+`generation_settings/n_predict` and removes the unsupported echoed `n_cmpl`
+request/check. Request `n_cmpl=1`, one prompt, one final event and all input/output
+limits remain unchanged. Positive fakes now use the real flat shape. A negative
+fixture rejects nested-only settings. Sources:
+[flat-field selection](https://github.com/ggml-org/llama.cpp/blob/b11118/tools/server/server-common.cpp#L791-L808),
+[serialized settings](https://github.com/ggml-org/llama.cpp/blob/b11118/tools/server/server-task.cpp#L89-L139)
+and [native final response](https://github.com/ggml-org/llama.cpp/blob/b11118/tools/server/server-task.cpp#L323-L345).
+
+Python 3.10 also required parser-only normalization of Rust's nine-digit fractional
+expiry timestamp. The saved ownership bytes remain unchanged. That correction and
+its nine-digit positive fixture passed the full fake-only cloud self-test in
+1.917 seconds. Receipt: `cloud-self-test-6hlfp2vt/receipt.json`.
+
+Parent review passed for the response-contract diff. The full cloud self-test then
+passed on Feesh Python 3.10.12 in 1.968 seconds at 07:27:18 UTC. Output confirmed
+the HTTP fake suite, all 12 same-size diagnostic scenarios, and cloud saved-state
+identity, privacy, expiry and file-change checks. It used a separate network
+namespace with only loopback and no external routes, one CPU, 512 MiB address
+space and nice level 19. No model, CLI or provider call ran in these fake tests.
+
+The exact tested source hashes are:
+
+| File | SHA256 |
+| --- | --- |
+| `tools/bounded_runtime_e2e.py` | `2309b9998fb1815a8d084b36af1471b902d8bad875fcc551a0f457b57dbc83ae` |
+| `tools/same_prompt_runtime_e2e.py` | `23387b35954b510da29afbcfe929aa725c5061a19f871d24bf4f41c1d75fa004` |
+| `tools/cloud_runtime_e2e.py` | `57ef1f521ebe5a2c9b232e47741b535bde7ac7964d0152b7e1930bd6660c842c` |
+
+Test and staging receipts are in
+`/srv/lobo-cloud-client-e2e-20261001/evidence/response-settings-self-test-vvu0x8w6/`.
+The three scripts were copied to the private Feesh and Mac task roots only after
+the tests passed. Preimage hashes, regular-file identities, backups and final
+hashes were checked. The Mac step copied files; it ran no tests or inference.
+Its receipt is
+`/tmp/lobo-cloud-mac-e2e-20261001.a542eX/response-settings-preimage-728680au/staging-receipt.json`.
+
+## Controlled cloud diagnostic repeat — passed
+
+Plan v1.11 H4 passed with one controlled request at 07:28:41–07:29:11 UTC.
+The pre-request gate recorded 2,473 seconds of remaining lifetime, above the
+34-minute minimum. It required unchanged provider/config identity, one request,
+`cache_prompt=false` and zero automatic retries. The same pod `1uc4kemsb5093y`
+and boot `3522f4b7f11dca98` used runtime source
+`528322e468deeab23f8c0b74e804510d98cca071` and the verified public Q6 image digest
+`sha256:aa590424f7862b5664c943cc5753bb72d447cbdaec5ed03a66642e138e3857f4`.
+
+The complete receipt reports one generation attempt, 47,000 processed input
+tokens, zero cached tokens and two generated tokens. Nonempty content matched
+the expected answer `4`. All final-response, token-count and timing checks passed.
+
+| Measurement | Recorded result |
+| --- | --- |
+| Time to first content | 24,040.013 ms |
+| Total request time | 24,210.052 ms |
+| Server prompt processing | 21,493.801 ms |
+| Server prompt rate | 2,186.677 tokens/s |
+| Server generation time | 22.089 ms |
+| Server-reported generation rate | 45.2714 tokens/s |
+
+Only two tokens were generated. The generation rate is not a sustained benchmark.
+This synthetic size comparison shows that the cloud runtime can process the
+47,000-token input and return the expected content. It does not test OpenCode or
+replay the original private prompt.
+
+The provider check at 07:29:30 UTC confirmed the same running pod/boot, matching
+provider identity, one GPU and unchanged private config. Receipts are
+`/srv/lobo-cloud-client-e2e-20261001/evidence/large-request-002/summary.json`,
+`large-request-002-gates.json` and `large-request-002-provider-after.json` in the
+same evidence root. The first failed request and its numeric recovery remain
+preserved separately.
+
+Plan v1.11 H1–H4 are complete. TUI cleanup is underway. H5/F7, the native Mac
+cloud lifecycle and broader feature acceptance remain pending.

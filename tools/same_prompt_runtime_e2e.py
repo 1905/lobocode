@@ -274,7 +274,7 @@ def self_test():
                     partial = {"stop": False, "content": content}
                     final = {"stop": True, "model": alias, "tokens_evaluated": INPUT_TOKENS - (scenario == "count"),
                              "tokens_predicted": 2, "truncated": scenario == "truncated",
-                             "generation_settings": {"n_predict": OUTPUT_TOKENS, "n_cmpl": 1},
+                             "generation_settings/n_predict": OUTPUT_TOKENS,
                              "timings": {"prompt_n": INPUT_TOKENS - int(scenario == "cached"),
                                          "cache_n": int(scenario == "cached"), "predicted_n": 2,
                                          "prompt_ms": 1000, "predicted_ms": 100,

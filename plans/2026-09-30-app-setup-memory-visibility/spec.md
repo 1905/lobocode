@@ -7,6 +7,11 @@
 
 ## TL;DR
 
+**What:** Move Lobocode image build, publication and cloud TUI work to feesh.
+**Why:** Dell's measured publication path was too slow.
+**Your action:** Nothing; the user explicitly ordered this host change.
+**Limits:** Reverify the rebuilt image's new digest. Keep one GPU at a time and the app/CLI release hold.
+
 **What:** Add Configure/Repair OpenCode using the running endpoint, key and model.
 **Why:** Fix stale settings and wrong model selection from the app.
 **Your action:** Keep or clear “Use Lobocode by default” before saving.
@@ -426,3 +431,26 @@ Prove the transfer early: finalize two data parts, cancel only that run, then re
 As-built transport detail: each official-SDK upload runs in a private child mode in `index.mjs`. Ignore its stdout/stderr for its complete lifetime, including late retry logs. Accept only bounded numeric ID/size over IPC and wait for child exit. A 30-minute deadline or cancellation terminates only that child. Before each fresh upload, check numeric runtime-token timestamps against the remaining twelve-hour job plus five minutes. This gate does not verify the separate signed upload URL lifetime. ZIP overhead is bounded at 1 MiB per artifact. The hosted downloader uses explicit current-run public REST options for prior-attempt IDs.
 
 Plan v1.9 corrects source-layout selection after the first multipart run. BuildKit left an empty, real `ingest/` directory beside the required OCI entries. The packer accepts that optional empty directory and omits it because it contains no file bytes. It still rejects nonempty ingest data, symlinks, other file types and unknown entries. This does not change the image, manifest format, file payloads or public startup behavior.
+
+
+## Feesh execution correction — 2026-10-01
+
+The user explicitly moved all Lobocode build/publication/backend and cloud TUI execution from Dell to the existing feesh9 host. Dell staging run36812995172 is cancelled and its exact runner/container/scratch/ACL cleanup passed. Ten completed data parts plus the manifest remain preserved; actual terminal logs prove reuse of all three checkpoint IDs. No image was published.
+
+Rebuild Q6 on Feesh from exact runtime source528322e. Prefer its existing model seed only after matching catalog size/hash and stable file identity. Use the previously reviewed task-only readonly model-seed mount; production build_model.py must verify it again without network access. Bound the private BuildKit worker at4CPUs/8GiB, task disk at160GiB and free disk at200GiB. Preserve unrelated services, default builders, Q8 and the original Dell image.
+
+A fresh build may change the OCI digest. Read the new metadata, run full verification and independent shard/runtime-content inspection, then publish through the unchanged multipart CI workflow using that exact new digest. Old partial artifacts are not reusable across different manifests. The controlled retry proof already passed; no new deliberate cancellation is required. Update the test receipts to the new digest only after anonymous registry verification. Feesh never becomes a runtime dependency for public users.
+
+Plan v1.10 carries the remaining feature tasks and replaces the Dell execution steps. No new application source, CI workflow or product feature is required for this host correction. The earlier approved image publication and RunPod tests remain authorized; local inference, OpenCode, Q8 and app/CLI releases remain held.
+
+
+## Diagnostic contract correction — 2026-10-01
+
+The live RunPod test exposed diagnostic-only bugs. Python 3.10 rejects Rust's
+nanosecond expiry unless parser input is normalized. llama.cpp b11118 flattens
+requested nested response fields and does not echo `n_cmpl`. Preserve the failed
+first request evidence, correct the diagnostic and fixtures, then make one bounded
+verification repeat on the same owned GPU under plan v1.11. Each request remains
+limited to 47,000 input tokens and at most 32 output tokens. Require no active
+request and at least 34 minutes of remaining lifetime before the repeat.
+The image, CLI, app and app/CLI release hold stay unchanged.

@@ -1,7 +1,7 @@
-# App Setup and Runtime Visibility Implementation Plan v1.9
+# App Setup and Runtime Visibility Implementation Plan v1.11
 
 **Date:** 2026-10-01
-**Status:** superseded by v1.10
+**Status:** in-progress
 **Spec:** ./spec.md (approved)
 **Authorization:** The user approved implementation and testing in the expanded spec. Prior full-auto delivery authorization persists. Parent self-review completed. Execute under the approved implementation and testing instruction; no new scope permission is needed.
 **Goal:** Safely operate the app-owned runtime, configure OpenCode, and show accurate memory/activity in a normal native Mac app.
@@ -9,6 +9,89 @@
 **Tech Stack:** Rust/Tokio/serde, jsonc-parser 0.33.2 CST, macOS libproc, Svelte/Tauri, Vitest, WebdriverIO and Python native harnesses.
 
 > For agentic workers: use superpowers:subagent-driven-development to implement task-by-task. Checkbox syntax tracks completion.
+
+## Live diagnostic contract correction — 2026-10-01
+
+The first real request processed 47,000 input tokens and generated two output tokens.
+The validator rejected final response settings before saving content/timing acceptance.
+Exact llama.cpp b11118 source proves two fixture mistakes: nested response paths
+become literal flat keys, and `n_cmpl` is not echoed in generation settings.
+Feesh Python 3.10 also needs parser-only normalization of Rust nanosecond expiry.
+
+The existing full-auto testing authorization covers these diagnostic corrections
+and one controlled verification repeat. Preserve the first failed receipt. Do not
+change the published image, CLI, native app, model, context or release hold.
+The harness still has no automatic retry path.
+
+**Files:** Modify `tools/bounded_runtime_e2e.py`, `tools/same_prompt_runtime_e2e.py`,
+`tools/cloud_runtime_e2e.py`, this spec, results, README, CHANGELOG, AGENTS and mistake
+notes. Keep private provider/PTY helpers outside the repository. Preserve Task11.
+
+- [x] H1: Keep nanosecond expiry bytes unchanged for ownership. Normalize only the
+  parser input. Use a nine-digit positive fixture. Full fake-only cloud self-test
+  passed on Feesh Python 3.10.12 in 1.917 seconds, with loopback only.
+  Receipt: `/srv/lobo-cloud-client-e2e-20261001/evidence/cloud-self-test-6hlfp2vt/receipt.json`.
+- [x] H2: Read the requested literal `generation_settings/n_predict` field. Remove
+  the unsupported echoed `n_cmpl` requirement and response-field request. Keep the
+  request's `n_cmpl=1`, output cap, one prompt, one final event and all token checks.
+  Positive fixtures now match exact b11118 flat-field behavior. A negative fixture
+  rejects nested-only settings; no compatibility fallback was added.
+- [x] H3: Parent review passed. Full fake-only cloud self-test passed on Feesh
+  Python 3.10.12 in 1.968 seconds at 07:27:18 UTC. It covered the HTTP fake suite,
+  all 12 same-size scenarios and cloud identity/privacy/expiry/file-change checks.
+  The separate network namespace had only loopback and no external routes.
+  Limits were one CPU, 512 MiB address space and low process priority.
+  All three reviewed harness files were staged to the private Feesh and Mac roots
+  after preimage hash/identity checks and backups. No live request ran in this step.
+  Receipts: Feesh `evidence/response-settings-self-test-vvu0x8w6/{receipt.json,staging-receipt.json}`
+  under `/srv/lobo-cloud-client-e2e-20261001`; Mac
+  `/tmp/lobo-cloud-mac-e2e-20261001.a542eX/response-settings-preimage-728680au/staging-receipt.json`.
+- [x] H4: Before a single verification repeat, require the same recorded GPU/boot/
+  image, no active request and at least 34 minutes of lifetime remaining. Send
+  exactly 47,000 input tokens with at most 32 output tokens, cache_prompt=false.
+  Require cache_n=0, nonempty content and complete timing/count acceptance. Use
+  fresh evidence/large-request-002. No further generation retry or new TUI pod.
+  Controlled repeat passed at 07:28:41–07:29:11 UTC with 2,473 seconds of lifetime
+  remaining at the gate. One request processed 47,000 input tokens, used zero
+  cached tokens and returned two output tokens matching the expected answer `4`.
+  Time to first content was 24,040.013 ms; request time was 24,210.052 ms.
+  Server prompt time was 21,493.801 ms at 2,186.677 tokens/s. The 22.089 ms
+  generation measurement reported 45.2714 tokens/s for only two tokens; this is
+  not a sustained generation benchmark. The same pod/boot/source/image and private
+  config passed the provider check at 07:29:30 UTC. Receipts under the Feesh client
+  evidence root: `large-request-002/summary.json`, `large-request-002-gates.json`
+  and `large-request-002-provider-after.json`. The first failed receipt is preserved.
+- [ ] H5: Close status, delete only the exact owned pod and verify its tunnel is
+  gone. Continue the already planned one short native Mac cloud lifecycle. Record
+  original failure, corrected result, measured startup, rates and visual defects.
+
+Self-review: this fixes diagnostic portability and upstream response contracts.
+It adds one bounded verification request on the existing rental after the first
+request completed. It does not change runtime behavior or start another GPU.
+
+## Feesh host correction — 2026-10-01
+
+The user explicitly ordered: “dont use dell! use feesh for all of that!” This authorizes moving Lobocode build, publication, backend checks and cloud TUI execution to the existing `feesh9` host. This replaces the Dell execution steps below. Runtime scope, public-image requirements, one-GPU limit and app/CLI release hold stay unchanged. Existing approval covers this host correction; do not ask again.
+
+**Files:** Modify this spec, results, AGENTS.md, CHANGELOG.md and docs/implementation-mistakes.md. Create this plan version. Preserve all runtime/client/workflow/action files and dirty Task11 work. Keep host scripts, image files and credentials outside tracked source.
+
+**Execution contract:** Use exact source `528322e468deeab23f8c0b74e804510d98cca071` and Q6 only. A clean build can produce a different image digest; derive it from new BuildKit metadata and require independent verification before publication. Old partial artifacts cannot stand in for a different image. Preserve them until their normal expiry. Feesh is a build/test host, never an application dependency.
+
+**Host bounds:** Fresh private root `/srv/lobo-cloud-e2e-q6-528322e-20261001` on feesh. Dedicated named BuildKit worker, at most4CPUs/8GiB and no additional swap; preserve the default builder and all unrelated services. Use the cached pinned BuildKit image. Keep task disk use below160GiB and host free disk above200GiB; stop task-owned work if either bound fails. CI runner remains1CPU/2GiB with only readonly candidate and task-owned transfer scratch mounts, no host Docker socket, home or personal secrets.
+
+- [x] F1: Cancel only Dell run36812995172 attempt2/job110220721178. Preserve completed artifacts and actual terminal reuse/token receipts. Remove exact runner28/container/scratch and restore candidate ACL. Cleanup passed at06:01:44UTC; ten data parts plus manifest survive (5GiB). Terminal logs prove all three checkpoint IDs were reused and all nine token gates passed. Keep original image, cache and paused Q8 work unchanged.
+- [x] F2a: Verify Feesh identity, capacity and Docker availability read-only. Feesh has24CPUs,118GiB available RAM and397GiB free disk. A bounded32MiB public model range downloaded at~21MB/s; this does not prove registry upload throughput. The existing Q6 source file passed the separate hash check recorded in F2b.
+- [x] F2b: Stream SHA256 of only the existing Q6 seed under `/srv/lobo/models/`; require22,082,528,352bytes and hash `9fc4e4768045cb187a86f42b19f3d74754406680c3688502020556a8f3b70c4b`. Compare regular-file identity/size/mtime before and after. Verification passed in219.37seconds with stable device/inode/size/mtime/ctime. Receipt: `/tmp/lobo-feesh-q6-sha256-20261001.json`. F3 copies only this verified seed into the private task root; the build verifies it again.
+- [x] F3a: Prepare and parent-review private build scripts. Parent review passed for `/tmp/lobo-feesh-build-2036z5kf/{prepare_source.py,stage.py,build.py}`. Export a clean checkout at the exact runtime source. Use unchanged production Dockerfile except the previously reviewed task-only readonly `model-seed` bind replacing the model download/cache mount; set that RUN to network=none. Preserve every other instruction. Build MODEL=q6, VERSION=sha-528322e468de, GIT_SHA=fullsource, LinuxAMD64, provenance=false and sbom=false. Include source/revision/model labels required by the verifier. Export only a new OCI directory plus metadata; no registry write during build.
+- [x] F3b: Build and export passed on Feesh in 734.401 seconds (12m14s), within the 180-minute deadline. The worker stayed capped at 4 CPUs / 8 GiB, with no extra swap. Built-in offline `check-image --model q6` passed in 38.4 seconds. Exact worker `131af52c36b96df5aaf9ea35fbe4969d40168dd4ed0c0d3491576efdc8f9f962` stopped at 06:31:49 UTC; its cache is preserved. Source, recipe, worker, volume and root identities are recorded. The actual builder was Feesh; inherited `built_by=github-actions` is not builder proof.
+- [x] F4: Canonical and independent validation passed in 168.798 seconds. New image digest: `sha256:aa590424f7862b5664c943cc5753bb72d447cbdaec5ed03a66642e138e3857f4`. Checks cover all 28 OCI blobs, 29 decoded layers, six shard hashes, 851 tensors, required files, licenses, embedded source and no shared SSH host keys. Only the verified private seed copy was removed after validation; the original seed is unchanged. Projected task use including cache and transfer reserve is 150,659,781,539 bytes (140.31 GiB), below 160 GiB. Publishable files are readonly; evidence remains private. Receipts: `/private/tmp/lobo-feesh-build-2036z5kf/receipts/` and remote `artifacts/` under the task root. Publication is recorded in F5; live inference remains pending.
+- [x] F5a: Feesh helpers passed parent review and focused validation. Python 3.10 checked seven modules and eight embedded scripts. State, token-gate, complete-set, capacity and scoped-stop fixtures passed. The network-disabled dummy entrypoint passed as UID 1001. The actual runner used the pinned image, 1 CPU / 2 GiB, readonly candidate and private scratch. Registration credentials used stdin. Task disk checks included the exact named BuildKit cache. Workflow `aa32c246d8cbbbc7659c25a6c88f9f9b2f805072` stayed unchanged; no deliberate cancellation was repeated.
+- [x] F5b: [Run 36826266337](https://github.com/1905/lobocode/actions/runs/36826266337), attempt 1, published the verified Q6 image and promoted `latest-q6`. All 46 data parts plus manifest finalized: 24,623,686,563 raw bytes in 663.292 seconds, averaging 37.123 MB/s. All 47 token gates passed claim, ordering, lifetime-formula and exact-count checks. Hosted reconstruction, full OCI verification and publication passed. Runner 29, its exact container and scratch were removed; candidate ACL was restored. All 47 used artifact IDs were absent after hosted cleanup. Independent anonymous reads at 07:06:19 UTC verified the immutable tag and `latest-q6` against the new digest. F7 cloud E2E remains pending.
+- [x] F6: Isolated Feesh config, scripts and CLI are ready from exact source `528322e468deeab23f8c0b74e804510d98cca071`. Binary SHA256: `07150da1ebfcec9b1d7e23d36810a51b47624cffd512dd17eaf0096aa3f60591`. Version/help checks, six Python syntax checks and shell syntax passed. Config is mode `0600`; personal settings and the separately installed CLI are preserved. The build wrapper's unsupported `--version` check failed after compilation; corrected commands passed without rebuilding. Exact build container absence was verified at 06:37:23 UTC. Ready receipt: `/tmp/lobo-feesh-client-prep-20261001.3b5rZE/cli-readiness.json`. Provider calls and inference requests remain zero for this preparation.
+- [ ] F7: Continue C3/C4 below using Feesh for the real PTY TUI, then the actual hosted Mac app for cloud UI. Use the newly verified image digest in receipts. TUI: Q6/context65536, idle30minutes, maximum life1hour, startup cutoff25minutes and at least34minutes remaining before one47000-input/max32-output request. Mac: one<=64-input/max32-output request, idle10minutes. Never run OpenCode or local inference. Require exact owned pod absence and tunnel cleanup before the next client.
+- [ ] F8: Update results, changelog, README and mistake notes with the actual image/startup/inference results and limitations. Commit/push only authorized scoped changes. App/CLI release, Q8, updater and broad feature/master acceptance remain held.
+
+Self-review: only host execution and the rebuilt image identity change. The application still resolves the latest complete public image. No bucket, domain, private endpoint, new paid host, service restart or billing setting is added. All earlier feature tasks below retain their recorded status; C1q/C1r are superseded by F4–F8 for execution, while their completed recovery evidence stays recorded.
 
 ## Empty BuildKit directory correction — 2026-10-01
 
