@@ -162,7 +162,7 @@ jobs:
     # Candidates use exactly the runner's unique custom label. Only labels
     # without the required prefix fall back to hosted input validation.
     runs-on: ${{ startsWith(inputs.runner_label, 'cloud-e2e-') && inputs.runner_label || 'ubuntu-latest' }}
-    timeout-minutes: 360
+    timeout-minutes: 720
     outputs:
       artifact_id: ${{ steps.stage.outputs.artifact-id }}
     permissions:
