@@ -162,7 +162,7 @@ jobs:
     # Candidates use exactly the runner's unique custom label. Only labels
     # without the required prefix fall back to hosted input validation.
     runs-on: ${{ startsWith(inputs.runner_label, 'cloud-e2e-') && inputs.runner_label || 'ubuntu-latest' }}
-    timeout-minutes: 90
+    timeout-minutes: 180
     permissions:
       contents: read
       packages: write
@@ -207,19 +207,19 @@ jobs:
             cat "$RUNNER_TEMP/candidate-verification.json"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Install pinned ORAS
+      - name: Install pinned regctl
         if: inputs.publish
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/oras-bin"
+          mkdir -p "$RUNNER_TEMP/regctl-bin"
           curl --fail --silent --show-error --location --connect-timeout 15 --max-time 120 \
-            https://github.com/oras-project/oras/releases/download/v1.3.4/oras_1.3.4_linux_amd64.tar.gz \
-            --output "$RUNNER_TEMP/oras.tar.gz"
-          printf '%s  %s\n' f27adb935022d94df8dc77719c322dda592c78a0d57a6f7dcdd8d900b248c454 \
-            "$RUNNER_TEMP/oras.tar.gz" | sha256sum --check --status
-          tar -xzf "$RUNNER_TEMP/oras.tar.gz" -C "$RUNNER_TEMP/oras-bin" oras
-          "$RUNNER_TEMP/oras-bin/oras" version
+            https://github.com/regclient/regclient/releases/download/v0.11.6/regctl-linux-amd64 \
+            --output "$RUNNER_TEMP/regctl-bin/regctl"
+          printf '%s  %s\n' 8e0e62a497fcdb8048d18aa927a139613176ba0531f412bc541044e28f9856bd \
+            "$RUNNER_TEMP/regctl-bin/regctl" | sha256sum --check --status
+          chmod 0500 "$RUNNER_TEMP/regctl-bin/regctl"
+          "$RUNNER_TEMP/regctl-bin/regctl" version
       - name: Publish the verified immutable image and optionally promote Q6
         if: inputs.publish
         shell: bash
@@ -228,8 +228,9 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          oras="$RUNNER_TEMP/oras-bin/oras"
+          regctl="$RUNNER_TEMP/regctl-bin/regctl"
           auth="$RUNNER_TEMP/ghcr-candidate.json"
+          export REGCTL_CONFIG="$auth"
           trap 'rm -f "$auth" "$RUNNER_TEMP/anonymous-token.json"' EXIT
           tag="sha-${CANDIDATE_SHA:0:12}-q6"
           repository=ghcr.io/1905/lobocode
@@ -259,11 +260,15 @@ jobs:
             echo 'Immutable tag already points to another image. Preserving it.' >&2
             exit 1
           fi
-          printf '%s' "$GHCR_TOKEN" | "$oras" login ghcr.io --username "$GITHUB_ACTOR" \
-            --password-stdin --registry-config "$auth"
+          # GHCR times out long uploads. Bound each request to 32 MiB and
+          # keep at most three requests active within the runner's memory cap.
+          "$regctl" registry set ghcr.io --skip-check \
+            --blob-chunk 33554432 --blob-max 33554432 --req-concurrent 3
+          printf '%s' "$GHCR_TOKEN" | "$regctl" registry login ghcr.io \
+            --user "$GITHUB_ACTOR" --pass-stdin
           unset GHCR_TOKEN
-          "$oras" cp --force --concurrency 1 --from-oci-layout --to-registry-config "$auth" \
-            "/candidate/q6-oci@$CANDIDATE_DIGEST" "$repository:$tag"
+          "$regctl" image copy --force-recursive \
+            "ocidir:///candidate/q6-oci@$CANDIDATE_DIGEST" "$repository:$tag"
           [[ "$(remote_digest "$tag")" == "$CANDIDATE_DIGEST" ]] || {
             echo 'Anonymous immutable tag digest verification failed.' >&2; exit 1;
           }
@@ -274,7 +279,7 @@ jobs:
               echo 'latest-q6 now points to another image. Preserving it.' >&2
               exit 1
             fi
-            "$oras" tag --registry-config "$auth" "$repository@$CANDIDATE_DIGEST" latest-q6
+            "$regctl" image copy "$repository@$CANDIDATE_DIGEST" "$repository:latest-q6"
             [[ "$(remote_digest latest-q6)" == "$CANDIDATE_DIGEST" ]] || {
               echo 'Anonymous latest-q6 digest verification failed.' >&2; exit 1;
             }

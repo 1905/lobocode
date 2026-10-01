@@ -1,7 +1,7 @@
-# App Setup and Runtime Visibility Implementation Plan v1.4
+# App Setup and Runtime Visibility Implementation Plan v1.5
 
-**Date:** 2026-09-30
-**Status:** superseded by v1.5
+**Date:** 2026-10-01
+**Status:** in-progress
 **Spec:** ./spec.md (approved)
 **Authorization:** The user approved implementation and testing in the expanded spec. Prior full-auto delivery authorization persists. Parent self-review completed. Execute under the approved implementation and testing instruction; no new scope permission is needed.
 **Goal:** Safely operate the app-owned runtime, configure OpenCode, and show accurate memory/activity in a normal native Mac app.
@@ -9,6 +9,18 @@
 **Tech Stack:** Rust/Tokio/serde, jsonc-parser 0.33.2 CST, macOS libproc, Svelte/Tauri, Vitest, WebdriverIO and Python native harnesses.
 
 > For agentic workers: use superpowers:subagent-driven-development to implement task-by-task. Checkbox syntax tracks completion.
+
+## Candidate upload correction — 2026-10-01
+
+The first live upload exposes a transport mismatch: ORAS v1.3.4 sends each 3.7–4 GB model layer as one PUT. Dell measured about 0.8–1.6 MB/s per stream. GitHub documents a 10-minute upload timeout. Keeping each image layer below 10 GB alone does not solve this. No tag or pod exists yet.
+
+The approved publication scope is unchanged. Modify only `.github/workflows/pod-image.yml` for the candidate publisher and update this spec/plan/results, AGENTS.md and CHANGELOG.md. Preserve the exact candidate/source digest, readonly OCI source, ephemeral runner isolation, existing-tag conflict refusal, anonymous verification and Q6-only promotion. Do not rebuild or change the candidate, add infrastructure, change network settings or rent before publication succeeds.
+
+- [x] C1b: Pin regctl by version and SHA-256. Replace candidate ORAS upload with `regctl image copy` from `ocidir:///candidate/q6-oci@<approved digest>`. Use isolated temporary registry config, stdin authentication, 32 MiB `blob-chunk` and `blob-max`, and at most three concurrent registry requests. Keep credentials out of logs and remove temporary config on exit.
+- [ ] C1c: Verify pinned CLI flags and readonly OCI digest lookup on Dell. Parent review the unchanged digest/conflict gates, run actionlint and shell syntax, and commit/push only the candidate-publisher change plus matching evidence. Stop the exact previous publication job and clean its runner before starting its replacement. Already committed registry blobs may be reused; do not claim partial blob resume across processes.
+- [ ] C1d: Run the revised candidate workflow with a 180-minute limit. Recheck throughput and chunk progress after five minutes. If the measured path still cannot fit, reassess before another retry. Require anonymous immutable/latest digest checks before C3. Record actual publication outcome and scoped runner cleanup.
+
+Sources: [GitHub registry limits](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry), [regctl registry chunk controls](https://regclient.org/cli/regctl/registry/set/), [regctl image copy](https://regclient.org/cli/regctl/image/copy/). Chunked publication is a supported implementation choice, not yet a verified live fix.
 
 ## CI path correction
 
