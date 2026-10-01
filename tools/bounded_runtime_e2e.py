@@ -33,7 +33,6 @@ CATALOG = Path(__file__).resolve().parents[1] / "crates/lobo-proto/catalog.json"
 FINAL_FIELDS = [
     "stop", "model", "tokens_evaluated", "tokens_predicted", "truncated",
     "stop_type", "timings", "generation_settings/n_predict",
-    "generation_settings/n_cmpl",
 ]
 
 
@@ -412,10 +411,10 @@ def validate_final(value, count, alias, cap, input_limit=64):
     require(integer(value.get("tokens_evaluated"), "input_count_invalid", 1, input_limit) == count,
             "input_count_mismatch")
     output = integer(value.get("tokens_predicted"), "output_count_invalid", 0, cap)
-    settings = value.get("generation_settings")
-    require(type(settings) is dict, "response_settings_invalid")
-    require(integer(settings.get("n_predict"), "response_settings_invalid", 1, 32) == cap
-            and integer(settings.get("n_cmpl"), "response_settings_invalid", 1, 1) == 1,
+    # b11118 response_fields keeps slash-separated paths as literal flat keys.
+    # task_params::to_json does not echo n_cmpl; the request still fixes it to 1.
+    require(integer(value.get("generation_settings/n_predict"),
+                    "response_settings_invalid", 1, 32) == cap,
             "response_settings_invalid")
     timings = value.get("timings")
     require(type(timings) is dict, "timings_invalid")
@@ -626,7 +625,7 @@ def self_test():
     def final(tokens, cap):
         return {"stop": True, "model": alias, "tokens_evaluated": len(tokens),
                 "tokens_predicted": 2, "truncated": False,
-                "generation_settings": {"n_predict": cap, "n_cmpl": 1},
+                "generation_settings/n_predict": cap,
                 "timings": {"prompt_n": len(tokens), "cache_n": 0, "predicted_n": 2,
                             "prompt_ms": 10, "predicted_ms": 5,
                             "prompt_per_second": 100, "predicted_per_second": 200}}
@@ -643,7 +642,8 @@ def self_test():
         "model_mismatch": ("response_model_mismatch", 1), "missing_final": ("sse_incomplete", 1),
         "sse_error": ("sse_error", 1), "http_error": ("http_rejected", 1),
         "nan_timing": ("invalid_json", 1), "bool_timing": ("timings_invalid", 1),
-        "wrong_settings": ("response_settings_invalid", 1), "pings_timeout": ("timeout", 1),
+        "wrong_settings": ("response_settings_invalid", 1),
+        "nested_settings": ("response_settings_invalid", 1), "pings_timeout": ("timeout", 1),
         "large_body": ("response_oversized", 1),
         "changed_after_first": ("runtime_changed", 1),
     }
@@ -752,7 +752,10 @@ def self_test():
                             if scenario == "bool_timing":
                                 value["timings"]["prompt_ms"] = True
                             if scenario == "wrong_settings":
-                                value["generation_settings"]["n_predict"] = 33
+                                value["generation_settings/n_predict"] = 33
+                            if scenario == "nested_settings":
+                                value["generation_settings"] = {
+                                    "n_predict": value.pop("generation_settings/n_predict")}
                             if scenario == "eos":
                                 value["tokens_predicted"] = value["timings"]["predicted_n"] = 1
                                 value["timings"]["predicted_per_second"] = 0

@@ -24,6 +24,18 @@ import same_prompt_runtime_e2e as same
 IMAGE_PATTERN = r"ghcr\.io/1905/lobocode@sha256:[0-9a-f]{64}"
 
 
+def parse_expiry(value):
+    # Python 3.10 cannot parse Rust's nanoseconds. Truncate only parser input;
+    # snapshot still binds the exact original desired.json bytes.
+    matched = re.fullmatch(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
+                           r"(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})", value)
+    if matched is None:
+        raise ValueError("invalid expiry")
+    fraction = "." + matched[2][:6].ljust(6, "0") if matched[2] else ""
+    zone = "+00:00" if matched[3] == "Z" else matched[3]
+    return datetime.fromisoformat(matched[1] + fraction + zone)
+
+
 def receipt(instance, boot, image):
     bounded.require(type(instance) is str and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", instance),
                     "expected_instance_invalid")
@@ -87,7 +99,7 @@ class CloudRuntime:
         expires = desired.get("expires_at")
         bounded.require(type(expires) is str, "cloud_expiry_invalid")
         try:
-            parsed = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            parsed = parse_expiry(expires)
             bounded.require(parsed.tzinfo is not None, "cloud_expiry_invalid")
             bounded.require(parsed > datetime.now(timezone.utc), "cloud_expired")
         except ValueError:
@@ -214,7 +226,7 @@ def self_test():
         owner_path = root / "config.app-runtime.json"
         desired = {"provider": "runpod", "id": instance, "boot_id": boot,
                    "config_path": str(config), "port": 18933,
-                   "expires_at": "2099-01-01T00:00:00Z"}
+                   "expires_at": "2099-01-01T00:00:00.894477209Z"}
         owner = {"provider": "runpod", "instance_id": instance, "boot_id": boot,
                  "agent_url": "http://127.0.0.1:18934", "api_url": "http://127.0.0.1:18933/v1",
                  "local_pid": None, "local_start_id": None}
