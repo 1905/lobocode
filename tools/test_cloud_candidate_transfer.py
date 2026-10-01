@@ -93,6 +93,54 @@ class TransferTests(unittest.TestCase):
         self.assertEqual(self.inventory(self.output), self.original)
         self.assertTrue((self.parts / "part-000000.bin").exists())
 
+    def test_empty_ingest_preserves_source_and_identical_transfer_bytes(self):
+        self.pack()
+        baseline = self.inventory(self.parts)
+        ingest = self.layout / "ingest"
+        ingest.mkdir(mode=0o555)
+        before = transfer.snapshot(ingest.lstat())
+        self.parts = self.root / "parts-with-ingest"
+        self.pack()
+        self.assertEqual(self.inventory(self.parts), baseline)
+        self.assertFalse(any("ingest" in file["path"] for file in self.manifest["files"]))
+        self.restore()
+        self.assertEqual(self.inventory(self.output), self.original)
+        self.assertEqual(self.inventory(self.root / "source"), self.original)
+        self.assertEqual(transfer.snapshot(ingest.lstat()), before)
+        self.assertEqual(list(ingest.iterdir()), [])
+        self.assertFalse((self.output / "q6-oci" / "ingest").exists())
+
+    def test_nonempty_and_non_directory_ingest_are_rejected_before_output(self):
+        ingest = self.layout / "ingest"
+        target = self.root / "empty-directory"
+        target.mkdir()
+        for kind in ("nonempty", "file", "symlink", "dangling-symlink", "fifo"):
+            with self.subTest(kind=kind):
+                if kind == "nonempty":
+                    ingest.mkdir()
+                    (ingest / ".unfinished").write_bytes(b"partial ingestion")
+                elif kind == "file":
+                    ingest.write_bytes(b"")
+                elif kind in ("symlink", "dangling-symlink"):
+                    ingest.symlink_to(target if kind == "symlink" else self.root / "missing",
+                                      target_is_directory=True)
+                else:
+                    os.mkfifo(ingest)
+                with self.assertRaises(transfer.InvalidTransfer):
+                    self.pack()
+                self.assertFalse(self.parts.exists())
+                if kind == "nonempty":
+                    (ingest / ".unfinished").unlink()
+                    ingest.rmdir()
+                else:
+                    ingest.unlink()
+
+    def test_other_empty_source_directory_is_rejected(self):
+        (self.layout / "unexpected").mkdir()
+        with self.assertRaises(transfer.InvalidTransfer):
+            self.pack()
+        self.assertFalse(self.parts.exists())
+
     def test_exact_part_boundary_has_no_extra_empty_part(self):
         self.metadata.chmod(0o600)
         total = sum(len(value) for value in self.original.values())
