@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Clarify the Rust source quick start, Q6-only public cloud image, separate app/CLI installation and CLI bulk-stop behavior. App/CLI releases remain held; loading-memory progression and remaining native checks are not complete.
 - Pass the actual hosted Mac app `b5617ae` cloud Start → Ready → direct reply → Stop → Off flow. The request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds; two tokens do not establish sustained output speed. Controls fit without scrolling, and rounded corners were visible. Exact pod and local tunnel cleanup, native Quit and guarded preference restoration passed.
 - Record startup variation: TUI Ready took 230.178 seconds; Mac Ready fell between about 21m11s and 22m30s after the Start capture. The provider still reported downloading at 15 minutes. Exact Mac boot duration, download-byte progress and cache reuse were not measured.
 - Observe 22.8 / 31.8 GB GPU memory in native Ready. Post-request idle gauges showed `0 / 0`; live rate updates remain unverified. Drag, Dock, Command-Tab, local Metal, OpenCode and broader telemetry checks remain pending. App/CLI releases and Q8 remain held.
