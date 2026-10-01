@@ -1,7 +1,7 @@
-# App Setup and Runtime Visibility Implementation Plan v1.6
+# App Setup and Runtime Visibility Implementation Plan v1.7
 
 **Date:** 2026-10-01
-**Status:** superseded by v1.7
+**Status:** in-progress
 **Spec:** ./spec.md (approved)
 **Authorization:** The user approved implementation and testing in the expanded spec. Prior full-auto delivery authorization persists. Parent self-review completed. Execute under the approved implementation and testing instruction; no new scope permission is needed.
 **Goal:** Safely operate the app-owned runtime, configure OpenCode, and show accurate memory/activity in a normal native Mac app.
@@ -10,13 +10,26 @@
 
 > For agentic workers: use superpowers:subagent-driven-development to implement task-by-task. Checkbox syntax tracks completion.
 
+## Long staging window — 2026-10-01
+
+The active artifact transfer acknowledged about 1.18 MB/s early in the run. A 24.69 GB upload at that rate leaves too little margin within 360 minutes. Keep the same image and transport. Raise only the self-hosted staging limit to 720 minutes; leave the hosted publisher at 90 minutes.
+
+Files: modify `.github/workflows/pod-image.yml`, `spec.md`, `results.md`, `AGENTS.md`, `CHANGELOG.md`; create this version. Preserve every other workflow job and dirty Task11 file.
+
+- [x] C1i: Change only prebuilt.timeout-minutes from360 to720. Self-review the diff; validate workflow syntax and shell blocks on Dell. No new test harness or image rebuild is needed.
+- [ ] C1j: After the reviewed commit is pushed, cancel only run36802508956, wait for its job to end, remove its exact runner/container and restore its candidate ACL. Preserve completed image files and paused Q8 work.
+- [ ] C1k: Start one isolated replacement runner with a matching twelve-hour watchdog. Dispatch the same source/digest and publication/promotion inputs. Inspect only runtime-token timestamp claims during verification. Require enough credential lifetime for the planned transfer; otherwise stop before another long attempt. Signed upload URL expiry remains a separate unverified limit.
+- [ ] C1l: Record accepted bytes separately from network transmission. Verify publication, remove only the exact transfer artifact and runner, then continue C3/C4. No GPU rental before anonymous latest-q6 digest verification.
+
+This is an execution correction within the existing image-publication authorization. No new user decision or release permission is required. Parent self-review is the approval gate for this narrow change.
+
 ## Hosted registry publication — 2026-10-01
 
 The regctl chunked attempt failed with GHCR HTTP416. No public tag exists. Its isolated runner is cleaned up. The next supported path transfers the same verified OCI image through a temporary GitHub Actions artifact, then publishes it from a hosted runner. This keeps the exact candidate and avoids GHCR's slow long upload from Dell. The artifact is build transport only; users still pull the public GHCR image. No new infrastructure, provider credentials, application dependency or image rebuild is introduced.
 
 Modify `.github/workflows/pod-image.yml`, this spec/plan/results, AGENTS.md and CHANGELOG.md. Preserve normal release image jobs and all client/runtime files. Prior C1b/C1c record the completed chunked experiment; C1d is superseded by C1e–h below.
 
-- [x] C1e: Keep readonly Dell verification as the first job. When publish=true, upload only `q6-oci/` and `q6-metadata.json` with pinned upload-artifact v4 (`ea165f8d65b6e75b540449e92b4886f43607fa02`), compression-level0, retention1day and a unique same-run name. Expose only its exact artifact ID to the dependent job. Verify-only dispatch must still neither stage nor publish. Bound staging at360minutes and measure actual transfer rate before making any completion estimate.
+- [x] C1e: Keep readonly Dell verification as the first job. When publish=true, upload only `q6-oci/` and `q6-metadata.json` with pinned upload-artifact v4 (`ea165f8d65b6e75b540449e92b4886f43607fa02`), compression-level0, retention1day and a unique same-run name. Expose only its exact artifact ID to the dependent job. Verify-only dispatch must still neither stage nor publish. Bound staging at720minutes and measure actual transfer rate before making any completion estimate.
 - [x] C1f: Add a dependent hosted Ubuntu publication job. Require successful staging and explicit publish input. Before download, measure available disk; remove only unused `/usr/local/lib/android`, `/usr/share/dotnet` and `/opt/ghc` from this disposable hosted VM if needed. Require at least30GiB free or fail before download. Use pinned download-artifact v6.0.0 (`018cc2cf5baa6db3ef3c5f8a56943fffe632ef53`) with the exact same-run artifact ID. Its extraction streams to disk. Make candidate files readonly, then run the existing verifier with explicit layout/metadata paths and approved source/image digests.
 - [x] C1g: Publish from the hosted runner with a checksum-pinned client and monolithic blob uploads, bounded concurrency3 and a90-minute hosted job limit. Keep stdin credentials, temporary private auth, conflicting-tag refusal and anonymous digest checks. Promote only latest-q6 after immutable verification. Never change latest-q8 or create an app/CLI release. Delete only the exact transfer artifact after verified publication; retain failure evidence with its1day expiry. Do not change account billing or budgets.
 - [ ] C1h: Parent review job dependencies, artifact scope, disk gate, exact verification and cleanup. Run Dell actionlint/shell syntax and focused script checks as needed. Commit/push the correction with changelog. Execute one revised workflow; measure artifact transfer and hosted publication. Complete C1 only after anonymous immutable/latest digest checks. Then continue C3/C4 without another approval prompt.
