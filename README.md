@@ -1,10 +1,10 @@
 # lobocode
 
-Your own uncensored coding model, on demand. `lobo up` rents one RTX 5090, serves **Qwen3.5-27B Uncensored** (HauhauCS Aggressive, Q8 GGUF) as an OpenAI-compatible API, and deletes the GPU when you stop using it.
+Run **Qwen3.5-27B Uncensored** (HauhauCS Aggressive) on Apple Silicon or a rented GPU, with an OpenAI-compatible API. Use the standalone Mac app or the optional CLI.
 
-**Development status:** this branch contains the unreleased Rust rewrite. Release is on hold for manual testing. Homebrew installs the published version. Screenshots below show the Rust app with sample data.
+**Development status:** `master` contains the unreleased Rust rewrite. App and CLI releases remain on hold. Homebrew installs the previously published CLI, not this Rust candidate. Screenshots below show sample data, not benchmark results.
 
-The Rust cloud path resolves the latest complete public image on each new start. Public Q6 passed direct RunPod TUI inference and native Mac Start → reply → Stop checks. Broader native acceptance and Q8 publication remain pending. See the [implementation record](docs/implementation-mistakes.md).
+The Rust cloud path resolves the latest complete public image on each new start. **Select Q6 for cloud use:** its image is public and passed RunPod TUI and native Mac Start → reply → Stop checks. Q8 remains the configuration default, but its complete image is not published. Broader native acceptance remains pending. See the [implementation record](docs/implementation-mistakes.md).
 
 <p align="center">
   <img src="docs/img/panel_boot.png" width="340" alt="booting: rent, image pull, private connection, GPU check and bundled-model verification">
@@ -16,21 +16,25 @@ The Rust cloud path resolves the latest complete public image on each new start.
 - **What:** start a 5090 on RunPod or Vast.ai from the standalone Mac app or optional CLI. The Rust candidate connects through private SSH at `http://127.0.0.1:8933/v1`. No domain or bucket is required.
 - **Measured Q6 cloud check:** 47,000 uncached input tokens at 2,186.7 prompt tok/s; first content after 24.04 seconds. Sustained output speed remains unmeasured.
 - **Startup varies:** the TUI reached Ready in 230.178 seconds. Mac Ready occurred between about 21m11s and 22m30s after the Start capture. The provider still reported downloading at 15 minutes. No transfer-byte progress or cache-hit evidence was captured.
-- **Cost:** $0.69–0.99/h while it runs. It deletes itself after 30 min idle, and after 12 h in any case.
+- **Observed test rates:** $0.69/h and $0.99/h. Available prices vary. Default shutdown limits are 30 minutes idle and 12 hours maximum life.
 - **Safe to forget:** the pod kills itself. Your account keys never leave your laptop.
 
+For the Rust cloud candidate, build from source using the instructions below, then run:
+
 ```sh
-brew install 1905/tap/lobo
-lobo config     # paste keys once
-lobo up         # waits for image pull, model verification and GPU loading
-lobo down       # deletes the rented instance
+bin/lobo-rs config       # configure provider and API keys
+bin/lobo-rs up --q6      # use the published complete Q6 image
+bin/lobo-rs status       # inspect the running GPU
+bin/lobo-rs down         # deletes all lobo instances on configured providers
 ```
+
+The app's Stop button targets its recorded runtime. The CLI's `down` command retains its broader all-provider behavior.
 
 ## Install
 
-The desktop app installs from its DMG and does not require the CLI. Install the optional CLI separately through Homebrew.
+The desktop app installs from its DMG and does not require the CLI. Install the optional CLI separately through Homebrew. A new Rust DMG or Homebrew release is not available yet; source builds are for development testing.
 
-**Homebrew** (macOS, Linux):
+**Published CLI through Homebrew** (macOS, Linux):
 
 ```sh
 brew install 1905/tap/lobo
@@ -45,6 +49,8 @@ make install-mac    # optional: the menu bar app → /Applications/lobocode.app
 ```
 
 The source retains the legacy Go CLI and `make install` target until the Rust release. Use `bin/lobo-rs` to test the Rust CLI.
+
+For cloud testing in the Rust app, select **Cloud → Q6**. An unavailable image fails before rental. Updating the app does not install or replace the optional CLI.
 
 ## What you need
 
@@ -103,7 +109,7 @@ Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. The
 
 Windows use native macOS title bars and rounded corners. Each view fits without scrolling. Settings groups controls into Local, Cloud, Defaults and Clients tabs. The actual hosted app passed cloud Start, Ready, a direct reply, Stop and Off without scrolling; rounded corners were visible. Drag, Dock and Command-Tab behavior remain unverified.
 
-The Mac cloud request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds. Ready displayed 22.8 / 31.8 GB of GPU memory. The idle gauges showed `0 / 0` after the reply; live rate updates were not verified. Owned pod/tunnel cleanup, native Quit and preference restoration passed. Local Metal, OpenCode and broader telemetry acceptance remain pending.
+The Mac cloud request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds. Ready displayed 22.8 / 31.8 GB of GPU memory. The idle gauges showed `0 / 0` after the reply; live rate updates were not verified. Owned pod/tunnel cleanup, native Quit and preference restoration passed. Loading-memory progression remains unfinished. Local Metal inference and live OpenCode integration remain unverified. See the [test results and remaining checks](plans/2026-09-30-app-setup-memory-visibility/results.md).
 
 Build the Rust candidate with `make install-mac`. `make dmg` creates `bin/lobocode.dmg`: open it and drag **lobocode** to **Applications**. The Rust candidate is not published as a release yet.
 

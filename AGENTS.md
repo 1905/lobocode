@@ -1,5 +1,16 @@
 # Lobocode project memory
 
+## Current delivery instruction — 2026-10-01
+
+The user explicitly requested commit, merge and README updates after cloud E2E.
+Merge the completed, committed app-runtime work into `master` and push it.
+This supersedes the earlier master-merge hold for that completed work.
+Preserve unfinished Task11 files in the app-runtime worktree; do not include
+them as verified work. Keep app/CLI releases, local inference, Q8 and updater
+work held. Use Feesh or hosted CI for backend/build checks, not Dell or this Mac.
+Q6 image publication and bounded TUI/Mac cloud lifecycle checks passed.
+Loading-memory progression and broad native acceptance remain unfinished.
+
 User corrections saved on 2026-09-30.
 
 - This is a public application. Users must not need the developer's bucket,
