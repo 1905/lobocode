@@ -221,7 +221,7 @@ Cloud harness reuses the bounded HTTP and synthetic-token helpers. Its CloudRunt
 
 ### Candidate publication through repository CI
 
-The saved GitHub CLI token cannot open a GHCR upload session (HTTP403). Use a narrowly scoped manual GitHub Actions workflow with `packages: write`, running on a task-owned ephemeral Dell runner. Mount only the verified OCI candidate read-only; expose no host Docker socket, personal home or old build storage. Pin the official runner image and regctl release. Use 32 MiB chunked uploads and bounded concurrency. The runner handles one job and is removed afterward.
+The saved GitHub CLI token cannot open a GHCR upload session (HTTP403). Use a narrowly scoped manual GitHub Actions workflow. An ephemeral Dell runner verifies its readonly OCI mount and stages only image files through a short-lived artifact. A dependent hosted runner rechecks every blob and publishes with `packages: write`. Expose no host Docker socket, personal home or old build storage. Pin the runner, artifact actions and ORAS release. Remove the Dell runner after its one job and delete the exact artifact after successful publication and promotion.
 
 Verification is the default. Validate the requested source revision, image digest, OCI content hashes and complete-image configuration before any registry write. Publication and `latest-q6` promotion are separate explicit workflow inputs, both false by default. Publish the immutable source tag first, verify anonymous digest access, then allow the separately approved latest tag promotion. Record the exact resulting digest. Do not create an app/CLI release or modify latest-q8. The existing public package can be reused; do not change unrelated permissions.
 
@@ -404,3 +404,7 @@ Split hosted `make app-e2e-build` into an ungated compilation-only step. Keep al
 ## Cloud publication implementation correction — 2026-10-01
 
 The user authorized image publication and RunPod E2E. The candidate remains the verified Q6 image from `528322e` at digest `sha256:83db6998106ca53b67b2bcec9cba445f91924f942b664958eebb742a8539a2d5`. The first ORAS upload measured about 0.8–1.6 MB/s; its monolithic model-layer PUTs conflict with GitHub's documented 10-minute upload limit at that rate. Plan v1.5 replaces only candidate publication with checksum-pinned regctl, 32 MiB chunks, at most three concurrent requests and a bounded job deadline. The image, runtime, credentials policy, immutable-tag checks and Q6-only promotion stay unchanged. No new user decision is required by this implementation correction. Actual chunked upload and cloud inference remain unverified.
+
+## Hosted publication correction — 2026-10-01
+
+GHCR rejected the chunked upload with HTTP416; it is not an accepted publication path. Plan v1.6 stages only the verified OCI layout and metadata through a short-lived GitHub Actions artifact. A dependent hosted runner checks disk capacity, downloads by exact artifact ID, revalidates every blob, then publishes monolithically through the existing public registry. Client/runtime behavior and the approved image digest stay unchanged. The transfer artifact is removed after verified publication and never becomes an app dependency. No new account, bucket, budget setting or user decision is required. Successful artifact transfer and live cloud E2E remain pending.

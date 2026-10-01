@@ -1,7 +1,7 @@
-# App Setup and Runtime Visibility Implementation Plan v1.5
+# App Setup and Runtime Visibility Implementation Plan v1.6
 
 **Date:** 2026-10-01
-**Status:** superseded by v1.6
+**Status:** in-progress
 **Spec:** ./spec.md (approved)
 **Authorization:** The user approved implementation and testing in the expanded spec. Prior full-auto delivery authorization persists. Parent self-review completed. Execute under the approved implementation and testing instruction; no new scope permission is needed.
 **Goal:** Safely operate the app-owned runtime, configure OpenCode, and show accurate memory/activity in a normal native Mac app.
@@ -9,6 +9,19 @@
 **Tech Stack:** Rust/Tokio/serde, jsonc-parser 0.33.2 CST, macOS libproc, Svelte/Tauri, Vitest, WebdriverIO and Python native harnesses.
 
 > For agentic workers: use superpowers:subagent-driven-development to implement task-by-task. Checkbox syntax tracks completion.
+
+## Hosted registry publication — 2026-10-01
+
+The regctl chunked attempt failed with GHCR HTTP416. No public tag exists. Its isolated runner is cleaned up. The next supported path transfers the same verified OCI image through a temporary GitHub Actions artifact, then publishes it from a hosted runner. This keeps the exact candidate and avoids GHCR's slow long upload from Dell. The artifact is build transport only; users still pull the public GHCR image. No new infrastructure, provider credentials, application dependency or image rebuild is introduced.
+
+Modify `.github/workflows/pod-image.yml`, this spec/plan/results, AGENTS.md and CHANGELOG.md. Preserve normal release image jobs and all client/runtime files. Prior C1b/C1c record the completed chunked experiment; C1d is superseded by C1e–h below.
+
+- [x] C1e: Keep readonly Dell verification as the first job. When publish=true, upload only `q6-oci/` and `q6-metadata.json` with pinned upload-artifact v4 (`ea165f8d65b6e75b540449e92b4886f43607fa02`), compression-level0, retention1day and a unique same-run name. Expose only its exact artifact ID to the dependent job. Verify-only dispatch must still neither stage nor publish. Bound staging at360minutes and measure actual transfer rate before making any completion estimate.
+- [x] C1f: Add a dependent hosted Ubuntu publication job. Require successful staging and explicit publish input. Before download, measure available disk; remove only unused `/usr/local/lib/android`, `/usr/share/dotnet` and `/opt/ghc` from this disposable hosted VM if needed. Require at least30GiB free or fail before download. Use pinned download-artifact v6.0.0 (`018cc2cf5baa6db3ef3c5f8a56943fffe632ef53`) with the exact same-run artifact ID. Its extraction streams to disk. Make candidate files readonly, then run the existing verifier with explicit layout/metadata paths and approved source/image digests.
+- [x] C1g: Publish from the hosted runner with a checksum-pinned client and monolithic blob uploads, bounded concurrency3 and a90-minute hosted job limit. Keep stdin credentials, temporary private auth, conflicting-tag refusal and anonymous digest checks. Promote only latest-q6 after immutable verification. Never change latest-q8 or create an app/CLI release. Delete only the exact transfer artifact after verified publication; retain failure evidence with its1day expiry. Do not change account billing or budgets.
+- [ ] C1h: Parent review job dependencies, artifact scope, disk gate, exact verification and cleanup. Run Dell actionlint/shell syntax and focused script checks as needed. Commit/push the correction with changelog. Execute one revised workflow; measure artifact transfer and hosted publication. Complete C1 only after anonymous immutable/latest digest checks. Then continue C3/C4 without another approval prompt.
+
+Official implementation evidence: [upload-artifact](https://github.com/actions/upload-artifact), [artifact toolkit](https://github.com/actions/toolkit/tree/main/packages/artifact), [hosted runner capacity](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). The artifact client uses block upload and streaming ZIP extraction. Backend quota and successful25GB transfer remain live checks; they are not assumed proven by source review.
 
 ## Candidate upload correction — 2026-10-01
 
