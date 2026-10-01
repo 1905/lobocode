@@ -4,7 +4,7 @@ Your own uncensored coding model, on demand. `lobo up` rents one RTX 5090, serve
 
 **Development status:** this branch contains the unreleased Rust rewrite. Release is on hold for manual testing. Homebrew installs the published version. Screenshots below show the Rust app with sample data.
 
-The Rust cloud path resolves the latest complete public image on each new start. Q6 is published and passed a direct RunPod TUI inference check. Native Mac cloud acceptance and Q8 publication remain pending. See the [implementation record](docs/implementation-mistakes.md).
+The Rust cloud path resolves the latest complete public image on each new start. Public Q6 passed direct RunPod TUI inference and native Mac Start → reply → Stop checks. Broader native acceptance and Q8 publication remain pending. See the [implementation record](docs/implementation-mistakes.md).
 
 <p align="center">
   <img src="docs/img/panel_boot.png" width="340" alt="booting: rent, image pull, private connection, GPU check and bundled-model verification">
@@ -15,6 +15,7 @@ The Rust cloud path resolves the latest complete public image on each new start.
 
 - **What:** start a 5090 on RunPod or Vast.ai from the standalone Mac app or optional CLI. The Rust candidate connects through private SSH at `http://127.0.0.1:8933/v1`. No domain or bucket is required.
 - **Measured Q6 cloud check:** 47,000 uncached input tokens at 2,186.7 prompt tok/s; first content after 24.04 seconds. Sustained output speed remains unmeasured.
+- **Startup varies:** the TUI reached Ready in 230.178 seconds. Mac Ready occurred between about 21m11s and 22m30s after the Start capture. The provider still reported downloading at 15 minutes. No transfer-byte progress or cache-hit evidence was captured.
 - **Cost:** $0.69–0.99/h while it runs. It deletes itself after 30 min idle, and after 12 h in any case.
 - **Safe to forget:** the pod kills itself. Your account keys never leave your laptop.
 
@@ -59,7 +60,7 @@ New Rust configurations use a [private SSH connection](docs/cloud-without-domain
 
 The connection survives closing the app or finishing `lobo up`. It reconnects after a network interruption. The endpoint works only on that computer. Stop deletes the instance and closes the connection.
 
-Existing complete domain/token configurations keep their public connection. Select **use private connection** in Cloud Settings, or set `LOBO_CONNECTION=ssh`, before the next start. The SSH mode needs the matching cloud agent. The public Q6 image includes it and passed the direct RunPod TUI check. Native Mac cloud acceptance and the app/CLI release remain pending.
+Existing complete domain/token configurations keep their public connection. Select **use private connection** in Cloud Settings, or set `LOBO_CONNECTION=ssh`, before the next start. The SSH mode needs the matching cloud agent. The public Q6 image includes it and passed direct TUI and native Mac cloud lifecycle checks. App/CLI releases remain on hold.
 
 The GPU pulls a complete public Docker image. It includes the agent, inference runtime, SSH server and selected model weights. There is no separate agent install, private bucket or developer credential to configure.
 
@@ -100,7 +101,9 @@ The shared core checks again at Start and immediately before model load. A passi
 
 Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. The app uses the same Rust core and config file as the CLI. It runs local models directly. Opening the app shows a native window, so it works when a full menu bar hides the item behind the notch.
 
-Windows use native macOS title bars and rounded corners. Each view fits without scrolling. Settings groups controls into Local, Cloud, Defaults and Clients tabs. The Rust candidate uses normal macOS app activation for Dock and Command-Tab access. Native acceptance of the latest changes remains pending.
+Windows use native macOS title bars and rounded corners. Each view fits without scrolling. Settings groups controls into Local, Cloud, Defaults and Clients tabs. The actual hosted app passed cloud Start, Ready, a direct reply, Stop and Off without scrolling; rounded corners were visible. Drag, Dock and Command-Tab behavior remain unverified.
+
+The Mac cloud request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds. Ready displayed 22.8 / 31.8 GB of GPU memory. The idle gauges showed `0 / 0` after the reply; live rate updates were not verified. Owned pod/tunnel cleanup, native Quit and preference restoration passed. Local Metal, OpenCode and broader telemetry acceptance remain pending.
 
 Build the Rust candidate with `make install-mac`. `make dmg` creates `bin/lobocode.dmg`: open it and drag **lobocode** to **Applications**. The Rust candidate is not published as a release yet.
 
@@ -127,7 +130,7 @@ The optional CLI retains its separate export command: `lobo gen-api-key` writes 
 
 ## Pod image
 
-The Rust candidate uses separate complete images for Q6 and Q8. Each image includes the agent, inference runtime, SSH server and model weights. The Q6 tag, `ghcr.io/1905/lobocode:latest-q6`, is public and passed anonymous manifest verification on October 1, 2026. Q8 publication remains pending. The direct RunPod TUI check passed; native Mac cloud acceptance is pending. App and CLI releases remain on hold.
+The Rust candidate uses separate complete images for Q6 and Q8. Each image includes the agent, inference runtime, SSH server and model weights. The Q6 tag, `ghcr.io/1905/lobocode:latest-q6`, is public and passed anonymous manifest verification on October 1, 2026. Q8 publication remains pending. Direct RunPod TUI inference and the native Mac cloud lifecycle passed. Broader feature acceptance and app/CLI releases remain on hold.
 
 The app resolves the selected tag again before each new start. The provider receives `ghcr.io/1905/lobocode@sha256:<digest>`. It may reuse identical layers, but cannot substitute an older image digest.
 

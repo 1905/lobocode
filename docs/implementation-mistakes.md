@@ -339,8 +339,33 @@ OpenCode integration. Preserve the first validator failure separately.
 Exact pod and tunnel cleanup passed at 07:35:07 UTC. The provider returned 404;
 owned desired state, listeners and boot keys were removed without process
 signals. Full evidence is in the [results document](../plans/2026-09-30-app-setup-memory-visibility/results.md).
-Native Mac cloud acceptance and broader feature acceptance remain pending.
-App/CLI releases remain held.
+The later bounded native Mac cloud lifecycle passed, as recorded below.
+Broader feature acceptance and app/CLI releases remain held.
 
 The real TUI Ready and status views fit 80 columns. Some startup detail lines
 still clip at that width. Passing inference does not close this display issue.
+
+
+## Cloud startup and native acceptance limits — 2026-10-01
+
+The same public Q6 image produced different cloud startup times. The TUI reached
+Ready in 230.178 seconds. The native Mac app was still in Boot at about 21m11s and
+first observed Running at 22m30s after the Start capture. No exact Mac Ready timestamp or
+`boots.jsonl` was captured. The provider reported `Downloading` at 15 minutes.
+There is no measured download-byte progress or cache-hit evidence. A complete
+image does not prove a fast or cached startup, and these observations do not
+establish why the two starts differed.
+
+Actual hosted app `b5617ae` passed Cloud Start, Ready, one direct reply, native
+Stop and Off. The request used 25 uncached input tokens and returned the expected
+`4` in two output tokens. First content took 1.107 seconds. This short reply does
+not establish sustained generation speed. Exact pod GET 404, native Quit and
+guarded preference restoration passed. A final read-only check found no task
+helper/tunnel processes, listeners, runtime state, boot keys or SSH socket.
+Both helper locks were released.
+
+Controls fit without scrolling, and rounded corners were visible. Ready showed
+22.8 / 31.8 GB GPU memory. The post-request idle gauges showed `0 / 0`; this does
+not prove live throughput updates during a request. Actual drag, global
+Command-Tab, Dock, local Metal, OpenCode, Q8 and broader telemetry acceptance
+remain pending. App/CLI releases remain held.

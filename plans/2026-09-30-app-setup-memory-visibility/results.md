@@ -412,5 +412,92 @@ provider identity, one GPU and unchanged private config. Receipts are
 same evidence root. The first failed request and its numeric recovery remain
 preserved separately.
 
-Plan v1.11 H1–H4 are complete. TUI cleanup is underway. H5/F7, the native Mac
-cloud lifecycle and broader feature acceptance remain pending.
+Plan v1.11 H1–H4 are complete. Exact TUI cleanup passed at 07:35:07 UTC.
+One DELETE was followed by GET 404. The matching desired state, listeners and
+boot keys were removed; the helper lock was released without process signals.
+The receipt is `/tmp/lobo-cloud-mac-e2e-20261001.a542eX/tui-cleanup.json`,
+SHA256 `74bc17dc53ef05470a0155f59145619d97cd2d209d3d42e073aa1c1f704a99a6`.
+H5/F7 continued through the native Mac lifecycle recorded below. Broader feature acceptance remains pending.
+
+
+The reviewed diagnostic fixes and publication/TUI evidence were committed and
+pushed as `02af0636b42a27bbf10188e37fdb27f063255e0e` to
+`fix/app-setup-memory-visibility`. The remote branch SHA was verified through
+the GitHub API. Only the three diagnostic scripts and their scoped documents
+were committed. Dirty Task11 preparation remains separate. No app/CLI release,
+master merge, local inference or OpenCode launch occurred.
+
+
+## Native Mac RunPod cloud lifecycle — passed, startup slow
+
+The verified hosted app at `b5617ae6e4a44f7deada77dbeeff4f60f68c4aa1` ran
+from its existing temporary bundle. It was not installed. The isolated app used
+Q6, context 65,536, SSH, idle 10 minutes and a one-hour maximum life. The personal
+config, model, installed app and separately installed CLI were unchanged.
+Only one task GPU existed at a time; TUI deletion preceded this launch.
+
+Actual native actions passed: Cloud selected, Start, visible loading, Ready,
+one short direct streamed request, Stop and final Off. The task app was then
+quit through its own button. All captured controls fit without scrolling.
+Rounded window corners are visible in native screenshots. Window dragging,
+Dock presence and Cmd+Tab switching are still not verified by this run.
+
+Mac startup was much slower than the TUI rental. Capture timestamps put the
+last Boot frame 1,270.719 seconds after the initial Start frame, and the first
+Ready frame 1,349.478 seconds after it: roughly 21m11s to 22m30s. These are
+observation bounds, not the exact transition time. There is no native
+`boots.jsonl`. Use the capture timestamps rather than combining the different
+UI elapsed-time displays. The TUI process completed in 230.178 seconds.
+This difference prevents a claim of consistently fast startup.
+
+At 07:51:50–07:51:52 UTC, a bounded supported RunPod system-log read returned
+100 exact `Downloading` events. It returned no completion, start or error event
+in that slice. The messages supplied no byte count, percentage or throughput.
+An earlier broad download-word match did not prove byte movement; preserve that
+limit. Neither probe establishes layer cache reuse. The supported read comes
+from [RunPod's official client](https://github.com/runpod/runpodctl/blob/main/internal/api/logs.go).
+Both probes made one GET each, followed no redirects, kept raw text in memory
+only and saved sanitized categories, counts and timestamps.
+
+The provider receipt bound pod `t54bds6hwvduzg`, boot `f37683f5b49c4391`, one
+GPU and the exact public digest `sha256:aa590424f7862b5664c943cc5753bb72d447cbdaec5ed03a66642e138e3857f4`.
+A pre-Stop GET at 08:00:19 UTC confirmed unchanged identity and working SSH
+mapping. The observed rate was $0.99/hour, compared with $0.69/hour for TUI.
+These are provider rates, not verified final invoices.
+
+The single Mac request passed with 25 input tokens, zero cached tokens, two
+output tokens and the expected answer `4`. First content took 1,107.323 ms;
+total request time was 1,107.368 ms. Server prompt time was 161.681 ms at
+154.625 tokens/s. Server generation time was 18.830 ms, reported as
+53.107 tokens/s. Two output tokens do not establish sustained generation speed.
+No OpenCode or local model was started.
+
+The Ready view displayed VRAM as `22.8/31.8 GB`. Both rate gauges showed zero
+in the captured idle frames before and after this short request. This does not
+prove a live rate update, nor does it contradict the passing streamed response.
+Loading-memory progression and faster activity sampling remain separate pending
+feature work. No extra generation was sent to extend the UI observation.
+
+The native Stop button removed the pod and returned the app to Off. An exact
+GET returned 404 at 08:01:30.777 UTC. The task app exited normally. Guarded
+preference restoration passed and restored the exact pre-launch bytes.
+Read-only local checks passed at 08:03:40.955 UTC: no exact task helper or
+SSH tunnel process, both ports free, desired state/app ownership/boot keys/SSH
+socket absent, and helper/change locks released. Task config stayed unchanged.
+Only benign lock files and old health metadata remain. The first extra process
+check used invalid macOS pgrep syntax; its diagnostic failure was preserved in
+`post-stop-local-initial.json`. The corrected read-only check passed in
+`post-stop-local.json`. It sent no signal and made no cleanup/provider mutation.
+
+Private evidence root: `/tmp/lobo-cloud-mac-e2e-20261001.a542eX/`. Important
+receipts are `small-evidence/summary.json`, `provider-receipt.json`,
+`provider-before-stop.json`, `post-stop-provider.json`,
+`provider-system-log-snapshot-002.json` and `native-cloud/observations.json`.
+Native screenshots include `off-before.png`, `start.png`, `ready-before.png`,
+`ready-after.png`, `stop.png` and `off-after.png`. Preference restoration is
+recorded in `/private/tmp/lobo-mac-cloud-launch-512mj3id/prefs-restored.json`.
+
+These results cover the real cloud paths for TUI and the Mac app. They do not
+verify local Metal inference, OpenCode, the pending telemetry feature or broad
+native acceptance. TUI startup detail clipping remains unresolved. Q8, updater,
+master merge and app/CLI release remain held.
