@@ -1,7 +1,7 @@
-# App Setup and Runtime Visibility Implementation Plan v1.7
+# App Setup and Runtime Visibility Implementation Plan v1.8
 
 **Date:** 2026-10-01
-**Status:** superseded by v1.8
+**Status:** in-progress
 **Spec:** ./spec.md (approved)
 **Authorization:** The user approved implementation and testing in the expanded spec. Prior full-auto delivery authorization persists. Parent self-review completed. Execute under the approved implementation and testing instruction; no new scope permission is needed.
 **Goal:** Safely operate the app-owned runtime, configure OpenCode, and show accurate memory/activity in a normal native Mac app.
@@ -9,6 +9,34 @@
 **Tech Stack:** Rust/Tokio/serde, jsonc-parser 0.33.2 CST, macOS libproc, Svelte/Tauri, Vitest, WebdriverIO and Python native harnesses.
 
 > For agentic workers: use superpowers:subagent-driven-development to implement task-by-task. Checkbox syntax tracks completion.
+
+## Independently completed transfer parts — 2026-10-01
+
+Run36804047216 failed upload authentication after3,609seconds. Its runtime token was still valid. No artifact was finalized. Signed URL expiry is suspected, not proved. Keep the approved image unchanged and replace only its CI transport. Prior C1l is superseded by C1m–r. Publication and cloud E2E stay pending.
+
+Modify: `.github/workflows/pod-image.yml`, this spec/plan/results, `AGENTS.md`, `CHANGELOG.md`, `docs/implementation-mistakes.md`.
+Create: `tools/cloud_candidate_transfer.py`, `tools/test_cloud_candidate_transfer.py`, `.github/actions/stage-cloud-candidate/action.yml`, `index.mjs`, `index.test.mjs`, `package.json`, `package-lock.json`.
+Out of scope: all runtime/client/image bytes, normal image/release jobs, Q8, dirty Task11 work, local inference, OpenCode, app installation and releases.
+
+Locked transport contract:
+
+- Python commands: `pack --layout PATH --metadata PATH --source-sha SHA --image-digest DIGEST --output NEW_DIR [--part-bytes N]`; `restore --parts-dir PATH --manifest-sha256 HEX --source-sha SHA --image-digest DIGEST --output NEW_DIR --consume-parts`. Production part size is536870912bytes; smaller sizes are allowed only for focused fixtures. No part may exceed that cap.
+- Packing concatenates ordered original file bytes into `part-000000.bin`, `part-000001.bin` and so on. No tar, Docker import or second image build. Manifest filename is `transfer-manifest.json`, with schema1, source_sha, image_digest, part_size, total_bytes, files[{path,size,sha256,offset}], and parts[{name,size,sha256}]. Paths are only q6-metadata.json, q6-oci/index.json, q6-oci/oci-layout and q6-oci/blobs/sha256/<64hex>. Reject symlinks and extra source files. Cap manifests at4MiB, input at64GiB and parts at128. Pack prints bounded JSON including manifest_sha256 and part_count.
+- Restore verifies the manifest hash and all structure before writing. Output must be absent and separate from the input. Validate part/file hashes while streaming with bounded memory. Delete a downloaded part only after its full hash passes when consume-parts is selected. Reject missing/extra parts, bad sizes/order/offsets, path traversal and existing destinations. Existing full OCI verification remains mandatory after restore.
+- Local JavaScript action inputs: manifest, candidate-source, candidate-digest, github-token. Outputs: artifact-ids (comma-separated positive IDs), manifest-sha256. Use ESM, runs.using=node24 and exact @actions/artifact6.2.1 with a checked-in lockfile; no bundled dist. npm ci uses the pinned runner's bundled Node24 path, ignores package install scripts and adds no app dependencies.
+- Artifact names bind GITHUB_RUN_ID, full manifest SHA, part index/full SHA and GITHUB_RUN_ATTEMPT. Query only the current repository/run's paginated REST artifact list with actions:read. Reuse only nonexpired exact matching completed artifacts from prior attempts. Never trust ZIP digest as raw payload hash. Fresh uploads each use a separate uploadArtifact call, ZIP compression0 and retention1day. Emit outputs only after manifest and every part have finalized. Fail with sanitized errors; keep credentials and signed URLs out of logs.
+- Runner isolation adds only a task-owned writable /transfer scratch mount from Dell /storage. Keep /candidate readonly, no host Docker socket/home/secrets mount,1CPU/2GiB and720-minute job. The hosted publisher keeps90minutes and30GiB free disk. Download exact IDs, restore while consuming verified parts, rerun full verifier, publish/promote unchanged digest and delete only exact artifacts whose workflow_run.id matches this run.
+
+- [x] C1m: Implement deterministic packing/reconstruction and meaningful roundtrip/rejection fixtures. Cover file boundaries, final short part, corruption, truncation, reordered/missing/extra parts, bad paths/symlinks and preserving the original candidate. Dell passed 19 tests and Python compilation. Parent source review passed; no model execution or real image packing occurred.
+- [x] C1n: Implement the small official-SDK uploader and dependency lock. Dell passed 17 checks under pinned Node24.19.0 with network disabled. Checks cover prior-attempt reuse, scope/hash/expiry rejection, full-set-only output, ZIP overhead, runtime-token lifetime and child-process failure/log isolation. Dependencies were generated and installed on Dell, not this Mac.
+- [ ] C1o: Wire candidate jobs only. Parent review exact identity, disk, permissions, reassembly and cleanup. Run Dell Python/Node fixtures, actionlint, shell syntax and whitespace checks. Commit/push only this correction and matching docs.
+- [ ] C1p: Start one isolated runner with its exact scratch mount and dispatch approved publication inputs. Verify full candidate, pack and runtime-token timestamps. Require successful finalization of two data-part artifacts. Cancel only this run and clean its exact runner/scratch/ACL. Preserve the completed artifact IDs.
+- [ ] C1q: Rerun that same staging job at the same workflow revision with a fresh isolated runner using the required original label. Confirm previous completed IDs are reused and only missing parts upload. Keep monitoring through complete artifact download, reconstruction, full hash verification and public digest checks. Clean exact artifacts, runner and scratch. Do not claim resume from local fixtures alone.
+- [ ] C1r: Record actual transfer evidence and startup timing interpretation. Continue TUI then Mac cloud E2E only after publication passes. No repeated approval prompt is needed for the same authorized image/rental scope.
+
+Parent self-review: this fixes transport only; the app still resolves and pulls its complete public image. A CI artifact never becomes an app dependency. No new account, bucket, paid infrastructure or billing setting is introduced. The first real completed parts and a controlled retry prove the new failure boundary before the remaining long transfer.
+
+C1o review checkpoint: parent and independent integration review passed. Dell actionlint and all 14 multiline shell blocks passed. The SDK can log after rejecting its upload promise, so each official-SDK upload runs in a private child mode inside the existing action file. Its output streams are ignored for the full process lifetime; only numeric artifact ID/size cross IPC. The parent waits for exit and bounds each part upload at 30 minutes. A timestamp-only gate requires runtime credentials to cover the remaining twelve-hour job plus five minutes. ZIP size checks allow at most 1 MiB overhead. These checks preserve the locked public interfaces and original image bytes. Commit/push and live transfer remain pending.
 
 ## Long staging window — 2026-10-01
 

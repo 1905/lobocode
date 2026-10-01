@@ -277,8 +277,17 @@ GitHub Actions artifact. A hosted runner rechecks all image hashes before
 publishing to GHCR. This artifact is build transport; the application never
 uses it or asks users for a bucket. The first staging run acknowledged about
 1.2 MB/s. Its six-hour limit left too little margin for the full transfer.
-The replacement allows twelve hours and checks credential expiry separately.
-Publication remains pending until anonymous digest checks pass.
+The replacement allowed twelve hours and verified a matching runtime credential.
+That still failed: upload authentication was rejected after 3,609 seconds.
+No artifact was finalized, so 3.87 GB of acknowledged transfer was not reusable.
+Signed upload URL expiry fits the timing but is not proved by the generic error.
+
+The next correction uses independent 512 MiB artifacts. Each part completes
+with its own upload authorization. A retried job can reuse completed parts
+from the same run and exact content hashes. Reconstruction verifies every part
+and original image byte before publication. Prove part completion and reuse
+before another long transfer. This workflow is still under implementation;
+publication remains pending until anonymous digest checks pass.
 
 The user authorized Q6 publication and RunPod cloud E2E on 2026-10-01. Test one
 GPU at a time, use direct bounded prompts, and delete only the recorded test

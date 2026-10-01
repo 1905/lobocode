@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Stage prepared GPU images through a short-lived CI artifact, then reverify and publish from a hosted runner. Use pinned transfer tools, disk checks, a twelve-hour staging limit and exact artifact cleanup. This replaces a slow direct upload and a rejected chunked upload; live publication and RunPod E2E remain pending.
+- Add independent 512 MiB CI transfer parts with completed-part reuse, isolated upload logging and exact image reconstruction before hosted publication. Dell fixtures and workflow checks pass. Live transfer, publication and RunPod E2E remain pending.
 - Add a direct cloud diagnostic with RunPod instance/boot checks, private saved-connection validation and a fixed 47,000-input/32-output limit. Dell fake checks pass; live inference is pending.
 - Actual Mac app and 80×24 TUI cloud starts report missing public Q6 image (HTTP 404) before rental. RunPod inventory stays empty. Complete-image preparation and live cloud acceptance remain in progress.
 - Prepare an optional CI path to verify and publish a complete Q6 image built elsewhere. Verification is the default; publication and latest-tag promotion require explicit inputs. Dell fixture checks and workflow lint pass. Actual image verification and publication remain pending.

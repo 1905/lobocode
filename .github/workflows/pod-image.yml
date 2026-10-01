@@ -164,9 +164,11 @@ jobs:
     runs-on: ${{ startsWith(inputs.runner_label, 'cloud-e2e-') && inputs.runner_label || 'ubuntu-latest' }}
     timeout-minutes: 720
     outputs:
-      artifact_id: ${{ steps.stage.outputs.artifact-id }}
+      artifact_ids: ${{ steps.stage.outputs.artifact-ids }}
+      manifest_sha256: ${{ steps.stage.outputs.manifest-sha256 }}
     permissions:
       contents: read
+      actions: read
     env:
       CANDIDATE_RUNNER: ${{ inputs.runner_label }}
       CANDIDATE_SHA: ${{ inputs.source_sha }}
@@ -191,6 +193,16 @@ jobs:
           [[ "$(uname -s)/$(uname -m)" == Linux/x86_64 ]]
           # The task runner binds only its completed artifact directory here.
           findmnt --noheadings --output OPTIONS --target /candidate | tr ',' '\n' | grep -qx ro
+          if [[ "$CANDIDATE_PUBLISH" == true ]]; then
+            # Parts use a separate task-owned scratch bind, never Docker's small root disk.
+            findmnt --noheadings --output OPTIONS --target /transfer | tr ',' '\n' | grep -qx rw
+            [[ ! -L /transfer && -d /transfer ]]
+            free_kib=$(df -Pk /transfer | awk 'NR == 2 {print $4}')
+            [[ "$free_kib" -ge 31457280 ]] || {
+              echo 'Candidate parts require at least 30 GiB free scratch space.' >&2
+              exit 1
+            }
+          fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
@@ -208,18 +220,33 @@ jobs:
             cat "$RUNNER_TEMP/candidate-verification.json"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Stage the verified Q6 candidate
+      - name: Install locked artifact client
+        if: inputs.publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/home/runner/externals/node24/bin:$PATH"
+          [[ "$(node --version)" == v24.19.0 ]]
+          npm ci --ignore-scripts --no-audit --no-fund \
+            --prefix .github/actions/stage-cloud-candidate
+      - name: Pack the verified candidate into bounded parts
+        if: inputs.publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/cloud_candidate_transfer.py pack \
+            --layout /candidate/q6-oci --metadata /candidate/q6-metadata.json \
+            --source-sha "$CANDIDATE_SHA" --image-digest "$CANDIDATE_DIGEST" \
+            --output /transfer/parts
+      - name: Stage independently completed candidate parts
         id: stage
         if: inputs.publish
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: ./.github/actions/stage-cloud-candidate
         with:
-          name: cloud-e2e-q6-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            /candidate/q6-oci/
-            /candidate/q6-metadata.json
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 1
+          manifest: /transfer/parts/transfer-manifest.json
+          candidate-source: ${{ env.CANDIDATE_SHA }}
+          candidate-digest: ${{ env.CANDIDATE_DIGEST }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
   prebuilt_publish:
     needs: prebuilt
     if: github.repository == '1905/lobocode' && github.event_name == 'workflow_dispatch' && inputs.prebuilt_candidate && inputs.publish
@@ -233,7 +260,8 @@ jobs:
       CANDIDATE_SHA: ${{ inputs.source_sha }}
       CANDIDATE_DIGEST: ${{ inputs.image_digest }}
       CANDIDATE_PROMOTE: ${{ inputs.promote_latest }}
-      CANDIDATE_ARTIFACT_ID: ${{ needs.prebuilt.outputs.artifact_id }}
+      CANDIDATE_ARTIFACT_IDS: ${{ needs.prebuilt.outputs.artifact_ids }}
+      CANDIDATE_MANIFEST_SHA256: ${{ needs.prebuilt.outputs.manifest_sha256 }}
     steps:
       - name: Check hosted disk capacity
         shell: bash
@@ -241,7 +269,10 @@ jobs:
           set -euo pipefail
           [[ "$RUNNER_ENVIRONMENT" == github-hosted ]]
           [[ "$(uname -s)/$(uname -m)" == Linux/x86_64 ]]
-          [[ "$CANDIDATE_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$CANDIDATE_ARTIFACT_IDS" =~ ^[1-9][0-9]*(,[1-9][0-9]*)+$ ]]
+          [[ "$CANDIDATE_MANIFEST_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          IFS=',' read -r -a artifact_ids <<< "$CANDIDATE_ARTIFACT_IDS"
+          [[ "${#artifact_ids[@]}" -le 129 ]]
           free_kib() { df -Pk "$RUNNER_TEMP" | awk 'NR == 2 {print $4}'; }
           # These tools are unused in this disposable publication job.
           if [[ "$(free_kib)" -lt 31457280 ]]; then
@@ -261,9 +292,21 @@ jobs:
       - name: Download this run's verified candidate
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
-          artifact-ids: ${{ needs.prebuilt.outputs.artifact_id }}
-          path: ${{ runner.temp }}/q6-candidate
+          artifact-ids: ${{ needs.prebuilt.outputs.artifact_ids }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ runner.temp }}/q6-transfer
           merge-multiple: true
+      - name: Reconstruct the exact candidate while consuming verified parts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/cloud_candidate_transfer.py restore \
+            --parts-dir "$RUNNER_TEMP/q6-transfer" \
+            --manifest-sha256 "$CANDIDATE_MANIFEST_SHA256" \
+            --source-sha "$CANDIDATE_SHA" --image-digest "$CANDIDATE_DIGEST" \
+            --output "$RUNNER_TEMP/q6-candidate" --consume-parts
       - name: Verify every downloaded OCI blob and image identity
         shell: bash
         run: |
@@ -346,13 +389,24 @@ jobs:
             }
             echo "latest-q6 -> $CANDIDATE_DIGEST (anonymous access verified)" >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Remove the published candidate artifact
+      - name: Remove only this run's published candidate artifacts
         if: inputs.promote_latest
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          [[ "$CANDIDATE_ARTIFACT_ID" =~ ^[0-9]+$ ]]
-          gh api --method DELETE \
-            "repos/$GITHUB_REPOSITORY/actions/artifacts/$CANDIDATE_ARTIFACT_ID"
+          [[ "$CANDIDATE_ARTIFACT_IDS" =~ ^[1-9][0-9]*(,[1-9][0-9]*)+$ ]]
+          IFS=',' read -r -a artifact_ids <<< "$CANDIDATE_ARTIFACT_IDS"
+          [[ "${#artifact_ids[@]}" -le 129 ]]
+          for artifact_id in "${artifact_ids[@]}"; do
+            artifact_run=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id" \
+              --jq '.workflow_run.id')
+            [[ "$artifact_run" == "$GITHUB_RUN_ID" ]] || {
+              echo 'Refusing to delete an artifact from another workflow run.' >&2
+              exit 1
+            }
+          done
+          for artifact_id in "${artifact_ids[@]}"; do
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id"
+          done

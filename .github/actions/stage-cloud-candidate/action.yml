@@ -1,0 +1,23 @@
+name: Stage cloud candidate parts
+description: Upload verified candidate parts and reuse completed parts from this workflow run.
+inputs:
+  manifest:
+    description: Absolute path to transfer-manifest.json.
+    required: true
+  candidate-source:
+    description: Approved full source commit SHA.
+    required: true
+  candidate-digest:
+    description: Approved sha256 OCI image digest.
+    required: true
+  github-token:
+    description: Current repository token with actions read permission.
+    required: true
+outputs:
+  artifact-ids:
+    description: Exact completed manifest and part artifact IDs, comma separated.
+  manifest-sha256:
+    description: SHA256 of the raw transfer manifest.
+runs:
+  using: node24
+  main: index.mjs
