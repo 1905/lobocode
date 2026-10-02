@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn settings_tab_request_survives_until_consumed_and_latest_request_wins() {
         let navigation = super::SettingsNavigation::default();
-        navigation.request("local".into());
+        navigation.request("cloud".into());
         navigation.request("clients".into());
         assert_eq!(navigation.peek().as_deref(), Some("clients"));
         assert_eq!(navigation.peek().as_deref(), Some("clients"));
