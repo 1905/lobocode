@@ -594,7 +594,8 @@ async fn local_binding_is_rejected_without_config_reads_or_requests() {
     );
     assert_eq!(
         binding_from_snap(&owner, &backend.snap.lock().unwrap(), String::new())
-            .unwrap_err()
+            .err()
+            .unwrap()
             .kind,
         "invalid"
     );
