@@ -6,6 +6,8 @@
       "LOBO_API_KEY": true,
       "LOBO_CLOUD_PORT": true,
       "LOBO_CONNECTION": true,
+      "LOBO_MODEL": true,
+      "LOBO_PROVIDER": true,
       "RUNPOD_API_KEY": true,
       "VASTAI_API_KEY": true
     },
@@ -13,43 +15,20 @@
       "LOBO_API_KEY": "sk-9…7e4d",
       "LOBO_CLOUD_PORT": "8933",
       "LOBO_CONNECTION": "ssh",
+      "LOBO_MODEL": "q6",
+      "LOBO_PROVIDER": "vast",
       "RUNPOD_API_KEY": "rpa_…a1b2",
       "VASTAI_API_KEY": "3f9c…c0de"
     }
   },
-  "local_supported": true,
-  "models": {
-    "free_bytes": 958902697984,
-    "models": [
-      {
-        "file": "Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf",
-        "id": "q6",
-        "on_disk": 22082528352,
-        "size": 22082528352,
-        "verified": true
-      },
-      {
-        "file": "Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf",
-        "id": "q8",
-        "on_disk": 12300000000,
-        "size": 28595762272,
-        "verified": false
-      }
-    ],
-    "runtime": {
-      "present": true,
-      "version": "b11118"
-    },
-    "weights": "/Volumes/Extreme/_lobocode"
-  },
   "readiness": {
     "cloud_ready": true,
-    "default_model": "q8",
+    "default_model": "q6",
     "default_provider": "vast",
     "error": null,
     "exists": true,
-    "local_port": 8931,
-    "local_supported": true,
+    "local_port": 0,
+    "local_supported": false,
     "providers": [
       "runpod",
       "vast"

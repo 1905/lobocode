@@ -67,7 +67,7 @@ test('cloud ready metrics, GPU memory and cost', () => {
   });
   expect(v.mem).toMatchObject({
     label: 'vram',
-    text: '28.6/31.8 GB',
+    text: '22.8/31.8 GB',
     gpu: { text: 'gpu 87%', hot: true },
   });
   expect(v.kill?.label).toBe('idle-kill ');

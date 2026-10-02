@@ -1,6 +1,6 @@
 use crate::{fmt, types::*};
 use chrono::{DateTime, Utc};
-use lobo_proto::{catalog, ConfigShow, Readiness, Snap, Stage, UpEvent, UpRequest};
+use lobo_proto::{ConfigShow, Readiness, Snap, Stage, UpEvent, UpRequest, catalog};
 use std::time::Duration;
 
 /// State rules only. The controller owns work and supplies the clock.
@@ -86,9 +86,7 @@ impl Store {
                         ((d.bytes as f64 / d.total as f64) * 100.0).clamp(0.0, 100.0) as i64
                     )
                 } else {
-                    s.current_step
-                        .map_or("boot", |st| st.label())
-                        .into()
+                    s.current_step.map_or("boot", |st| st.label()).into()
                 }
             }
             Phase::Ready => {
@@ -251,8 +249,7 @@ impl Store {
                 .as_ref()
                 .and_then(|s| Step::from_up_phase(s.stage.as_str()))
         {
-            for c in Step::steps().iter().filter(|c| c.index() <= step.index())
-            {
+            for c in Step::steps().iter().filter(|c| c.index() <= step.index()) {
                 self.mark(*c, now);
             }
         }

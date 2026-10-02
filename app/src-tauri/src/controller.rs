@@ -99,6 +99,45 @@ impl Controller {
     pub fn state(&self) -> PanelState {
         self.store.lock().unwrap().view(self.clock.now())
     }
+    fn ready_cloud_owner(&self) -> Result<RuntimeTarget> {
+        let store = self.store.lock().unwrap();
+        let view = store.view(self.clock.now());
+        let owner = store.runtime().ok_or_else(|| AppError {
+            kind: "ownership".into(),
+            message: "Start a cloud runtime and wait for Ready before copying its API key.".into(),
+        })?;
+        crate::backend::require_cloud_provider(&owner.provider)?;
+        let matches = view.snap.as_ref().is_some_and(|snap| {
+            !snap.down
+                && snap.pod.as_ref().is_some_and(|pod| {
+                    pod.provider == owner.provider && Some(&pod.id) == owner.instance_id.as_ref()
+                })
+                && snap.status.as_ref().is_some_and(|status| {
+                    status.stage == lobo_proto::Stage::Ready
+                        && status.boot_id == owner.boot_id
+                        && !owner.boot_id.is_empty()
+                })
+        });
+        if view.phase != Phase::Ready || store.up_running || store.stop_running || !matches {
+            return Err(AppError {
+                kind: "ownership".into(),
+                message: "Wait for the owned cloud runtime to be Ready before copying its API key."
+                    .into(),
+            });
+        }
+        Ok(owner)
+    }
+    pub async fn copy_api_key(&self) -> Result<String> {
+        let owner = self.ready_cloud_owner()?;
+        let key = self.backend.api_key().await?;
+        if self.ready_cloud_owner()? != owner {
+            return Err(AppError {
+                kind: "ownership".into(),
+                message: "Runtime changed while reading its API key. Retry the copy.".into(),
+            });
+        }
+        Ok(key)
+    }
     pub fn opencode_info(&self, selected: Option<String>) -> Result<OpenCodeInfo> {
         // Discover the path even when there is no runtime. No provider call here.
         let path = match selected {
@@ -358,14 +397,14 @@ impl Controller {
                     }
                 }
                 if let Some(candidate) = &candidate
-                        && let Err(e) = self.backend.adopt_owner(owner, candidate.clone())
-                    {
-                        self.change(|s| {
-                            s.poll_failed(e.message);
-                            vec![]
-                        });
-                        return;
-                    }
+                    && let Err(e) = self.backend.adopt_owner(owner, candidate.clone())
+                {
+                    self.change(|s| {
+                        s.poll_failed(e.message);
+                        vec![]
+                    });
+                    return;
+                }
                 self.change(|s| {
                     if s.generations() != generations || s.up_running || s.stop_running {
                         return vec![];

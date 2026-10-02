@@ -1,9 +1,9 @@
 use crate::{icons, types::*, windows};
 use std::sync::Mutex;
 use tauri::{
+    Manager,
     image::Image,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
 };
 #[derive(Clone, PartialEq)]
 struct Look {

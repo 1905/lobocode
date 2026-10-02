@@ -14,8 +14,8 @@
       "ready"
     ],
     "catalog_ids": [
-      "q8",
-      "q6"
+      "q6",
+      "q8"
     ],
     "config": {
       "exists": false,
@@ -26,32 +26,28 @@
     "current_step": null,
     "download": null,
     "endpoint": "http://127.0.0.1:8933/v1",
-    "is_local": false,
     "last_detail": "",
-    "local_memory": null,
     "log_tail": [],
     "menu_text": "setup",
-    "model": "",
-    "models": null,
+    "model": "q6",
     "phase": {
       "kind": "no_config"
     },
-    "provider": "",
+    "provider": "runpod",
     "readiness": {
       "cloud_ready": false,
-      "default_model": "",
-      "default_provider": "",
+      "default_model": "q6",
+      "default_provider": "runpod",
       "error": null,
       "exists": false,
       "local_port": 0,
-      "local_supported": true,
+      "local_supported": false,
       "providers": [],
       "ready": false
     },
     "ready_url": null,
     "snap": null,
     "steps": [],
-    "target": "cloud",
     "up_phase": null,
     "warning": null
   }

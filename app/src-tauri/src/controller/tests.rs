@@ -243,6 +243,7 @@ impl Backend for FakeBackend {
         Ok(control::sample_app(&self.d, &target).await?)
     }
     async fn api_key(&self) -> Result<String> {
+        self.calls.lock().unwrap().push("api_key");
         Ok("fixture".into())
     }
     async fn save(&self, _: BTreeMap<String, String>) -> Result<()> {
@@ -370,9 +371,11 @@ async fn opencode_selected_valid_file_remains_usable_when_default_is_invalid() {
     std::fs::write(b.destination(), "{ bad: private-parser-secret }").unwrap();
     let default = c.opencode_info(None).unwrap();
     assert!(!default.can_configure);
-    assert!(!serde_json::to_string(&default)
-        .unwrap()
-        .contains("private-parser-secret"));
+    assert!(
+        !serde_json::to_string(&default)
+            .unwrap()
+            .contains("private-parser-secret")
+    );
     let selected = b.root.path().join("chosen.jsonc");
     std::fs::write(&selected, "{}").unwrap();
     let info = c
@@ -391,7 +394,7 @@ async fn opencode_selected_valid_file_remains_usable_when_default_is_invalid() {
 
 #[tokio::test]
 async fn opencode_stop_settings_and_change_back_during_http_invalidate_setup() {
-    use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
     for mutation in 0..4 {
         let server = MockServer::start().await;
         let b = crate::opencode::tests::FixtureBackend::new(
@@ -710,14 +713,15 @@ async fn denied_start_and_retry_never_launch_an_operation() {
     c.load_config().await;
     c.refresh().await;
     b.start_deny.store(true, Ordering::SeqCst);
-    assert!(c
-        .submit_start()
-        .unwrap()
-        .await
-        .unwrap()
-        .unwrap_err()
-        .message
-        .contains("fresh Start rejected"));
+    assert!(
+        c.submit_start()
+            .unwrap()
+            .await
+            .unwrap()
+            .unwrap_err()
+            .message
+            .contains("fresh Start rejected")
+    );
     assert!(matches!(c.state().phase, Phase::Failed { .. }));
     assert!(c.submit_start().unwrap().await.unwrap().is_err());
     assert_eq!(p.rents.load(Ordering::SeqCst), 0);
@@ -980,6 +984,7 @@ async fn legacy_local_owner_and_selection_never_reach_backend_operations() {
         Arc::new(|_| {}),
     );
     assert!(controller.store.lock().unwrap().runtime().is_none());
+    assert!(controller.copy_api_key().await.is_err());
     assert_eq!(
         controller.set_provider("local".into()).unwrap_err().kind,
         "invalid"
@@ -994,4 +999,21 @@ async fn legacy_local_owner_and_selection_never_reach_backend_operations() {
     assert_eq!(backend.down_calls.load(Ordering::SeqCst), 0);
     assert_eq!(provider.rents.load(Ordering::SeqCst), 0);
     assert!(!backend.calls.lock().unwrap().contains(&"snapshot"));
+    assert!(!backend.calls.lock().unwrap().contains(&"api_key"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn copy_key_requires_the_owned_cloud_ready_runtime() {
+    let (controller, backend, _) = cloud_owned_fixture();
+    assert!(controller.copy_api_key().await.is_err());
+    assert!(!backend.calls.lock().unwrap().contains(&"api_key"));
+    controller.load_config().await;
+    controller.refresh().await;
+    assert_eq!(controller.copy_api_key().await.unwrap(), "fixture");
+    backend.calls.lock().unwrap().clear();
+    controller.stop();
+    assert!(controller.copy_api_key().await.is_err());
+    join_stop(&controller).await;
+    assert!(controller.copy_api_key().await.is_err());
+    assert!(!backend.calls.lock().unwrap().contains(&"api_key"));
 }

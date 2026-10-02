@@ -14,20 +14,17 @@
       "ready"
     ],
     "catalog_ids": [
-      "q8",
-      "q6"
+      "q6",
+      "q8"
     ],
     "config": null,
     "current_step": null,
     "download": null,
     "endpoint": null,
-    "is_local": false,
     "last_detail": "",
-    "local_memory": null,
     "log_tail": [],
     "menu_text": "lobo",
-    "model": "q8",
-    "models": null,
+    "model": "q6",
     "phase": {
       "kind": "loading"
     },
@@ -36,7 +33,6 @@
     "ready_url": null,
     "snap": null,
     "steps": [],
-    "target": "cloud",
     "up_phase": null,
     "warning": null
   }

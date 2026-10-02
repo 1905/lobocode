@@ -4,14 +4,14 @@ use async_trait::async_trait;
 use lobo_core::control;
 use lobo_proto::{ConfigShow, Instance, Readiness, Status, UpRequest};
 use std::sync::{
-    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc, Mutex,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use wiremock::{
-    matchers::{header, method, path},
     Mock, MockServer, ResponseTemplate,
+    matchers::{header, method, path},
 };
 
 pub(crate) const SECRET: &str = "fixture-private-key-never-ipc";
@@ -356,11 +356,13 @@ async fn rotated_key_after_authentication_rejects_final_commit() {
             .count(),
         0
     );
-    assert!(!fs::read_dir(b.root.path()).unwrap().any(|e| e
-        .unwrap()
-        .file_name()
-        .to_string_lossy()
-        .contains("backup")));
+    assert!(
+        !fs::read_dir(b.root.path()).unwrap().any(|e| e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .contains("backup"))
+    );
 }
 #[tokio::test]
 async fn redirects_never_forward_authorization_even_on_the_same_host() {
@@ -506,11 +508,13 @@ async fn revision_catches_external_atomic_rotate_and_restore_before_commit() {
     fs::rename(replacement, b.config_path()).unwrap();
     assert!(configure(&*b, &b.destination(), &p, true, &|| Ok(())).is_err());
     assert_eq!(b.bytes(), original);
-    assert!(!fs::read_dir(b.root.path()).unwrap().any(|e| e
-        .unwrap()
-        .file_name()
-        .to_string_lossy()
-        .contains("backup")));
+    assert!(
+        !fs::read_dir(b.root.path()).unwrap().any(|e| e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .contains("backup"))
+    );
     assert_eq!(
         fs::read_dir(b.root.path().join("opencode-keys"))
             .unwrap()
@@ -571,9 +575,11 @@ async fn restrictions_are_static_preserved_and_checked_before_commit() {
     let p = prepared(&b).await.unwrap();
     let result = configure(&*b, &b.destination(), &p, false, &|| Ok(())).unwrap();
     assert_eq!(result.warnings.len(), 2);
-    assert!(!serde_json::to_string(&result)
-        .unwrap()
-        .contains("secret policy"));
+    assert!(
+        !serde_json::to_string(&result)
+            .unwrap()
+            .contains("secret policy")
+    );
     let source = String::from_utf8(b.bytes()).unwrap();
     assert!(source.contains("\"disabled_providers\":[\"lobo\"]"));
     assert!(source.contains("\"experimental\":{\"policies\":[\"secret policy\"]}"));
