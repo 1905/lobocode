@@ -152,6 +152,11 @@ jobs:
           test -x bin/lobocode.app/Contents/MacOS/lobocode
           test ! -e bin/lobocode.app/Contents/Resources/lobo
           codesign --verify --deep --strict bin/lobocode.app
+          python3 - <<'PYCODE'
+          import subprocess
+          result = subprocess.run(['bin/lobocode.app/Contents/MacOS/lobocode', '--lobo-local-run', 'local', 'run'], capture_output=True, text=True, timeout=10)
+          assert result.returncode == 2 and 'cloud GPUs only' in result.stderr
+          PYCODE
           ditto -c -k --keepParent bin/lobocode.app bin/lobocode-macos-arm64.zip
       - uses: actions/upload-artifact@v4
         with:

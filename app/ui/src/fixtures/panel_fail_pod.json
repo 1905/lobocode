@@ -14,8 +14,8 @@
       "ready"
     ],
     "catalog_ids": [
-      "q8",
-      "q6"
+      "q6",
+      "q8"
     ],
     "config": {
       "exists": true,
@@ -24,6 +24,8 @@
         "LOBO_API_KEY": true,
         "LOBO_CLOUD_PORT": true,
         "LOBO_CONNECTION": true,
+        "LOBO_MODEL": true,
+        "LOBO_PROVIDER": true,
         "RUNPOD_API_KEY": true,
         "VASTAI_API_KEY": true
       },
@@ -31,6 +33,8 @@
         "LOBO_API_KEY": "sk-9…7e4d",
         "LOBO_CLOUD_PORT": "8933",
         "LOBO_CONNECTION": "ssh",
+        "LOBO_MODEL": "q6",
+        "LOBO_PROVIDER": "vast",
         "RUNPOD_API_KEY": "rpa_…a1b2",
         "VASTAI_API_KEY": "3f9c…c0de"
       }
@@ -38,13 +42,10 @@
     "current_step": null,
     "download": null,
     "endpoint": "http://127.0.0.1:8933/v1",
-    "is_local": false,
     "last_detail": "",
-    "local_memory": null,
     "log_tail": [],
     "menu_text": "FAIL",
-    "model": "q8",
-    "models": null,
+    "model": "q6",
     "phase": {
       "kind": "failed",
       "message": "down: delete denied"
@@ -52,12 +53,12 @@
     "provider": "vast",
     "readiness": {
       "cloud_ready": true,
-      "default_model": "q8",
+      "default_model": "q6",
       "default_provider": "vast",
       "error": null,
       "exists": true,
-      "local_port": 8931,
-      "local_supported": true,
+      "local_port": 0,
+      "local_supported": false,
       "providers": [
         "runpod",
         "vast"
@@ -89,7 +90,7 @@
           "name": "NVIDIA GeForce RTX 5090",
           "util_pct": 87,
           "vram_total_mb": 32607,
-          "vram_used_mb": 29316
+          "vram_used_mb": 23347
         },
         "host": null,
         "idle_s": 180,
@@ -104,7 +105,7 @@
           "requests_processing": 1
         },
         "metrics_failures": 0,
-        "model": "q8",
+        "model": "q6",
         "stage": "ready",
         "stage_detail": "",
         "timings": {
@@ -143,7 +144,6 @@
       }
     },
     "steps": [],
-    "target": "cloud",
     "up_phase": null,
     "warning": null
   }

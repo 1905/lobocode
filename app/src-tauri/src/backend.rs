@@ -149,21 +149,23 @@ const LOCAL_KEYS: &[&str] = &[
     "LOBO_FEESH_HTTP_URL",
 ];
 fn cloud_config(mut cfg: config::Laptop) -> config::Laptop {
-    if !matches!(cfg.provider.as_str(), "runpod" | "vast") {
-        cfg.provider = if !cfg.runpod_api_key.is_empty() {
-            "runpod"
-        } else if !cfg.vast_api_key.is_empty() {
-            "vast"
-        } else {
-            "runpod"
-        }
-        .into();
+    let available = cfg.providers();
+    if !matches!(cfg.provider.as_str(), "runpod" | "vast")
+        || (!available.is_empty() && !available.contains(&cfg.provider))
+    {
+        cfg.provider = available
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "runpod".into());
     }
     if cfg.model.is_empty() {
         cfg.model = "q6".into();
     }
+    // Legacy CLI settings stay on disk and do not participate in app admission.
+    cfg.local_port.clear();
     cfg
 }
+
 fn owner_error(error: impl std::fmt::Display) -> AppError {
     AppError {
         kind: "ownership".into(),
@@ -485,7 +487,7 @@ mod tests {
     fn fixture_backend() -> (tempfile::TempDir, CoreBackend) {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("config.env");
-        std::fs::write(&path, "# keep\nLOBO_API_KEY=fixture\nLOBO_PROVIDER=local\nLOBO_CTX=8192\nRUNPOD_API_KEY=fixture\nLOBO_WEIGHTS_DIR=/untouched/model\n").unwrap();
+        std::fs::write(&path, "# keep\nLOBO_API_KEY=fixture\nLOBO_PROVIDER=local\nLOBO_CTX=8192\nRUNPOD_API_KEY=fixture\nLOBO_WEIGHTS_DIR=/untouched/model\nLOBO_LOCAL_PORT=invalid-legacy-port\n").unwrap();
         (root, CoreBackend::new(path).unwrap())
     }
     #[tokio::test]
@@ -510,6 +512,7 @@ mod tests {
         let saved = std::fs::read_to_string(&backend.path).unwrap();
         assert!(saved.contains("LOBO_PROVIDER=local"));
         assert!(saved.contains("LOBO_WEIGHTS_DIR=/untouched/model"));
+        assert!(saved.contains("LOBO_LOCAL_PORT=invalid-legacy-port"));
         assert!(saved.starts_with("# keep\n"));
         let prepared = backend.prepare_up(UpRequest::default()).unwrap();
         assert_eq!(prepared.options.provider, "runpod");
@@ -618,6 +621,33 @@ mod tests {
         let cloud = target("cloud");
         backend.adopt_owner(None, cloud.clone()).unwrap();
         assert_eq!(backend.load_owner().unwrap(), Some(cloud));
+    }
+    #[test]
+    fn cloud_selection_preserves_configured_choice_and_uses_available_alternate() {
+        for (provider, runpod, vast, expected) in [
+            ("runpod", "key", "key", "runpod"),
+            ("vast", "key", "key", "vast"),
+            ("runpod", "", "key", "vast"),
+            ("vast", "key", "", "runpod"),
+            ("vast", "", "", "vast"),
+            ("local", "", "key", "vast"),
+            ("local", "", "", "runpod"),
+        ] {
+            let cfg = cloud_config(config::Laptop {
+                provider: provider.into(),
+                runpod_api_key: runpod.into(),
+                vast_api_key: vast.into(),
+                model: "q8".into(),
+                local_port: "invalid".into(),
+                ..Default::default()
+            });
+            assert_eq!(
+                cfg.provider, expected,
+                "{provider} / runpod={runpod} / vast={vast}"
+            );
+            assert_eq!(cfg.model, "q8");
+            assert!(cfg.local_port.is_empty());
+        }
     }
     #[tokio::test]
     async fn local_config_without_cloud_keys_requires_setup() {

@@ -2,7 +2,7 @@
   "name": "boot",
   "now_ms": 1790683200000,
   "state": {
-    "boot_progress": 0.6333758122322584,
+    "boot_progress": 0.651647128977401,
     "boot_start_ms": 1790683128000,
     "boot_steps": [
       "rent",
@@ -14,8 +14,8 @@
       "ready"
     ],
     "catalog_ids": [
-      "q8",
-      "q6"
+      "q6",
+      "q8"
     ],
     "config": {
       "exists": true,
@@ -24,6 +24,8 @@
         "LOBO_API_KEY": true,
         "LOBO_CLOUD_PORT": true,
         "LOBO_CONNECTION": true,
+        "LOBO_MODEL": true,
+        "LOBO_PROVIDER": true,
         "RUNPOD_API_KEY": true,
         "VASTAI_API_KEY": true
       },
@@ -31,6 +33,8 @@
         "LOBO_API_KEY": "sk-9…7e4d",
         "LOBO_CLOUD_PORT": "8933",
         "LOBO_CONNECTION": "ssh",
+        "LOBO_MODEL": "q6",
+        "LOBO_PROVIDER": "vast",
         "RUNPOD_API_KEY": "rpa_…a1b2",
         "VASTAI_API_KEY": "3f9c…c0de"
       }
@@ -40,31 +44,28 @@
       "bytes": 12400000000,
       "mbps": 0.0,
       "source": "Docker image",
-      "total": 28595762272,
+      "total": 22082528352,
       "verifying": true
     },
     "endpoint": "http://127.0.0.1:8933/v1",
-    "is_local": false,
     "last_detail": "vast 26461230, offer 51401937, 18877 Mbps down, California, US, $0.73/h",
-    "local_memory": null,
     "log_tail": [
       "vast 26461230, offer 51401937, 18877 Mbps down, California, US, $0.73/h"
     ],
-    "menu_text": "43%",
-    "model": "q8",
-    "models": null,
+    "menu_text": "56%",
+    "model": "q6",
     "phase": {
       "kind": "booting"
     },
     "provider": "vast",
     "readiness": {
       "cloud_ready": true,
-      "default_model": "q8",
+      "default_model": "q6",
       "default_provider": "vast",
       "error": null,
       "exists": true,
-      "local_port": 8931,
-      "local_supported": true,
+      "local_port": 0,
+      "local_supported": false,
       "providers": [
         "runpod",
         "vast"
@@ -85,24 +86,7 @@
         "status": "running"
       },
       "status": null,
-      "version": {
-        "built_at": "0001-01-01T00:00:00Z",
-        "built_by": "",
-        "defaults": {
-          "ctx": 0,
-          "idle_min": 0,
-          "max_hours": 0
-        },
-        "git_dirty": false,
-        "git_sha": "4b513b3",
-        "llama_image": "",
-        "model": {
-          "file": "",
-          "id": "",
-          "sha256": ""
-        },
-        "version": "2026.09.25-10"
-      }
+      "version": null
     },
     "steps": [
       {
@@ -126,7 +110,6 @@
         "step": "download"
       }
     ],
-    "target": "cloud",
     "up_phase": "download",
     "warning": null
   }

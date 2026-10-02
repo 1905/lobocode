@@ -5,7 +5,7 @@ use crate::{
 };
 use lobo_core::{config, control::RuntimeTarget, opencode::Binding};
 use lobo_proto::{Snap, Stage};
-use reqwest::{header::HeaderValue, Client, Url};
+use reqwest::{Client, Url, header::HeaderValue};
 use serde::Deserialize;
 use std::{
     cell::RefCell,
@@ -388,13 +388,18 @@ pub(crate) fn configure<B: Backend + ?Sized>(
         };
         local().map_err(|_| lobo_core::Error::Other("OpenCode setup validation failed.".into()))
     };
-    let outcome =
-        lobo_core::opencode::configure(path, &key_dir, &prepared.binding, make_default, &check)
-            .map_err(|_| {
-                error(
+    let outcome = lobo_core::opencode::configure(
+        path,
+        &key_dir,
+        &prepared.binding,
+        make_default,
+        &check,
+    )
+    .map_err(|_| {
+        error(
             "OpenCode setup failed or changed during verification. No configuration was replaced.",
         )
-            })?;
+    })?;
     Ok(OpenCodeResult {
         path: outcome.path.to_string_lossy().into_owned(),
         provider: outcome.provider,

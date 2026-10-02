@@ -45,7 +45,7 @@ pub async fn refresh(c: C<'_>) -> Result<()> {
 }
 #[tauri::command]
 pub async fn copy_api_key(c: C<'_>, app: tauri::AppHandle) -> Result<()> {
-    let key = c.backend.api_key().await?;
+    let key = c.copy_api_key().await?;
     app.clipboard().write_text(key).map_err(error)
 }
 #[tauri::command]
