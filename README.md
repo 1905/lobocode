@@ -113,7 +113,8 @@ The [standalone DMG](https://github.com/1905/lobocode/releases/download/app-v0.2
 
 <details><summary>Settings: Cloud, Defaults and Clients</summary>
 <p><img src="docs/img/settings_cloud.png" width="520" alt="Cloud settings: provider keys, private SSH, API key and cloud port"></p>
-<p><img src="docs/img/settings_defaults.png" width="520" alt="Defaults: model, context size, shutdown limits and provider options"></p>
+<p><img src="docs/img/settings_defaults.png" width="520" alt="Cloud defaults: model, context size and shutdown limits"></p>
+<p><img src="docs/img/settings_clients.png" width="520" alt="Clients: configure OpenCode after the cloud runtime is Ready"></p>
 </details>
 
 ## OpenCode
@@ -126,7 +127,7 @@ Setup authenticates the active endpoint and uses the running model and context l
 
 The app configures the `lobo` provider for its active cloud runtime. Existing provider restrictions remain in place and appear as warnings. A new `lobo` agent enables core coding tools and disables MCP tool and skill access. Existing custom agent controls remain unchanged.
 
-The optional CLI retains its separate export command: `lobo gen-api-key` writes `opencode.lobo.json` for manual merging. It is not required for app setup. The screenshots above predate the Clients tab; native setup acceptance remains pending.
+The optional CLI retains its separate export command: `lobo gen-api-key` writes `opencode.lobo.json` for manual merging. It is not required for app setup. The settings screenshots show native test fixtures. Cloud setup and migration checks are recorded in the [cloud-only app results](plans/2026-10-02-cloud-only-app/results.md).
 
 ## Pod image
 
