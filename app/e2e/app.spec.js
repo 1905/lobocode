@@ -10,23 +10,35 @@ const original = fixture.legacy
 const ownerPath = fixture.config.replace(/\.env$/, ".app-runtime.json");
 const owner = fixture.legacy ? fs.readFileSync(ownerPath, "utf8") : null;
 async function invoke(command, args = {}) {
-  return browser.execute(
-    async (command, args) => {
-      try {
-        return {
-          ok: true,
-          value: await window.__TAURI_INTERNALS__.invoke(command, args),
-        };
-      } catch (error) {
-        return {
-          ok: false,
-          error: typeof error === "string" ? error : JSON.stringify(error),
-        };
-      }
-    },
-    command,
-    args,
-  );
+  try {
+    return await browser.execute(
+      async (command, args) => {
+        try {
+          return {
+            ok: true,
+            value: await window.__TAURI_INTERNALS__.invoke(command, args),
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            error: typeof error === "string" ? error : JSON.stringify(error),
+          };
+        }
+      },
+      command,
+      args,
+    );
+  } catch (error) {
+    // The embedded driver can surface a rejected IPC as a WebDriver error.
+    const message = String(error);
+    if (
+      !/Command [a-z_]+ not found|Unknown settings tab|cloud providers only|Local model settings are unavailable/.test(
+        message,
+      )
+    )
+      throw error;
+    return { ok: false, error: message };
+  }
 }
 async function fits() {
   await browser.waitUntil(
@@ -125,6 +137,10 @@ describe("cloud-only native app without provider calls", () => {
         result.ok,
         false,
         `${command} accepted a removed local operation`,
+      );
+      assert.match(
+        result.error,
+        /not found|Unknown settings tab|cloud providers only|Local model settings are unavailable/,
       );
     }
     assert.equal((await invoke("set_provider", { v: "local" })).ok, false);
