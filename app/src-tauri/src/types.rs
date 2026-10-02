@@ -1,4 +1,4 @@
-use lobo_proto::{ConfigShow, DownloadProgress, Listing, Readiness, Snap};
+use lobo_proto::{ConfigShow, DownloadProgress, Readiness, Snap};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -38,15 +38,6 @@ impl Phase {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
-#[ts(export, export_to = "../gen/")]
-pub enum Target {
-    Local,
-    #[default]
-    Cloud,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(export, export_to = "../gen/")]
@@ -60,39 +51,26 @@ pub enum Step {
     Ready,
 }
 impl Step {
-    pub fn steps(local: bool) -> &'static [Self] {
-        if local {
-            &[
-                Self::Rent,
-                Self::Gpu,
-                Self::Download,
-                Self::Load,
-                Self::Ready,
-            ]
-        } else {
-            &[
-                Self::Rent,
-                Self::Container,
-                Self::Tunnel,
-                Self::Gpu,
-                Self::Download,
-                Self::Load,
-                Self::Ready,
-            ]
-        }
+    pub fn steps() -> &'static [Self] {
+        &[
+            Self::Rent,
+            Self::Container,
+            Self::Tunnel,
+            Self::Gpu,
+            Self::Download,
+            Self::Load,
+            Self::Ready,
+        ]
     }
-    pub fn label(self, local: bool) -> &'static str {
-        match (self, local) {
-            (Self::Rent, true) => "start",
-            (Self::Gpu, true) => "metal",
-            (Self::Download, true) => "model",
-            (Self::Rent, _) => "rent",
-            (Self::Container, _) => "container",
-            (Self::Tunnel, _) => "tunnel",
-            (Self::Gpu, _) => "gpu",
-            (Self::Download, _) => "download",
-            (Self::Load, _) => "load",
-            (Self::Ready, _) => "ready",
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Rent => "rent",
+            Self::Container => "container",
+            Self::Tunnel => "tunnel",
+            Self::Gpu => "gpu",
+            Self::Download => "download",
+            Self::Load => "load",
+            Self::Ready => "ready",
         }
     }
     pub fn from_up_phase(s: &str) -> Option<Self> {
@@ -108,7 +86,7 @@ impl Step {
         })
     }
     pub fn index(self) -> usize {
-        Self::steps(false).iter().position(|s| *s == self).unwrap()
+        Self::steps().iter().position(|s| *s == self).unwrap()
     }
 }
 
@@ -123,14 +101,11 @@ pub struct StepMark {
 #[ts(export, export_to = "../gen/")]
 pub struct PanelState {
     pub phase: Phase,
-    pub target: Target,
     pub provider: String,
     pub model: String,
-    pub local_memory: Option<LocalMemory>,
     pub snap: Option<Snap>,
     pub config: Option<ConfigShow>,
     pub readiness: Option<Readiness>,
-    pub models: Option<Listing>,
     pub catalog_ids: Vec<String>,
     pub download: Option<DownloadProgress>,
     pub steps: Vec<StepMark>,
@@ -141,71 +116,11 @@ pub struct PanelState {
     pub warning: Option<String>,
     pub log_tail: Vec<String>,
     pub ready_url: Option<String>,
-    pub is_local: bool,
     pub boot_steps: Vec<Step>,
     pub current_step: Option<Step>,
     pub endpoint: Option<String>,
     pub menu_text: String,
     pub boot_progress: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../gen/")]
-pub struct LocalMemory {
-    pub model: String,
-    #[ts(type = "number")]
-    pub ctx: i64,
-    #[ts(type = "'ready' | 'insufficient' | 'unavailable'")]
-    pub status: String,
-    pub message: String,
-    #[ts(type = "number | null")]
-    pub total_bytes: Option<u64>,
-    #[ts(type = "number | null")]
-    pub available_bytes: Option<u64>,
-    #[ts(type = "number | null")]
-    pub metal_limit_bytes: Option<u64>,
-    #[ts(type = "number | null")]
-    pub required_bytes: Option<u64>,
-    #[ts(type = "number | null")]
-    pub budget_bytes: Option<u64>,
-}
-impl From<lobo_core::local::memory::MemoryAssessment> for LocalMemory {
-    fn from(a: lobo_core::local::memory::MemoryAssessment) -> Self {
-        let ready = a.fits();
-        Self {
-            status: if ready { "ready" } else { "insufficient" }.into(),
-            message: if ready {
-                format!(
-                    "Memory check passed · {} · {} context tokens",
-                    a.model, a.ctx
-                )
-            } else {
-                a.message()
-            },
-            model: a.model,
-            ctx: a.ctx,
-            total_bytes: Some(a.total_bytes),
-            available_bytes: Some(a.available_bytes),
-            metal_limit_bytes: Some(a.metal_limit_bytes),
-            required_bytes: Some(a.required_bytes),
-            budget_bytes: Some(a.budget_bytes),
-        }
-    }
-}
-impl LocalMemory {
-    pub fn unavailable(model: String, ctx: i64, message: String) -> Self {
-        Self {
-            model,
-            ctx,
-            status: "unavailable".into(),
-            message,
-            total_bytes: None,
-            available_bytes: None,
-            metal_limit_bytes: None,
-            required_bytes: None,
-            budget_bytes: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -289,11 +204,16 @@ mod tests {
             assert_eq!(p.word(), word);
         }
         assert_eq!(
-            Step::steps(true)
-                .iter()
-                .map(|s| s.label(true))
-                .collect::<Vec<_>>(),
-            ["start", "metal", "model", "load", "ready"]
+            Step::steps().iter().map(|s| s.label()).collect::<Vec<_>>(),
+            [
+                "rent",
+                "container",
+                "tunnel",
+                "gpu",
+                "download",
+                "load",
+                "ready"
+            ]
         );
         for (s, step) in [
             ("create", Some(Step::Rent)),
@@ -309,7 +229,7 @@ mod tests {
         ] {
             assert_eq!(Step::from_up_phase(s), step);
         }
-        assert_eq!(Step::Gpu.label(false), "gpu");
+        assert_eq!(Step::Gpu.label(), "gpu");
     }
     #[test]
     fn error_keeps_kind() {
@@ -323,9 +243,14 @@ mod tests {
     #[test]
     fn app_types_export_without_bigint() {
         let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ui/src");
+        for name in ["Target.ts", "LocalMemory.ts"] {
+            let path = ui.join("gen").join(name);
+            if path.exists() {
+                std::fs::remove_file(path).unwrap();
+            }
+        }
         let config = ts_rs::Config::default().with_out_dir(ui.join("proto"));
         Phase::export_all(&config).unwrap();
-        Target::export_all(&config).unwrap();
         Step::export_all(&config).unwrap();
         StepMark::export_all(&config).unwrap();
         PanelState::export_all(&config).unwrap();
@@ -335,14 +260,12 @@ mod tests {
         let dir = ui.join("gen");
         let expected = [
             "AppError.ts",
-            "LocalMemory.ts",
             "OpenCodeInfo.ts",
             "OpenCodeResult.ts",
             "PanelState.ts",
             "Phase.ts",
             "Step.ts",
             "StepMark.ts",
-            "Target.ts",
         ];
         let mut actual: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()

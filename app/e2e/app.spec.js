@@ -1,261 +1,138 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 
 const root = process.env.LOBO_E2E_ROOT;
 const fixture = JSON.parse(fs.readFileSync(path.join(root, "fixture.json")));
-const stateFile = path.join(root, "state/lobo/local.json");
-const modeFile = path.join(fixture.weights, ".e2e-mode.json");
-const apiKey = () =>
-  fs.readFileSync(fixture.config, "utf8").match(/^LOBO_API_KEY=(.*)$/m)[1];
-async function phase(word) {
-  const kinds = {
-    SETUP: "no_config",
-    OFF: "off",
-    RUN: "ready",
-    BOOT: "booting",
-    FAIL: "failed",
-  };
-  await browser.waitUntil(
-    async () =>
-      (await $("main.panel").getAttribute("data-phase")) === kinds[word],
-    { timeoutMsg: `expected app phase ${word}` },
-  );
-  await fits();
+const original = fixture.legacy ? fs.readFileSync(fixture.config, "utf8") : null;
+const ownerPath = fixture.config.replace(/\.env$/, ".app-runtime.json");
+const owner = fixture.legacy ? fs.readFileSync(ownerPath, "utf8") : null;
+async function invoke(command, args = {}) {
+  return browser.execute(async (command, args) => {
+    try {
+      return { ok: true, value: await window.__TAURI_INTERNALS__.invoke(command, args) };
+    } catch (error) {
+      return { ok: false, error: typeof error === "string" ? error : JSON.stringify(error) };
+    }
+  }, command, args);
 }
 async function fits() {
-  await browser.waitUntil(
-    async () =>
-      browser.execute(() => {
-        const doc = document.documentElement;
-        const surface = document
-          .querySelector(".surface")
-          ?.getBoundingClientRect();
-        return (
-          !!surface &&
-          doc.scrollWidth <= doc.clientWidth &&
-          doc.scrollHeight <= doc.clientHeight &&
-          surface.bottom <= innerHeight + 1 &&
-          surface.right <= innerWidth + 1
-        );
-      }),
-    { timeoutMsg: "native view must fit without scrolling or clipping" },
-  );
+  await browser.waitUntil(async () => browser.execute(() => {
+    const doc = document.documentElement;
+    const surface = document.querySelector(".surface")?.getBoundingClientRect();
+    const controls = [...document.querySelectorAll("button,input,[role=tab]")]
+      .filter(el => el.getClientRects().length);
+    return !!surface && doc.scrollWidth <= doc.clientWidth &&
+      doc.scrollHeight <= doc.clientHeight && surface.bottom <= innerHeight + 1 &&
+      surface.right <= innerWidth + 1 && controls.every(el => {
+        const r = el.getBoundingClientRect();
+        return r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1;
+      });
+  }), { timeoutMsg: "native view and controls must fit without scrolling or clipping" });
 }
-async function click(text) {
-  await $(`button*=${text}`).click();
-}
+async function click(text) { await $(`button*=${text}`).click(); }
 async function window(label) {
-  await browser.waitUntil(async () =>
-    (await browser.getWindowHandles()).includes(label),
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).includes(label));
   await browser.switchToWindow(label);
 }
-async function gone(pid) {
-  await browser.waitUntil(
-    () => {
-      try {
-        process.kill(pid, 0);
-        return false;
-      } catch (e) {
-        if (e.code === "ESRCH") return true;
-        throw e;
-      }
-    },
-    { timeout: 20000, timeoutMsg: `owned process ${pid} survived Stop` },
-  );
+async function noLocalControls() {
+  for (const label of ["weights", "port", "memory", "disk"]) {
+    assert.equal(await $(`input[aria-label="${label}"]`).isExisting(), false);
+  }
+  const labels = await browser.execute(() => [...document.querySelectorAll("button")].map(el => el.textContent.trim().toLowerCase()));
+  assert.ok(!labels.some(label => /^(\[)?local(\])?$/.test(label)), "Local control must not exist");
+  await fits();
 }
 
-describe("native app with real Rust core and isolated local runtime", () => {
-  it("creates config through SETUP and validates settings", async () => {
+describe("cloud-only native app without provider calls", () => {
+  it("opens cloud setup with legacy preferences and preserves CLI data", async () => {
     await window("main");
-    await phase("SETUP");
+    await browser.waitUntil(async () => {
+      const result = await invoke("get_state");
+      return result.ok && result.value.config && result.value.readiness;
+    });
+    const state = (await invoke("get_state")).value;
+    assert.notEqual(state.provider, "local");
+    assert.equal(state.model, "q6");
+    for (const key of ["target", "is_local", "local_memory", "models"]) assert.equal(key in state, false);
+    assert.equal(state.readiness.cloud_ready, false);
+    assert.equal(await $('button*=START').isExisting(), false);
+    await noLocalControls();
+    if (fixture.legacy) {
+      assert.equal(fs.readFileSync(fixture.config, "utf8"), original);
+      assert.equal(fs.readFileSync(ownerPath, "utf8"), owner);
+    }
+    await browser.saveScreenshot(path.join(root, "native-cloud-setup.png"));
+  });
+
+  it("rejects removed local IPC and local settings before mutation", async () => {
+    for (const [command, args] of [
+      ["choose_target", { v: "local" }], ["local_models", {}],
+      ["free_bytes", { path: fixture.weights }], ["choose_weights", {}],
+      ["open_settings", { tab: "local" }],
+      ["config_save", { set: { LOBO_PROVIDER: "local" } }],
+      ["config_save", { set: { LOBO_WEIGHTS_DIR: fixture.weights } }],
+      ["config_save", { set: { LOBO_LOCAL_PORT: "17891" } }],
+    ]) {
+      const result = await invoke(command, args);
+      assert.equal(result.ok, false, `${command} accepted a removed local operation`);
+    }
+    assert.equal((await invoke("set_provider", { v: "local" })).ok, false);
+    assert.notEqual((await invoke("get_state")).value.provider, "local");
+    assert.equal(fs.existsSync(path.join(root, "state/lobo/local.json")), false);
+    if (fixture.legacy) assert.equal(fs.readFileSync(fixture.config, "utf8"), original);
+    else assert.equal(fs.existsSync(fixture.config), false);
+  });
+
+  it("creates or updates cloud config and fits all settings tabs", async () => {
     await click("SETUP");
     await window("settings");
-    await fits();
-    await $('input[aria-label="weights"]').setValue(fixture.weights);
-    await $('input[aria-label="port"]').setValue("80");
+    await browser.waitUntil(async () => (await $('[role="tab"][aria-selected="true"]').getText()) === "Cloud");
+    assert.deepEqual(await $$('[role="tab"]').map(el => el.getText()), ["Cloud", "Defaults", "Clients"]);
+    await noLocalControls();
+    assert.equal(await $('input[aria-label="cloud port"]').isExisting(), true);
+    for (const label of ["bucket url", "domain", "tunnel token"]) assert.equal(await $(`input[aria-label="${label}"]`).isExisting(), false);
+    await $('input[aria-label="cloud port"]').setValue("80");
     await click("SAVE");
-    await browser.waitUntil(async () =>
-      (await $('[role="status"]').getText()).includes("1024-65534"),
-    );
-    assert.equal(fs.existsSync(fixture.config), false);
-    await $('input[aria-label="port"]').setValue(String(fixture.port));
+    await browser.waitUntil(async () => (await $('[role="status"]').getText()).includes("1024"));
+    await $('input[aria-label="cloud port"]').setValue(String(fixture.port));
     await click("Defaults");
-    await fits();
-    await $('input[aria-label="context"]').setValue("8192");
+    await noLocalControls();
+    await $('input[aria-label="context"]').setValue("16384");
     await click("q6");
     await click("SAVE");
-    await browser.waitUntil(async () =>
-      (await $('[role="status"]').getText()).startsWith("saved "),
-    );
-    assert.match(apiKey(), /^sk-/);
+    await browser.waitUntil(async () => (await $('[role="status"]').getText()).startsWith("saved "));
+    const saved = fs.readFileSync(fixture.config, "utf8");
+    assert.match(saved, /^LOBO_API_KEY=sk-/m);
+    assert.match(saved, /^LOBO_CTX=16384$/m);
+    assert.match(saved, /^LOBO_CONNECTION=ssh$/m);
     assert.equal(fs.statSync(fixture.config).mode & 0o777, 0o600);
+    if (fixture.legacy) {
+      assert.match(saved, /^LOBO_PROVIDER=local$/m);
+      assert.match(saved, /^LOBO_LOCAL_PORT=17891$/m);
+      assert.ok(saved.includes(`LOBO_WEIGHTS_DIR=${fixture.weights}`));
+      assert.equal(fs.readFileSync(ownerPath, "utf8"), owner);
+    }
+    await browser.saveScreenshot(path.join(root, "native-settings-defaults.png"));
+    await click("Clients");
+    await noLocalControls();
+    await browser.saveScreenshot(path.join(root, "native-settings-clients.png"));
     await click("Cloud");
-    await fits();
-    assert.equal(await $('input[aria-label="bucket url"]').isExisting(), false);
-    assert.equal(await $('input[aria-label="domain"]').isExisting(), false);
-    assert.equal(
-      await $('input[aria-label="tunnel token"]').isExisting(),
-      false,
-    );
-    assert.equal(await $('input[aria-label="cloud port"]').isExisting(), true);
-    assert.match(
-      fs.readFileSync(fixture.config, "utf8"),
-      /^LOBO_CONNECTION=ssh$/m,
-    );
+    await noLocalControls();
     await browser.saveScreenshot(path.join(root, "native-settings-cloud.png"));
-    await click("Local");
-    await fits();
     await browser.closeWindow();
     await window("main");
-    await phase("OFF");
+    await noLocalControls();
+    assert.equal(await $('button*=START').isExisting(), false);
     if (process.env.LOBO_E2E_CHECK_DRAG === "1") {
       const before = await browser.getWindowRect();
-      // Check native position readback before using it to judge mouse input.
-      await browser.setWindowRect(
-        before.x + 80,
-        before.y + 60,
-        before.width,
-        before.height,
-      );
-      const moved = await browser.getWindowRect();
-      assert.ok(
-        Math.abs(moved.x - before.x) + Math.abs(moved.y - before.y) >= 40,
-      );
-      await browser.setWindowRect(
-        before.x,
-        before.y,
-        before.width,
-        before.height,
-      );
-      const restored = await browser.getWindowRect();
-      fs.writeFileSync(
-        path.join(root, "drag-readback.json"),
-        JSON.stringify({ before, moved, restored }),
-      );
-      await browser.execute(() => {
-        window.__loboDragEvents = [];
-        for (const type of ["mousedown", "mouseup"]) {
-          document.addEventListener(
-            type,
-            (e) => {
-              window.__loboDragEvents.push({
-                type,
-                x: e.clientX,
-                y: e.clientY,
-                button: e.button,
-                buttons: e.buttons,
-                detail: e.detail,
-                trusted: e.isTrusted,
-                tag: e.target.tagName,
-              });
-            },
-            true,
-          );
-        }
-      });
-      const samples = [];
-      fs.writeFileSync(
-        path.join(root, "drag-ready.json"),
-        JSON.stringify(before),
-      );
-      await browser.waitUntil(
-        async () => {
-          const after = await browser.getWindowRect();
-          samples.push(after);
-          fs.writeFileSync(
-            path.join(root, "drag-samples.json"),
-            JSON.stringify(samples),
-          );
-          fs.writeFileSync(
-            path.join(root, "drag-input.json"),
-            JSON.stringify(
-              await browser.execute(() => window.__loboDragEvents),
-            ),
-          );
-          if (Math.abs(after.x - before.x) + Math.abs(after.y - before.y) < 40)
-            return false;
-          fs.writeFileSync(
-            path.join(root, "drag-passed.json"),
-            JSON.stringify({ before, after }),
-          );
-          return true;
-        },
-        {
-          timeout: 180000,
-          timeoutMsg: "native title-bar drag did not move the window",
-        },
-      );
+      fs.writeFileSync(path.join(root, "drag-ready.json"), JSON.stringify(before));
+      await browser.waitUntil(async () => {
+        const after = await browser.getWindowRect();
+        if (Math.abs(after.x - before.x) + Math.abs(after.y - before.y) < 40) return false;
+        fs.writeFileSync(path.join(root, "drag-passed.json"), JSON.stringify({ before, after }));
+        return true;
+      }, { timeout: 180000, timeoutMsg: "native title-bar drag did not move the window" });
     }
-  });
-
-  it("starts the real supervisor, copies values and stops every child", async () => {
-    await click("START");
-    await phase("RUN");
-    const state = JSON.parse(fs.readFileSync(stateFile));
-    const command = execFileSync(
-      "ps",
-      ["-ww", "-o", "command=", "-p", String(state.pid)],
-      { encoding: "utf8" },
-    );
-    assert.ok(command.includes("--lobo-local-run local run"));
-    assert.ok(command.includes(fixture.config));
-    assert.ok(command.includes(state.boot_id));
-    const response = await fetch(`http://127.0.0.1:${fixture.port}/v1/models`, {
-      headers: { Authorization: `Bearer ${apiKey()}` },
-    });
-    assert.equal(response.status, 200);
-    assert.equal(
-      (await response.json()).data[0].id,
-      "qwen3.5-27b-uncensored-q6",
-    );
-    const values = await $$(".value");
-    const oldClipboard = execFileSync("pbpaste");
-    try {
-      await values[0].$("button").click();
-      assert.equal(
-        execFileSync("pbpaste", { encoding: "utf8" }),
-        `http://127.0.0.1:${fixture.port}/v1`,
-      );
-      await values[1].$("button").click();
-      assert.equal(execFileSync("pbpaste", { encoding: "utf8" }), apiKey());
-    } finally {
-      execFileSync("pbcopy", [], { input: oldClipboard });
-    }
-    const child = Number(
-      fs.readFileSync(path.join(fixture.weights, ".e2e-llama.pid"), "utf8"),
-    );
-    await click("STOP");
-    await phase("OFF");
-    await gone(state.pid);
-    await gone(child);
-    assert.equal(fs.existsSync(stateFile), false);
-  });
-
-  it("aborts during runtime loading without leaving a process", async () => {
-    fs.writeFileSync(modeFile, JSON.stringify({ health_delay: 60 }));
-    await click("START");
-    await phase("BOOT");
-    await browser.waitUntil(() => fs.existsSync(stateFile));
-    const state = JSON.parse(fs.readFileSync(stateFile));
-    await click("ABORT");
-    await phase("OFF");
-    await gone(state.pid);
-    assert.equal(fs.existsSync(stateFile), false);
-    fs.writeFileSync(modeFile, "{}");
-  });
-
-  it("shows a runtime failure and allows retry", async () => {
-    fs.writeFileSync(modeFile, JSON.stringify({ exit: true }));
-    await click("START");
-    await phase("FAIL");
-    assert.equal(fs.existsSync(stateFile), false);
-    fs.writeFileSync(modeFile, "{}");
-    await click("RETRY");
-    await phase("RUN");
-    await click("STOP");
-    await phase("OFF");
   });
 });

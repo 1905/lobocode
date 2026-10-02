@@ -78,7 +78,7 @@
 
 <div bind:this={surface} class="surface">
   {#if view === 'render'}<Render />{:else if view === 'settings'}<Settings
-      initialTab={settingsTab(params.get('tab')) ?? 'local'}
+      initialTab={settingsTab(params.get('tab')) ?? 'cloud'}
     />{:else if panel}<Panel {panel} nowMs={now} />{:else}<p
       class="dim"
       style="padding:14px"

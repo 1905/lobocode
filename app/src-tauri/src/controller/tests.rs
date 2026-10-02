@@ -9,9 +9,7 @@ use lobo_core::{
     },
     provider::{CreateOpts, Provider},
 };
-use lobo_proto::{
-    ConfigShow, Instance, Listing, Manifest, Readiness, Snap, Stage, Status, UpRequest,
-};
+use lobo_proto::{ConfigShow, Instance, Manifest, Readiness, Snap, Stage, Status, UpRequest};
 use std::{
     collections::BTreeMap,
     sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
@@ -108,15 +106,13 @@ struct FakeBackend {
     ready: AtomicBool,
     up_calls: AtomicUsize,
     down_calls: AtomicUsize,
-    memory_mode: AtomicUsize,
-    memory_delay_ms: AtomicU64,
-    memory_started: tokio::sync::Notify,
     start_deny: AtomicBool,
     owner: Arc<Mutex<Option<RuntimeTarget>>>,
     prepare_gate: Mutex<Option<PreparationGate>>,
     prepare_started: tokio::sync::Notify,
     prepare_calls: AtomicUsize,
     down_targets: Mutex<Vec<RuntimeTarget>>,
+    discovery: Mutex<Option<RuntimeTarget>>,
     snapshot_delay_ms: AtomicU64,
     snapshot_started: tokio::sync::Notify,
 }
@@ -135,17 +131,13 @@ impl Backend for FakeBackend {
             Readiness {
                 exists: true,
                 ready: self.ready.load(Ordering::SeqCst),
-                local_supported: true,
+                cloud_ready: self.ready.load(Ordering::SeqCst),
                 default_provider: "runpod".into(),
                 default_model: "q8".into(),
                 local_port: 8931,
                 ..Default::default()
             },
         ))
-    }
-    async fn models(&self) -> Result<Listing> {
-        self.calls.lock().unwrap().push("models");
-        Ok(Listing::default())
     }
     fn load_owner(&self) -> Result<Option<RuntimeTarget>> {
         Ok(self.owner.lock().unwrap().clone())
@@ -167,7 +159,9 @@ impl Backend for FakeBackend {
         captured: Option<RuntimeTarget>,
     ) -> Result<(Option<RuntimeTarget>, Snap)> {
         self.calls.lock().unwrap().push("snapshot");
-        let owner = captured.or(self.load_owner()?);
+        let owner = captured
+            .or(self.load_owner()?)
+            .or(self.discovery.lock().unwrap().clone());
         let target = match owner {
             Some(owner) => Some(owner),
             None => control::discover_app(&self.d, provider).await?,
@@ -186,30 +180,6 @@ impl Backend for FakeBackend {
         }
         Ok((target, snap))
     }
-    async fn local_memory(
-        &self,
-        model: &str,
-    ) -> Result<lobo_core::local::memory::MemoryAssessment> {
-        let mode = self.memory_mode.load(Ordering::SeqCst);
-        let delay = self.memory_delay_ms.load(Ordering::SeqCst);
-        self.memory_started.notify_one();
-        tokio::time::sleep(Duration::from_millis(delay)).await;
-        if mode == 2 {
-            return Err(AppError {
-                kind: "local".into(),
-                message: "probe unavailable".into(),
-            });
-        }
-        Ok(lobo_core::local::memory::assess(
-            model,
-            8192,
-            &lobo_core::local::memory::MemorySnapshot {
-                total_bytes: 64 << 30,
-                available_bytes: (if mode == 1 { 8 } else { 60 }) << 30,
-                metal_limit_bytes: 48 << 30,
-            },
-        )?)
-    }
     fn prepare_up(&self, req: UpRequest) -> Result<PreparedUp> {
         self.prepare_calls.fetch_add(1, Ordering::SeqCst);
         self.prepare_started.notify_one();
@@ -221,10 +191,10 @@ impl Backend for FakeBackend {
                 ready = signal.wait(ready).unwrap();
             }
         }
-        if req.provider.as_deref() == Some("local") && self.start_deny.load(Ordering::SeqCst) {
+        if self.start_deny.load(Ordering::SeqCst) {
             return Err(AppError {
-                kind: "local".into(),
-                message: "fresh Start rejected: memory insufficient".into(),
+                kind: "invalid".into(),
+                message: "fresh Start rejected: fixture policy".into(),
             });
         }
         Ok(PreparedUp {
@@ -320,15 +290,13 @@ fn fixture(
         ready: AtomicBool::new(true),
         up_calls: AtomicUsize::new(0),
         down_calls: AtomicUsize::new(0),
-        memory_mode: AtomicUsize::new(0),
-        memory_delay_ms: AtomicU64::new(0),
-        memory_started: tokio::sync::Notify::new(),
         start_deny: AtomicBool::new(false),
         owner,
         prepare_gate: Mutex::new(None),
         prepare_started: tokio::sync::Notify::new(),
         prepare_calls: AtomicUsize::new(0),
         down_targets: Mutex::new(vec![]),
+        discovery: Mutex::new(None),
         snapshot_delay_ms: AtomicU64::new(0),
         snapshot_started: tokio::sync::Notify::new(),
     });
@@ -344,8 +312,8 @@ fn fixture(
     (c, b, p)
 }
 async fn start(c: &Arc<Controller>, p: &SlowProvider) {
-    c.load_config(true).await;
-    c.refresh(false).await;
+    c.load_config().await;
+    c.refresh().await;
     c.submit_start().unwrap().await.unwrap().unwrap();
     for _ in 0..1000 {
         if p.rents.load(Ordering::SeqCst) > 0 {
@@ -359,20 +327,6 @@ async fn join_stop(c: &Controller) {
     let h = c.active.lock().unwrap().stop.take().unwrap();
     h.await.unwrap();
 }
-async fn memory_status(c: &Controller, status: &str) {
-    for _ in 0..1000 {
-        if c.state()
-            .local_memory
-            .as_ref()
-            .is_some_and(|m| m.status == status)
-        {
-            return;
-        }
-        tokio::task::yield_now().await;
-    }
-    panic!("memory status never became {status}");
-}
-
 fn setup_controller(b: Arc<crate::opencode::tests::FixtureBackend>) -> Arc<Controller> {
     let c = Controller::new(
         b.clone(),
@@ -392,7 +346,7 @@ fn setup_path(b: &crate::opencode::tests::FixtureBackend) -> String {
 
 #[tokio::test]
 async fn opencode_off_info_keeps_path_and_never_queries_runtime() {
-    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "local", "q6");
+    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "runpod", "q6");
     let c = setup_controller(b.clone());
     c.change(|s| {
         s.set_runtime(None);
@@ -411,16 +365,14 @@ async fn opencode_off_info_keeps_path_and_never_queries_runtime() {
 
 #[tokio::test]
 async fn opencode_selected_valid_file_remains_usable_when_default_is_invalid() {
-    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "local", "q6");
+    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "runpod", "q6");
     let c = setup_controller(b.clone());
     std::fs::write(b.destination(), "{ bad: private-parser-secret }").unwrap();
     let default = c.opencode_info(None).unwrap();
     assert!(!default.can_configure);
-    assert!(
-        !serde_json::to_string(&default)
-            .unwrap()
-            .contains("private-parser-secret")
-    );
+    assert!(!serde_json::to_string(&default)
+        .unwrap()
+        .contains("private-parser-secret"));
     let selected = b.root.path().join("chosen.jsonc");
     std::fs::write(&selected, "{}").unwrap();
     let info = c
@@ -439,12 +391,12 @@ async fn opencode_selected_valid_file_remains_usable_when_default_is_invalid() {
 
 #[tokio::test]
 async fn opencode_stop_settings_and_change_back_during_http_invalidate_setup() {
-    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
-    for mutation in 0..5 {
+    use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
+    for mutation in 0..4 {
         let server = MockServer::start().await;
         let b = crate::opencode::tests::FixtureBackend::new(
             &format!("{}/v1", server.uri()),
-            "local",
+            "runpod",
             "q6",
         );
         let c = setup_controller(b.clone());
@@ -455,8 +407,8 @@ async fn opencode_stop_settings_and_change_back_during_http_invalidate_setup() {
                 0 => controller.stop(),
                 1 => { controller.begin_config_write(); controller.end_config_write(); },
                 2 => { controller.set_model("q6".into()); controller.set_model("q8".into()); },
-                3 => { controller.set_provider("vast".into()); controller.set_provider("runpod".into()); },
-                _ => { controller.choose(Target::Local); controller.choose(Target::Cloud); },
+                3 => { controller.set_provider("vast".into()).unwrap(); controller.set_provider("runpod".into()).unwrap(); },
+                _ => unreachable!(),
             }
             ResponseTemplate::new(200).set_body_json(serde_json::json!({"data":[{"id":lobo_proto::catalog::get("q6").unwrap().alias}]}))
         }).expect(1).mount(&server).await;
@@ -472,7 +424,7 @@ async fn opencode_stop_settings_and_change_back_during_http_invalidate_setup() {
 
 #[tokio::test]
 async fn opencode_duplicate_and_cancelled_verification_release_reservation() {
-    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "local", "q6");
+    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "runpod", "q6");
     b.gated.store(true, Ordering::SeqCst);
     let c = setup_controller(b.clone());
     let controller = c.clone();
@@ -495,7 +447,7 @@ async fn opencode_stale_owner_stop_or_selection_before_final_callback_rejects() 
         crate::opencode::tests::serve_models(&server, "q6", 1).await;
         let b = crate::opencode::tests::FixtureBackend::new(
             &format!("{}/v1", server.uri()),
-            "local",
+            "runpod",
             "q6",
         );
         let c = setup_controller(b.clone());
@@ -531,8 +483,11 @@ async fn opencode_commit_and_noop_retain_both_gates_until_backend_returns() {
     use wiremock::MockServer;
     let server = MockServer::start().await;
     crate::opencode::tests::serve_models(&server, "q6", 2).await;
-    let b =
-        crate::opencode::tests::FixtureBackend::new(&format!("{}/v1", server.uri()), "local", "q6");
+    let b = crate::opencode::tests::FixtureBackend::new(
+        &format!("{}/v1", server.uri()),
+        "runpod",
+        "q6",
+    );
     let c = setup_controller(b.clone());
     let controller = c.clone();
     let validations = Arc::new(AtomicUsize::new(0));
@@ -565,8 +520,11 @@ async fn opencode_panic_after_validation_cleans_files_and_does_not_poison_app_ga
     use wiremock::MockServer;
     let server = MockServer::start().await;
     crate::opencode::tests::serve_models(&server, "q6", 2).await;
-    let b =
-        crate::opencode::tests::FixtureBackend::new(&format!("{}/v1", server.uri()), "local", "q6");
+    let b = crate::opencode::tests::FixtureBackend::new(
+        &format!("{}/v1", server.uri()),
+        "runpod",
+        "q6",
+    );
     let c = setup_controller(b.clone());
     let original = b.bytes();
     *b.after_validate.lock().unwrap() =
@@ -590,7 +548,7 @@ async fn opencode_panic_after_validation_cleans_files_and_does_not_poison_app_ga
 
 #[tokio::test]
 async fn opencode_preparation_panic_releases_reservation() {
-    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "local", "q6");
+    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "runpod", "q6");
     b.panic_prepare.store(true, Ordering::SeqCst);
     let c = setup_controller(b.clone());
     let controller = c.clone();
@@ -602,24 +560,24 @@ async fn opencode_preparation_panic_releases_reservation() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn refresh_models_only_when_requested() {
+async fn refresh_polls_cloud_and_requires_cloud_setup() {
     let (c, b, _) = fixture(20, false, false);
-    c.load_config(true).await;
-    c.refresh(false).await;
-    assert_eq!(*b.calls.lock().unwrap(), ["config", "models", "snapshot"]);
+    c.load_config().await;
+    c.refresh().await;
+    assert_eq!(*b.calls.lock().unwrap(), ["config", "snapshot"]);
     b.calls.lock().unwrap().clear();
-    c.refresh(false).await;
+    c.refresh().await;
     assert_eq!(*b.calls.lock().unwrap(), ["snapshot"]);
     b.calls.lock().unwrap().clear();
-    c.refresh(true).await;
-    assert_eq!(*b.calls.lock().unwrap(), ["snapshot", "models"]);
+    c.refresh().await;
+    assert_eq!(*b.calls.lock().unwrap(), ["snapshot"]);
     b.calls.lock().unwrap().clear();
-    c.load_config(true).await;
-    assert_eq!(*b.calls.lock().unwrap(), ["config", "models"]);
+    c.load_config().await;
+    assert_eq!(*b.calls.lock().unwrap(), ["config"]);
     b.ready.store(false, Ordering::SeqCst);
-    c.load_config(false).await;
+    c.load_config().await;
     b.calls.lock().unwrap().clear();
-    c.refresh(false).await;
+    c.refresh().await;
     assert_eq!(*b.calls.lock().unwrap(), ["config"]);
     assert_eq!(c.state().phase, Phase::NoConfig);
 }
@@ -658,7 +616,7 @@ async fn stop_timeout_keeps_ownership_and_warning() {
         c.state().warning.as_deref(),
         Some("stop: cleanup is still running")
     );
-    c.refresh(false).await;
+    c.refresh().await;
     assert_eq!(
         c.state().warning.as_deref(),
         Some("stop: cleanup is still running")
@@ -678,7 +636,7 @@ async fn cleanup_failure_stays_visible_after_poll_and_allows_stop_retry() {
     c.stop();
     join_stop(&c).await;
     assert!(matches!(c.state().phase, Phase::Failed { .. }));
-    c.refresh(false).await;
+    c.refresh().await;
     assert!(matches!(c.state().phase, Phase::Failed { .. }));
     assert_eq!(b.down_calls.load(Ordering::SeqCst), 0);
     p.fail_delete.store(false, Ordering::SeqCst);
@@ -736,7 +694,7 @@ async fn failed_quit_keeps_polling_and_retries_cleanup_on_the_next_quit() {
     assert!(!c.shutdown.is_cancelled());
     assert!(!c.active.lock().unwrap().quitting);
     assert!(matches!(c.state().phase, Phase::Failed { .. }));
-    c.refresh(false).await;
+    c.refresh().await;
     assert!(matches!(c.state().phase, Phase::Failed { .. }));
     assert!(c.quit().await.is_err());
     assert_eq!(b.down_calls.load(Ordering::SeqCst), 1);
@@ -747,76 +705,20 @@ async fn failed_quit_keeps_polling_and_retries_cleanup_on_the_next_quit() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn local_memory_denial_unavailable_and_cloud_selection() {
+async fn denied_start_and_retry_never_launch_an_operation() {
     let (c, b, p) = fixture(0, false, false);
-    c.load_config(true).await;
-    c.refresh(false).await;
-    c.choose(Target::Local);
-    b.memory_mode.store(1, Ordering::SeqCst);
-    c.refresh_memory().await;
-    memory_status(&c, "insufficient").await;
-    assert_eq!(c.state().local_memory.unwrap().status, "insufficient");
-    b.memory_mode.store(2, Ordering::SeqCst);
-    c.refresh_memory().await;
-    memory_status(&c, "unavailable").await;
-    let unavailable = c.state().local_memory.unwrap();
-    assert_eq!(unavailable.status, "unavailable");
-    assert_eq!(unavailable.required_bytes, None);
-    c.choose(Target::Cloud);
-    assert_eq!(c.state().target, Target::Cloud);
-    assert_eq!(c.state().local_memory, None);
-    assert_eq!(p.rents.load(Ordering::SeqCst), 0);
-}
-
-#[tokio::test(start_paused = true)]
-async fn stale_memory_response_cannot_replace_new_model_or_target() {
-    let (c, b, _) = fixture(0, false, false);
-    c.load_config(true).await;
-    c.refresh(false).await;
-    c.store.lock().unwrap().choose(Target::Local);
-    b.memory_delay_ms.store(1000, Ordering::SeqCst);
-    let worker = c.clone();
-    let old = tokio::spawn(async move { worker.refresh_memory().await });
-    b.memory_started.notified().await;
-    c.store.lock().unwrap().set_model("q6".into());
-    b.memory_delay_ms.store(0, Ordering::SeqCst);
-    b.memory_mode.store(1, Ordering::SeqCst);
-    c.refresh_memory().await;
-    old.await.unwrap();
-    assert_eq!(c.state().local_memory.as_ref().unwrap().model, "q6");
-    assert_eq!(
-        c.state().local_memory.as_ref().unwrap().status,
-        "insufficient"
-    );
-    c.store.lock().unwrap().choose(Target::Cloud);
-    c.refresh_memory().await;
-    assert_eq!(c.state().local_memory, None);
-}
-
-#[tokio::test(start_paused = true)]
-async fn displayed_pass_does_not_authorize_a_denied_start_or_retry() {
-    let (c, b, p) = fixture(0, false, false);
-    c.load_config(true).await;
-    c.refresh(false).await;
-    c.choose(Target::Local);
-    c.refresh_memory().await;
-    memory_status(&c, "ready").await;
-    assert_eq!(c.state().local_memory.unwrap().status, "ready");
-    // The next display sample must reflect the same memory loss as admission.
-    // The owned worker now refreshes status after a rejected admission too.
-    b.memory_mode.store(1, Ordering::SeqCst);
+    c.load_config().await;
+    c.refresh().await;
     b.start_deny.store(true, Ordering::SeqCst);
-    assert!(
-        c.submit_start()
-            .unwrap()
-            .await
-            .unwrap()
-            .unwrap_err()
-            .message
-            .contains("fresh Start rejected")
-    );
+    assert!(c
+        .submit_start()
+        .unwrap()
+        .await
+        .unwrap()
+        .unwrap_err()
+        .message
+        .contains("fresh Start rejected"));
     assert!(matches!(c.state().phase, Phase::Failed { .. }));
-    memory_status(&c, "insufficient").await;
     assert!(c.submit_start().unwrap().await.unwrap().is_err());
     assert_eq!(p.rents.load(Ordering::SeqCst), 0);
     assert_eq!(b.prepare_calls.load(Ordering::SeqCst), 2);
@@ -825,7 +727,7 @@ async fn displayed_pass_does_not_authorize_a_denied_start_or_retry() {
 }
 
 #[test]
-fn queued_local_start_never_redirects_to_cloud_and_rejects_changed_config() {
+fn queued_cloud_start_preserves_selection_and_rejects_changed_config() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .max_blocking_threads(1)
@@ -833,9 +735,8 @@ fn queued_local_start_never_redirects_to_cloud_and_rejects_changed_config() {
         .unwrap();
     runtime.block_on(async {
         let (c, b, p) = fixture(0, false, false);
-        c.load_config(true).await;
-        c.refresh(false).await;
-        c.choose(Target::Local);
+        c.load_config().await;
+        c.refresh().await;
         let (started, wait_started) = tokio::sync::oneshot::channel();
         let (release, wait_release) = std::sync::mpsc::channel();
         let blocker = tokio::task::spawn_blocking(move || {
@@ -845,11 +746,9 @@ fn queued_local_start_never_redirects_to_cloud_and_rejects_changed_config() {
         wait_started.await.unwrap();
         let reply = c.submit_start().unwrap();
         tokio::task::yield_now().await;
-        c.choose(Target::Cloud);
         c.set_model("q6".into());
-        c.set_provider("vastai".into());
+        c.set_provider("vast".into()).unwrap();
         // Existing UI policy rejects selection while Start is reserved.
-        assert_eq!(c.state().target, Target::Local);
         assert_eq!(c.state().model, "q8");
         assert_eq!(c.state().provider, "runpod");
         c.submit_start().unwrap().await.unwrap().unwrap();
@@ -870,8 +769,8 @@ fn queued_local_start_never_redirects_to_cloud_and_rejects_changed_config() {
 #[tokio::test]
 async fn stop_cancels_preparation_without_holding_active_or_launching() {
     let (c, b, p) = fixture(0, false, false);
-    c.load_config(true).await;
-    c.refresh(false).await;
+    c.load_config().await;
+    c.refresh().await;
     let gate = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
     *b.prepare_gate.lock().unwrap() = Some(gate.clone());
     let reply = c.submit_start().unwrap();
@@ -893,8 +792,7 @@ async fn stop_uses_the_owned_provider_despite_selection_attempts() {
     let (c, b, p) = fixture(20, false, false);
     start(&c, &p).await;
     c.stop();
-    c.choose(Target::Local);
-    c.set_provider("vastai".into());
+    c.set_provider("vast".into()).unwrap();
     join_stop(&c).await;
     let targets = b.down_targets.lock().unwrap();
     assert_eq!(targets.len(), 2);
@@ -921,8 +819,8 @@ async fn foreign_pending_operation_is_preserved_and_never_rented_or_deleted() {
                 .unwrap();
         guard.record(pending.clone()).unwrap();
     }
-    c.load_config(true).await;
-    c.refresh(false).await;
+    c.load_config().await;
+    c.refresh().await;
     c.submit_start().unwrap().await.unwrap().unwrap();
     let task = c.active.lock().unwrap().up.take().unwrap();
     assert!(task.await.unwrap().is_err());
@@ -939,34 +837,43 @@ async fn foreign_pending_operation_is_preserved_and_never_rented_or_deleted() {
     assert_eq!(b.down_calls.load(Ordering::SeqCst), 0);
 }
 
-fn local_owned_fixture() -> (
+fn cloud_owned_fixture() -> (
     Arc<Controller>,
     Arc<FakeBackend>,
     Arc<testkit::RecordingProvider>,
 ) {
     let (c, mut b, _) = fixture(0, false, false);
     drop(c);
-    let local = Arc::new(testkit::RecordingProvider::new("local"));
+    let runpod = Arc::new(testkit::RecordingProvider::new("runpod"));
     {
-        let mut state = local.state.lock().unwrap();
-        state.boot_id = "local-boot".into();
+        let mut state = runpod.state.lock().unwrap();
+        state.boot_id = "cloud-boot".into();
         state.start_id = 100;
         state.instances.push(Instance {
-            provider: "local".into(),
+            provider: "runpod".into(),
             id: "4242".into(),
             api_url: testkit::LOCAL_API_URL.into(),
             agent_url: testkit::LOCAL_AGENT_URL.into(),
             ..Default::default()
         });
     }
-    let vast = Arc::new(testkit::RecordingProvider::new("vastai"));
+    let vast = Arc::new(testkit::RecordingProvider::new("vast"));
     vast.state.lock().unwrap().broken = true;
     let backend = Arc::get_mut(&mut b).unwrap();
-    backend.d.providers.insert("local".into(), local);
-    backend.d.providers.insert("vastai".into(), vast.clone());
+    backend.d.providers.insert("runpod".into(), runpod);
+    *backend.discovery.lock().unwrap() = Some(RuntimeTarget {
+        provider: "runpod".into(),
+        instance_id: Some("4242".into()),
+        boot_id: "cloud-boot".into(),
+        agent_url: Some(testkit::LOCAL_AGENT_URL.into()),
+        api_url: Some(testkit::LOCAL_API_URL.into()),
+        local_pid: None,
+        local_start_id: None,
+    });
+    backend.d.providers.insert("vast".into(), vast.clone());
     let agent = Arc::new(FakeAgent::new(vec![Some(Status {
         stage: Stage::Ready,
-        boot_id: "local-boot".into(),
+        boot_id: "cloud-boot".into(),
         ..Default::default()
     })]));
     backend.d.new_agent = Arc::new(move |_| agent.clone());
@@ -974,9 +881,7 @@ fn local_owned_fixture() -> (
         b.clone(),
         Arc::new(Notes::default()),
         backend_clock(),
-        Prefs {
-            target: Some(Target::Local),
-        },
+        Prefs::default(),
         None,
         tokio::runtime::Handle::current(),
         Arc::new(|_| {}),
@@ -988,20 +893,18 @@ fn backend_clock() -> Arc<FixedClock> {
 }
 
 #[tokio::test(start_paused = true)]
-async fn local_ready_and_stop_ignore_a_failing_vast_provider() {
-    let (c, b, vast) = local_owned_fixture();
-    c.load_config(true).await;
-    c.refresh(false).await;
+async fn cloud_ready_and_stop_ignore_a_failing_vast_provider() {
+    let (c, b, vast) = cloud_owned_fixture();
+    c.load_config().await;
+    c.refresh().await;
     assert_eq!(c.state().phase, Phase::Ready);
-    assert!(c.state().is_local);
-    assert_eq!(b.load_owner().unwrap().unwrap().provider, "local");
+    assert_eq!(b.load_owner().unwrap().unwrap().provider, "runpod");
     assert!(vast.calls().is_empty());
-    c.choose(Target::Cloud);
-    c.set_provider("vastai".into());
+    c.set_provider("vast".into()).unwrap();
     c.stop();
     join_stop(&c).await;
-    assert_eq!(b.down_targets.lock().unwrap().len(), 1);
-    assert_eq!(b.down_targets.lock().unwrap()[0].provider, "local");
+    assert_eq!(b.down_targets.lock().unwrap().len(), 2);
+    assert_eq!(b.down_targets.lock().unwrap()[0].provider, "runpod");
     assert_eq!(c.state().phase, Phase::Off);
     let snap = c.state().snap.unwrap();
     assert!(snap.down);
@@ -1013,47 +916,82 @@ async fn local_ready_and_stop_ignore_a_failing_vast_provider() {
 
 #[tokio::test(start_paused = true)]
 async fn stale_discovery_does_not_persist_or_adopt_an_old_selection() {
-    let (c, b, _) = local_owned_fixture();
-    c.load_config(true).await;
+    let (c, b, _) = cloud_owned_fixture();
+    c.load_config().await;
     b.snapshot_delay_ms.store(1000, Ordering::SeqCst);
     let worker = c.clone();
-    let poll = tokio::spawn(async move { worker.refresh(false).await });
+    let poll = tokio::spawn(async move { worker.refresh().await });
     b.snapshot_started.notified().await;
-    c.choose(Target::Cloud);
-    c.set_provider("runpod".into());
+    c.set_provider("vast".into()).unwrap();
     b.snapshot_delay_ms.store(0, Ordering::SeqCst);
     poll.await.unwrap();
     assert_eq!(b.load_owner().unwrap(), None);
     assert_eq!(c.store.lock().unwrap().runtime(), None);
-    c.refresh(false).await;
-    assert_eq!(c.state().phase, Phase::Off);
-    assert_eq!(b.load_owner().unwrap(), None);
 }
 
 #[tokio::test(start_paused = true)]
-async fn restart_uses_persisted_local_owner_when_the_ui_selects_cloud() {
-    let (old, b, vast) = local_owned_fixture();
-    old.load_config(true).await;
-    old.refresh(false).await;
+async fn restart_uses_persisted_cloud_owner_when_selection_changes() {
+    let (old, b, vast) = cloud_owned_fixture();
+    old.load_config().await;
+    old.refresh().await;
     let target = b.load_owner().unwrap().unwrap();
     let c = Controller::new(
         b.clone(),
         Arc::new(Notes::default()),
         backend_clock(),
-        Prefs {
-            target: Some(Target::Cloud),
-        },
+        Prefs::default(),
         None,
         tokio::runtime::Handle::current(),
         Arc::new(|_| {}),
     );
-    c.load_config(true).await;
-    c.set_provider("vastai".into());
-    c.refresh(false).await;
+    c.load_config().await;
+    c.set_provider("vast".into()).unwrap();
+    c.refresh().await;
     assert_eq!(c.state().phase, Phase::Ready);
     assert_eq!(c.runtime_target().unwrap(), target);
     c.stop();
     join_stop(&c).await;
     assert_eq!(b.down_targets.lock().unwrap()[0], target);
     assert!(vast.calls().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn legacy_local_owner_and_selection_never_reach_backend_operations() {
+    let (old, backend, provider) = fixture(0, false, false);
+    drop(old);
+    let legacy = RuntimeTarget {
+        provider: "local".into(),
+        instance_id: Some("4242".into()),
+        boot_id: "legacy-local".into(),
+        local_pid: Some(4242),
+        local_start_id: Some(100),
+        agent_url: None,
+        api_url: None,
+    };
+    *backend.owner.lock().unwrap() = Some(legacy.clone());
+    backend.ready.store(false, Ordering::SeqCst);
+    let controller = Controller::new(
+        backend.clone(),
+        Arc::new(Notes::default()),
+        backend_clock(),
+        Prefs::default(),
+        None,
+        tokio::runtime::Handle::current(),
+        Arc::new(|_| {}),
+    );
+    assert!(controller.store.lock().unwrap().runtime().is_none());
+    assert_eq!(
+        controller.set_provider("local".into()).unwrap_err().kind,
+        "invalid"
+    );
+    controller.refresh().await;
+    assert_eq!(controller.state().phase, Phase::NoConfig);
+    controller.submit_start().unwrap().await.unwrap().unwrap();
+    controller.stop();
+    join_stop(&controller).await;
+    assert_eq!(*backend.owner.lock().unwrap(), Some(legacy));
+    assert_eq!(backend.up_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(backend.down_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(provider.rents.load(Ordering::SeqCst), 0);
+    assert!(!backend.calls.lock().unwrap().contains(&"snapshot"));
 }

@@ -130,11 +130,19 @@ jobs:
         run: |
           pnpm -C app/ui install --frozen-lockfile
           pnpm -C app/ui build
+      - name: Generate app fixtures and TypeScript
+        run: make app-fixtures
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-generated-ui
+          path: |
+            app/ui/src/fixtures
+            app/ui/src/gen
+          retention-days: 7
       - name: App lint and tests
         run: make app-lint app-test
       - name: Check app fixtures and TypeScript
         run: |
-          make app-fixtures
           git diff --exit-code -- app/ui/src/fixtures app/ui/src/gen app/ui/src/proto
           test -z "$(git status --porcelain -- app/ui/src/fixtures app/ui/src/gen app/ui/src/proto)"
       - name: Build native app bundle
@@ -157,4 +165,11 @@ jobs:
         run: |
           make app-e2e-build
           python3 tools/native_app_e2e.py --setup-only
-          python3 tools/native_app_e2e.py --memory-only
+          python3 tools/native_app_e2e.py --legacy-config
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-cloud-ui-evidence
+          path: bin/app-e2e
+          if-no-files-found: ignore
+          retention-days: 7

@@ -4,9 +4,7 @@
   import type { OpenCodeInfo } from '../gen/OpenCodeInfo';
   import type { ConfigShow } from '../proto/ConfigShow';
   import type { Readiness } from '../proto/Readiness';
-  import type { Listing } from '../proto/Listing';
   import { api, message, onState, onSettingsTab } from '../lib/api';
-  import { gb } from '../lib/fmt';
   import {
     loadFields,
     changes,
@@ -35,13 +33,12 @@
   type Fixture = {
     config: ConfigShow;
     readiness: Readiness;
-    models: Listing;
     clients?: OpenCodeInfo;
   };
   let {
     fixture,
     rendering = false,
-    initialTab = 'local',
+    initialTab = 'cloud',
   }: {
     fixture?: Fixture;
     rendering?: boolean;
@@ -49,12 +46,10 @@
   } = $props();
   let config = $state<ConfigShow>();
   let readiness = $state<Readiness>();
-  let models = $state<Listing>();
   let fields = $state(loadFields());
   let saving = $state(false);
   let status = $state('');
   let tone = $state('dim');
-  let free = $state<number | null>(null);
   let tab = $state<SettingsTab>(untrack(() => initialTab));
   const clients = $state(
     createClientsState(untrack(() => fixture?.clients ?? null)),
@@ -99,7 +94,6 @@
     const state = await api.getState();
     readiness = state.readiness ?? undefined;
     updateRuntime(state);
-    models = await api.localModels().catch(() => undefined);
   }
   onMount(() => {
     let remove: undefined | (() => void),
@@ -107,9 +101,7 @@
     if (fixture) {
       config = fixture.config;
       readiness = fixture.readiness;
-      models = fixture.models;
       fields = loadFields(config);
-      free = models.free_bytes;
     } else if (!rendering) {
       void attempt(reload);
       void onState((s) => {
@@ -178,33 +170,6 @@
       remove?.();
     };
   });
-  $effect(() => {
-    const path = fields.plain.LOBO_WEIGHTS_DIR?.trim() ?? '';
-    const listing = models;
-    if (rendering) {
-      free = listing?.free_bytes ?? null;
-      return;
-    }
-    if (!path || path === listing?.weights) {
-      free = listing?.free_bytes ?? null;
-      return;
-    }
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      void api
-        .freeBytes(path)
-        .then((n) => {
-          if (!cancelled) free = n;
-        })
-        .catch(() => {
-          if (!cancelled) free = null;
-        });
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  });
   async function save() {
     if (rendering || saving || tab === 'clients') return;
     saving = true;
@@ -235,12 +200,6 @@
     } finally {
       saving = false;
     }
-  }
-  async function choose() {
-    const path = await api.chooseWeights(
-      fields.plain.LOBO_WEIGHTS_DIR.trim() || models?.weights || '',
-    );
-    if (path) fields.plain.LOBO_WEIGHTS_DIR = path;
   }
   function keydown(e: KeyboardEvent) {
     if (e.metaKey && e.key.toLowerCase() === 's') {
@@ -283,7 +242,7 @@
       </div>
     </div>{/if}
   <div class="tabs" role="tablist" aria-label="Settings">
-    {#each [['local', 'Local'], ['cloud', 'Cloud'], ['defaults', 'Defaults'], ['clients', 'Clients']] as [id, label]}
+    {#each [['cloud', 'Cloud'], ['defaults', 'Defaults'], ['clients', 'Clients']] as [id, label]}
       <button
         role="tab"
         id={`tab-${id}`}
@@ -400,7 +359,7 @@
       aria-labelledby="tab-defaults"
     >
       <section>
-        <h2 class="copper">// defaults for lobo up (empty = built-in)</h2>
+        <h2 class="copper">// cloud defaults (empty = built-in)</h2>
         {#if targets}<div class="field">
             <span class="dim">provider</span>
             <div class="row">
@@ -427,14 +386,14 @@
         <div class="field">
           <span class="dim">model</span>
           <div class="row">
-            {#each ['q8', 'q6'] as option}<button
+            {#each ['q6', 'q8'] as option}<button
                 class="pick"
-                class:green={pickerValue(fields, 'LOBO_MODEL', 'q8') === option}
-                aria-pressed={pickerValue(fields, 'LOBO_MODEL', 'q8') ===
+                class:green={pickerValue(fields, 'LOBO_MODEL', 'q6') === option}
+                aria-pressed={pickerValue(fields, 'LOBO_MODEL', 'q6') ===
                   option}
                 onclick={() => (fields.plain.LOBO_MODEL = option)}
                 disabled={saving}
-                >{pickerValue(fields, 'LOBO_MODEL', 'q8') === option
+                >{pickerValue(fields, 'LOBO_MODEL', 'q6') === option
                   ? `[${option}]`
                   : ` ${option} `}</button
               >{/each}
@@ -477,51 +436,6 @@
             /></label
           >{/each}
       </section>
-    </div>
-  {:else}
-    <div
-      class="tab-content"
-      role="tabpanel"
-      id="section-local"
-      aria-labelledby="tab-local"
-    >
-      {#if readiness?.local_supported}<section>
-          <h2 class="copper">// local</h2>
-          <div class="field">
-            <label class="dim" for="weights">weights</label>
-            <div class="row grow">
-              <input
-                id="weights"
-                class="grow"
-                aria-label="weights"
-                placeholder={models?.weights ??
-                  '~/Library/Application Support/lobo/weights'}
-                bind:value={fields.plain.LOBO_WEIGHTS_DIR}
-                disabled={saving}
-                spellcheck="false"
-              /><LinkButton
-                label="[choose…]"
-                tone="cyan"
-                disabled={saving}
-                onclick={() => {
-                  if (!rendering) void attempt(choose);
-                }}
-              />
-            </div>
-          </div>
-          {#if free !== null}<p class="small dim free">
-              {gb(free)} GB free
-            </p>{/if}<label class="field"
-            ><span>port</span><input
-              aria-label="port"
-              placeholder="8931"
-              bind:value={fields.plain.LOBO_LOCAL_PORT}
-              disabled={saving}
-            /></label
-          >
-        </section>{:else}<p class="dim">
-          Local models require Apple Silicon.
-        </p>{/if}
     </div>
   {/if}
   {#if tab !== 'clients'}<div class="row spread actions">
@@ -620,8 +534,7 @@
     gap: 8px;
     min-width: 0;
   }
-  .field > span:first-child,
-  .field > label:first-child {
+  .field > span:first-child {
     width: 110px;
     flex: none;
     color: var(--dim);
@@ -653,9 +566,6 @@
   }
   .pick:hover {
     color: var(--text);
-  }
-  .free {
-    margin-left: 118px;
   }
   .actions {
     align-items: flex-start;

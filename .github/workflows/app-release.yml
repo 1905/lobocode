@@ -1,0 +1,373 @@
+name: App release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing app-vX.Y.Z tag at the tested master commit
+        required: true
+        type: string
+
+# App tags never enter release.yml, which publishes the CLI and model images.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: app-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  dmg:
+    if: github.repository == '1905/lobocode' && github.ref == 'refs/heads/master'
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read
+    env:
+      APP_TAG: ${{ inputs.tag }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Require exact master source and complete Rust CI
+        id: gate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = process.env.APP_TAG;
+            if (!/^app-v[0-9]+\.[0-9]+\.[0-9]+$/.test(tag)) throw new Error('Expected app-vX.Y.Z');
+            const repo = context.repo;
+            const {data: commit} = await github.rest.repos.getCommit({...repo, ref: `refs/tags/${tag}`});
+            const {data: master} = await github.rest.repos.getCommit({...repo, ref: 'refs/heads/master'});
+            if (commit.sha !== master.sha || commit.sha !== context.sha) {
+              throw new Error('Tag, dispatch revision and current master must be the same commit');
+            }
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              ...repo, workflow_id: 'rust.yml', head_sha: commit.sha, branch: 'master',
+              event: 'push', status: 'success', per_page: 100,
+            });
+            let passed;
+            for (const run of runs) {
+              if (run.head_sha !== commit.sha || run.conclusion !== 'success') continue;
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                ...repo, run_id: run.id, filter: 'latest', per_page: 100,
+              });
+              if (!['protocol', 'agent-musl', 'core-macos', 'app'].every(
+                name => jobs.some(job => job.name === name && job.conclusion === 'success'))) continue;
+              const app = jobs.find(job => job.name === 'app');
+              if (!app.steps.some(step => step.name === 'Native startup and settings smoke'
+                && step.conclusion === 'success')) continue;
+              passed = run;
+              break;
+            }
+            if (!passed) throw new Error('No complete successful master Rust run, including native smoke, for this exact commit');
+            let release;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({...repo, tag})).data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (release && (release.target_commitish !== commit.sha || release.prerelease
+              || release.name !== `Lobocode app ${tag.slice(5)}`
+              || !release.body?.includes(`<!-- lobocode-app-source:${commit.sha} -->`))) {
+              throw new Error('Existing release does not belong to this app source; refusing to change it');
+            }
+            core.setOutput('source', commit.sha);
+            core.setOutput('version', tag.slice(5));
+            core.setOutput('ci_url', passed.html_url);
+            core.setOutput('published', release && !release.draft ? 'true' : 'false');
+            await core.summary.addRaw(`Source: ${commit.sha}\n\nRust CI: ${passed.html_url}\n`).write();
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.gate.outputs.source }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Verify source versions and Apple Silicon runner
+        env:
+          APP_VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          test "$(uname -m)" = arm64
+          python3 - <<'PY'
+          import json, os, pathlib, tomllib
+          expected = os.environ['APP_VERSION']
+          root = pathlib.Path('.')
+          assert tomllib.loads((root / 'app/src-tauri/Cargo.toml').read_text())['package']['version'] == expected
+          lock = tomllib.loads((root / 'app/src-tauri/Cargo.lock').read_text())
+          assert [p['version'] for p in lock['package'] if p['name'] == 'lobocode-app'] == [expected]
+          for path in ('app/src-tauri/tauri.conf.json', 'app/ui/package.json'):
+              assert json.loads((root / path).read_text())['version'] == expected, path
+          PY
+
+      - name: Verify public latest-q6 without registry credentials
+        id: image
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, re, urllib.request
+          base = 'https://ghcr.io/v2/1905/lobocode/'
+          accept = ', '.join(('application/vnd.oci.image.index.v1+json',
+              'application/vnd.docker.distribution.manifest.list.v2+json',
+              'application/vnd.oci.image.manifest.v1+json',
+              'application/vnd.docker.distribution.manifest.v2+json'))
+          # This token is issued anonymously. No GitHub token or docker login is used.
+          with urllib.request.urlopen('https://ghcr.io/token?service=ghcr.io&scope=repository:1905/lobocode:pull', timeout=30) as response:
+              token = json.load(response)['token']
+          def fetch(path, descriptor=None):
+              request = urllib.request.Request(base + path, headers={
+                  'Authorization': 'Bearer ' + token, 'Accept': accept})
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  raw = response.read(4 * 1024 * 1024 + 1)
+                  digest = response.headers.get('Docker-Content-Digest')
+              assert len(raw) <= 4 * 1024 * 1024, 'Registry document exceeds size limit'
+              actual = 'sha256:' + hashlib.sha256(raw).hexdigest()
+              if path.startswith('manifests/'):
+                  assert digest == actual, 'Registry manifest digest mismatch'
+              if descriptor:
+                  assert descriptor['digest'] == actual and descriptor['size'] == len(raw), 'Descriptor mismatch'
+              return json.loads(raw), actual
+          root, digest = fetch('manifests/latest-q6')
+          def descriptor(value):
+              assert re.fullmatch(r'sha256:[0-9a-f]{64}', value['digest']), 'Invalid image digest'
+              assert type(value['size']) is int and value['size'] > 0, 'Invalid image size'
+          def image_config(document, depth=0):
+              assert depth <= 3 and document.get('schemaVersion') == 2, 'Invalid image schema'
+              if document.get('mediaType') in accept.split(', ')[:2]:
+                  candidates = [child for child in document['manifests']
+                      if child.get('platform', {}).get('os') == 'linux'
+                      and child.get('platform', {}).get('architecture') == 'amd64']
+                  assert len(candidates) == 1, 'Expected exactly one linux/amd64 image'
+                  child = candidates[0]
+                  descriptor(child)
+                  value, _ = fetch('manifests/' + child['digest'], child)
+                  return image_config(value, depth + 1)
+              assert document.get('mediaType') in accept.split(', ')[2:], 'Unsupported manifest type'
+              assert isinstance(document['layers'], list) and document['layers'], 'Missing image layers'
+              for layer in document['layers']:
+                  descriptor(layer)
+              config = document['config']
+              descriptor(config)
+              assert config['mediaType'] in ('application/vnd.oci.image.config.v1+json',
+                  'application/vnd.docker.container.image.v1+json'), 'Invalid config type'
+              return fetch('blobs/' + config['digest'], config)[0]
+          config = image_config(root)
+          assert config['os'] == 'linux' and config['architecture'] == 'amd64', 'Wrong GPU platform'
+          labels = config['config']['Labels']
+          assert labels['io.lobocode.model'] == 'q6', 'Wrong image model'
+          assert labels['org.opencontainers.image.source'] == 'https://github.com/1905/lobocode', 'Wrong image source'
+          assert re.fullmatch(r'[0-9a-f]{40}', labels['org.opencontainers.image.revision']), 'Missing image source revision'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('digest=' + digest + '\n')
+          print('Anonymous latest-q6 manifest/config verification passed: ' + digest)
+          PY
+
+      - uses: dtolnay/rust-toolchain@master
+        if: steps.gate.outputs.published != 'true'
+        with:
+          toolchain: "1.98.1"
+      - uses: Swatinem/rust-cache@v2
+        if: steps.gate.outputs.published != 'true'
+        with:
+          workspaces: "app/src-tauri -> target"
+      - uses: pnpm/action-setup@v4
+        if: steps.gate.outputs.published != 'true'
+        with:
+          version: "9.11.0"
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.published != 'true'
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: app/ui/pnpm-lock.yaml
+
+      - name: Build standalone app and embed source receipt
+        if: steps.gate.outputs.published != 'true'
+        env:
+          APP_VERSION: ${{ steps.gate.outputs.version }}
+          SOURCE_SHA: ${{ steps.gate.outputs.source }}
+          Q6_DIGEST: ${{ steps.image.outputs.digest }}
+          RUST_CI_URL: ${{ steps.gate.outputs.ci_url }}
+        run: |
+          make mac VERSION="$APP_VERSION" APP_VERSION="$APP_VERSION" COMMIT="$SOURCE_SHA"
+          python3 - <<'PY'
+          import json, os, pathlib, plistlib
+          app = pathlib.Path('bin/lobocode.app/Contents')
+          info_path = app / 'Info.plist'
+          info = plistlib.loads(info_path.read_bytes())
+          info['LobocodeSourceCommit'] = os.environ['SOURCE_SHA']
+          info_path.write_bytes(plistlib.dumps(info))
+          receipt = {'schema': 1, 'tag': os.environ['APP_TAG'], 'version': os.environ['APP_VERSION'],
+              'source_sha': os.environ['SOURCE_SHA'], 'rust_ci': os.environ['RUST_CI_URL'],
+              'platform': 'macos-arm64', 'signature': 'ad-hoc', 'notarized': False,
+              'q6_preflight_digest': os.environ['Q6_DIGEST']}
+          raw = json.dumps(receipt, indent=2) + '\n'
+          (app / 'Resources/app-release.json').write_text(raw)
+          pathlib.Path('bin/app-release.json').write_text(raw)
+          PY
+          codesign --force --sign - --deep bin/lobocode.app
+          codesign --verify --deep --strict bin/lobocode.app
+          # Reuse the existing DMG recipe without rebuilding the signed app.
+          make -o mac dmg
+          cd bin
+          shasum -a 256 lobocode.dmg app-release.json > SHA256SUMS
+
+      - name: Reuse published assets on a completed retry
+        if: steps.gate.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p bin
+          gh release download "$APP_TAG" --dir bin --pattern lobocode.dmg --pattern app-release.json --pattern SHA256SUMS
+
+      - name: Validate DMG, source receipt, signature and standalone contents
+        env:
+          APP_VERSION: ${{ steps.gate.outputs.version }}
+          SOURCE_SHA: ${{ steps.gate.outputs.source }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, plistlib, re, subprocess, tempfile
+          folder = pathlib.Path('bin')
+          lines = (folder / 'SHA256SUMS').read_text().splitlines()
+          assert len(lines) == 2, 'Expected DMG and receipt checksums only'
+          expected = {}
+          for line in lines:
+              match = re.fullmatch(r'([0-9a-f]{64})  (lobocode\.dmg|app-release\.json)', line)
+              assert match and match[2] not in expected, 'Invalid checksum file'
+              expected[match[2]] = match[1]
+          for name, digest in expected.items():
+              assert hashlib.sha256((folder / name).read_bytes()).hexdigest() == digest, 'Asset checksum mismatch'
+          receipt = json.loads((folder / 'app-release.json').read_text())
+          assert receipt['schema'] == 1 and receipt['tag'] == os.environ['APP_TAG']
+          assert receipt['source_sha'] == os.environ['SOURCE_SHA'] and receipt['version'] == os.environ['APP_VERSION']
+          assert receipt['platform'] == 'macos-arm64' and receipt['signature'] == 'ad-hoc' and receipt['notarized'] is False
+          assert re.fullmatch(r'sha256:[0-9a-f]{64}', receipt['q6_preflight_digest'])
+          with tempfile.TemporaryDirectory(prefix='lobocode-dmg-') as mount:
+              subprocess.run(['hdiutil', 'attach', str(folder / 'lobocode.dmg'), '-readonly', '-nobrowse', '-mountpoint', mount], check=True)
+              try:
+                  root = pathlib.Path(mount)
+                  assert {p.name for p in root.iterdir()} == {'lobocode.app', 'Applications'}, 'Unexpected DMG payload'
+                  assert (root / 'Applications').is_symlink() and os.readlink(root / 'Applications') == '/Applications'
+                  app = root / 'lobocode.app'
+                  contents = app / 'Contents'
+                  info = plistlib.loads((contents / 'Info.plist').read_bytes())
+                  assert info['CFBundleIdentifier'] == 'io.github.1905.lobocode'
+                  assert info['CFBundleShortVersionString'] == receipt['version']
+                  assert info['LobocodeSourceCommit'] == receipt['source_sha']
+                  assert (contents / 'Resources/app-release.json').read_bytes() == (folder / 'app-release.json').read_bytes()
+                  assert {p.name for p in (contents / 'MacOS').iterdir()} == {'lobocode'}, 'Unexpected bundled executable'
+                  assert not any(p.name in ('lobo', 'lobo-cli', 'lobo-agent') for p in app.rglob('*')), 'CLI or agent bundled in app'
+                  binary = contents / 'MacOS/lobocode'
+                  assert os.access(binary, os.X_OK)
+                  assert subprocess.check_output(['lipo', '-archs', str(binary)], text=True).strip() == 'arm64'
+                  subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
+                  signature = subprocess.check_output(['codesign', '-d', '--verbose=4', str(app)], stderr=subprocess.STDOUT, text=True)
+                  assert 'Signature=adhoc' in signature, 'Expected ad-hoc signature'
+              finally:
+                  subprocess.run(['hdiutil', 'detach', mount], check=True)
+          PY
+
+      - name: Prepare owned draft release
+        if: steps.gate.outputs.published != 'true'
+        uses: actions/github-script@v7
+        env:
+          SOURCE_SHA: ${{ steps.gate.outputs.source }}
+          APP_VERSION: ${{ steps.gate.outputs.version }}
+          RUST_CI_URL: ${{ steps.gate.outputs.ci_url }}
+        with:
+          script: |
+            const repo = context.repo;
+            const tag = process.env.APP_TAG;
+            const sha = process.env.SOURCE_SHA;
+            const marker = `<!-- lobocode-app-source:${sha} -->`;
+            let release;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({...repo, tag})).data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (release) {
+              if (!release.draft || release.target_commitish !== sha || !release.body?.includes(marker)
+                || release.name !== `Lobocode app ${process.env.APP_VERSION}` || release.prerelease) {
+                throw new Error('Refusing to overwrite a published or unrelated release');
+              }
+              const assets = await github.paginate(github.rest.repos.listReleaseAssets, {...repo, release_id: release.id, per_page: 100});
+              if (assets.some(asset => !['lobocode.dmg', 'app-release.json', 'SHA256SUMS'].includes(asset.name))) {
+                throw new Error('Unexpected assets in draft; refusing to overwrite');
+              }
+            } else {
+              const body = [marker, '', 'Standalone cloud-only Mac app for Apple Silicon (macOS 13 or later).',
+                '', '- Configure RunPod or Vast and manage the selected cloud GPU.',
+                '- Local model execution and local settings are removed from the Mac app.',
+                '- New cloud selections default to Q6. Public Q6 image availability is checked before this release.',
+                '- Each new cloud start resolves the current public image. This release does not pin its image.',
+                '- The optional Homebrew CLI is installed separately. Its release is unchanged.',
+                '', 'Download `lobocode.dmg` and drag the app to Applications.',
+                'The app has an ad-hoc signature. It is not Developer ID signed or notarized.',
+                'Use macOS Privacy & Security to allow the app if Gatekeeper blocks it.',
+                '', `Source: ${sha}`, `Required CI: ${process.env.RUST_CI_URL}`,
+                'Asset checksums: `SHA256SUMS`. Build receipt: `app-release.json`.',
+              ].join('\n');
+              await github.rest.repos.createRelease({...repo, tag_name: tag, target_commitish: sha,
+                name: `Lobocode app ${process.env.APP_VERSION}`, body, draft: true,
+                prerelease: false, make_latest: 'false'});
+            }
+
+      - name: Upload and verify draft assets
+        if: steps.gate.outputs.published != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Only the verified, source-owned draft can reach this step. A retry may replace its partial uploads.
+          gh release upload "$APP_TAG" bin/lobocode.dmg bin/app-release.json bin/SHA256SUMS --clobber
+          verify_dir=$(mktemp -d "$RUNNER_TEMP/lobocode-assets.XXXXXX")
+          gh release download "$APP_TAG" --dir "$verify_dir" --pattern lobocode.dmg --pattern app-release.json --pattern SHA256SUMS
+          cmp bin/lobocode.dmg "$verify_dir/lobocode.dmg"
+          cmp bin/app-release.json "$verify_dir/app-release.json"
+          cmp bin/SHA256SUMS "$verify_dir/SHA256SUMS"
+
+      - name: Publish verified app release without changing CLI latest
+        if: steps.gate.outputs.published != 'true'
+        uses: actions/github-script@v7
+        env:
+          SOURCE_SHA: ${{ steps.gate.outputs.source }}
+        with:
+          script: |
+            const repo = context.repo;
+            const tag = process.env.APP_TAG;
+            const sha = process.env.SOURCE_SHA;
+            for (const ref of [`refs/tags/${tag}`, 'refs/heads/master']) {
+              const {data: commit} = await github.rest.repos.getCommit({...repo, ref});
+              if (commit.sha !== sha) throw new Error('Source moved during build; refusing publication');
+            }
+            const {data: release} = await github.rest.repos.getReleaseByTag({...repo, tag});
+            if (!release.draft || release.target_commitish !== sha
+              || !release.body?.includes(`<!-- lobocode-app-source:${sha} -->`)) {
+              throw new Error('Draft identity changed; refusing publication');
+            }
+            const fs = require('fs');
+            const crypto = require('crypto');
+            const names = ['lobocode.dmg', 'app-release.json', 'SHA256SUMS'];
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets, {...repo, release_id: release.id, per_page: 100});
+            if (assets.length !== names.length) throw new Error('Unexpected release asset count');
+            for (const name of names) {
+              const asset = assets.find(asset => asset.name === name);
+              const bytes = fs.readFileSync(`bin/${name}`);
+              const digest = 'sha256:' + crypto.createHash('sha256').update(bytes).digest('hex');
+              if (!asset || asset.state !== 'uploaded' || asset.size !== bytes.length || asset.digest !== digest) {
+                throw new Error(`Uploaded asset mismatch: ${name}`);
+              }
+            }
+            await github.rest.repos.updateRelease({...repo, release_id: release.id, draft: false, make_latest: 'false'});
+            await core.summary.addLink('Published app release', release.html_url).write();
+
+      - name: Verify anonymous published downloads
+        run: |
+          verify_dir=$(mktemp -d "$RUNNER_TEMP/lobocode-public.XXXXXX")
+          for asset in lobocode.dmg app-release.json SHA256SUMS; do
+            curl --fail --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 5 \
+              --max-time 180 "https://github.com/1905/lobocode/releases/download/$APP_TAG/$asset" -o "$verify_dir/$asset"
+            cmp "bin/$asset" "$verify_dir/$asset"
+          done

@@ -15,11 +15,7 @@ const binary = path.resolve(
 );
 export const config = {
   runner: "local",
-  specs: [
-    process.env.LOBO_E2E_MEMORY_ONLY === "1"
-      ? "./memory.spec.js"
-      : "./app.spec.js",
-  ],
+  specs: ["./app.spec.js"],
   maxInstances: 1,
   capabilities: [
     { browserName: "tauri", "tauri:options": { application: binary } },
@@ -51,9 +47,6 @@ export const config = {
   connectionRetryCount: 0,
   mochaOpts: {
     timeout: process.env.LOBO_E2E_CHECK_DRAG === "1" ? 240000 : 90000,
-    ...(process.env.LOBO_E2E_SETUP_ONLY === "1"
-      ? { grep: "creates config" }
-      : {}),
   },
   async afterTest(test, _context, result) {
     const name = test.title.replace(/[^a-z0-9]+/gi, "_");

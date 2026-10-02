@@ -1,10 +1,9 @@
 <script lang="ts">
   import type { PanelState } from '../gen/PanelState';
   import { limits, canStart } from '../lib/view';
+  import { cloudProviders } from '../lib/settings';
   import BracketPicker from '../widgets/BracketPicker.svelte';
   import BracketButton from '../widgets/BracketButton.svelte';
-  import LocalStart from './LocalStart.svelte';
-  import MemoryCheck from './MemoryCheck.svelte';
   let {
     panel,
     action,
@@ -16,25 +15,11 @@
     pick: (kind: string, value: string) => void;
     startLabel?: string;
   } = $props();
+  const providers = $derived(cloudProviders(panel.readiness?.providers ?? []));
 </script>
 
 <section class="stack start">
-  {#if panel.readiness?.local_supported}<BracketPicker
-      label="target"
-      options={['local', 'cloud']}
-      value={panel.target}
-      onpick={(v) => pick('target', v)}
-    />{/if}
-  {#if panel.target === 'local'}<LocalStart
-      {panel}
-      pick={(v) => pick('model', v)}
-    /><MemoryCheck {panel} /><BracketButton
-      label={startLabel}
-      disabled={!canStart(panel)}
-      wide
-      onclick={() => action('start')}
-    />
-  {:else if !panel.readiness?.cloud_ready}<div class="row">
+  {#if !panel.readiness?.cloud_ready}<div class="row">
       <span class="dim target">&gt; cloud</span><span class="amber"
         >no keys</span
       >
@@ -45,9 +30,9 @@
       wide
       onclick={() => action('settings')}
     />
-  {:else}{#if panel.readiness.providers.length > 1}<BracketPicker
+  {:else}{#if providers.length > 1}<BracketPicker
         label="provider"
-        options={panel.readiness.providers}
+        options={providers}
         value={panel.provider}
         onpick={(v) => pick('provider', v)}
       />{:else}<div class="row">

@@ -7,8 +7,6 @@ export const PLAIN_KEYS = [
   'LOBO_IDLE_MIN',
   'LOBO_MAX_HOURS',
   'LOBO_VAST_MAX_DPH',
-  'LOBO_WEIGHTS_DIR',
-  'LOBO_LOCAL_PORT',
   'LOBO_PROVIDER',
   'LOBO_MODEL',
   'LOBO_CLOUD',
@@ -51,14 +49,18 @@ export function changes(f: Fields, current: Record<string, string>) {
 }
 export const secretHint = (c: ConfigShow | undefined, key: string) =>
   c?.values[key] ? `${c.values[key]}  (empty = keep, - = remove)` : 'not set';
+export const cloudProviders = (providers: string[]) =>
+  providers.filter((provider) => ['runpod', 'vast'].includes(provider));
 export function providerTargets(r: Readiness) {
-  const options = [...(r.local_supported ? ['local'] : []), ...r.providers];
+  const options = cloudProviders(r.providers);
   return options.length > 1
     ? { options, def: options.includes('runpod') ? 'runpod' : options[0] }
     : null;
 }
 export const pickerValue = (f: Fields, key: string, def: string) =>
-  f.plain[key] || def;
+  key === 'LOBO_PROVIDER' && !cloudProviders([f.plain[key]]).length
+    ? def
+    : f.plain[key] || def;
 export const savedMessage = (n: number) =>
   `saved ${n} key${n === 1 ? '' : 's'}`;
 export const maskNew = (key: string) =>

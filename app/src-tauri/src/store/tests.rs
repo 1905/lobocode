@@ -1,5 +1,5 @@
 use super::*;
-use lobo_proto::{DownloadProgress, GoTime, Instance, Llama, ModelState, ReadyInfo, Status};
+use lobo_proto::{DownloadProgress, GoTime, Instance, Llama, ReadyInfo, Status};
 
 fn now() -> DateTime<Utc> {
     "2026-09-29T12:00:00Z".parse().unwrap()
@@ -28,32 +28,12 @@ fn config() -> (ConfigShow, Readiness) {
         Readiness {
             exists: true,
             ready: true,
-            local_supported: true,
+            cloud_ready: true,
             default_provider: "runpod".into(),
             default_model: "q8".into(),
-            local_port: 8931,
             ..Default::default()
         },
     )
-}
-fn models() -> Listing {
-    Listing {
-        models: vec![
-            ModelState {
-                id: "q6".into(),
-                size: 100,
-                on_disk: 100,
-                ..Default::default()
-            },
-            ModelState {
-                id: "q8".into(),
-                size: 100,
-                on_disk: 43,
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    }
 }
 #[test]
 fn derive_swift_rows() {
@@ -115,7 +95,7 @@ fn derive_swift_rows() {
 }
 #[test]
 fn poll_intervals() {
-    let mut s = Store::new(None, true);
+    let mut s = Store::new();
     for (phase, open, closed) in [
         (Phase::Loading, 3, 3),
         (Phase::Booting, 3, 3),
@@ -131,62 +111,8 @@ fn poll_intervals() {
     }
 }
 #[test]
-fn target_defaults_and_model_autopick() {
-    let (bare, r) = config();
-    let mut keyed = bare.clone();
-    keyed.set.insert("RUNPOD_API_KEY".into(), true);
-    let mut wants_local = keyed.clone();
-    wants_local
-        .values
-        .insert("LOBO_PROVIDER".into(), "local".into());
-    let models = models();
-    let mut empty = models.clone();
-    for m in &mut empty.models {
-        m.on_disk = 0;
-    }
-    for (saved, cfg, listing, supported, want) in [
-        (None, &wants_local, None, true, Target::Local),
-        (None, &bare, Some(&models), true, Target::Local),
-        (None, &bare, Some(&empty), true, Target::Cloud),
-        (None, &keyed, Some(&models), true, Target::Cloud),
-        (
-            Some(Target::Cloud),
-            &wants_local,
-            Some(&models),
-            true,
-            Target::Cloud,
-        ),
-        (Some(Target::Local), &keyed, None, true, Target::Local),
-        (
-            Some(Target::Local),
-            &wants_local,
-            Some(&models),
-            false,
-            Target::Cloud,
-        ),
-    ] {
-        assert_eq!(
-            Store::default_target(saved, None, Some(cfg), listing, supported),
-            want
-        );
-    }
-    let mut s = Store::new(None, true);
-    s.apply_config(bare.clone(), r.clone());
-    s.apply_models(models.clone());
-    assert_eq!(s.view(now()).model, "q6");
-    assert_eq!(s.view(now()).target, Target::Local);
-    s.set_model("q8".into());
-    s.apply_models(models.clone());
-    assert_eq!(s.view(now()).model, "q8");
-    let mut cfg = bare;
-    cfg.values.insert("LOBO_MODEL".into(), "q8".into());
-    s.apply_config(cfg, r);
-    s.apply_models(models);
-    assert_eq!(s.view(now()).model, "q8");
-}
-#[test]
 fn config_does_not_reset_running_choices() {
-    let mut s = Store::new(None, true);
+    let mut s = Store::new();
     s.set_provider("vast".into());
     s.set_model("q6".into());
     s.begin_up(now());
@@ -198,13 +124,12 @@ fn config_does_not_reset_running_choices() {
 }
 #[test]
 fn up_explicit_requests_and_menu_progress() {
-    let mut s = Store::new(None, true);
-    s.choose(Target::Local);
+    let mut s = Store::new();
     s.set_model("q6".into());
     let req = s.begin_up(now());
-    assert_eq!(req.provider.as_deref(), Some("local"));
+    assert_eq!(req.provider.as_deref(), Some("runpod"));
     assert_eq!(req.model.as_deref(), Some("q6"));
-    assert_eq!(s.view(now()).last_detail, "starting llama.cpp…");
+    assert_eq!(s.view(now()).last_detail, "renting runpod…");
     for p in ["create", "gpu"] {
         s.handle_event(
             &UpEvent {
@@ -216,8 +141,8 @@ fn up_explicit_requests_and_menu_progress() {
     }
     let v = s.view(now());
     assert_eq!(v.current_step, Some(Step::Gpu));
-    assert_eq!(v.menu_text, "metal");
-    assert_eq!(v.boot_progress, 0.2);
+    assert_eq!(v.menu_text, "gpu");
+    assert_eq!(v.boot_progress, 3.0 / 7.0);
     s.handle_event(
         &UpEvent {
             phase: "verify".into(),
@@ -226,10 +151,10 @@ fn up_explicit_requests_and_menu_progress() {
         now(),
     );
     assert_eq!(s.view(now()).up_phase.as_deref(), Some("verify"));
-    let mut s = Store::new(None, true);
+    let mut s = Store::new();
     s.set_provider("vast".into());
     let req = s.begin_up(now());
-    assert_eq!(req.model.as_deref(), Some("q8"));
+    assert_eq!(req.model.as_deref(), Some("q6"));
     assert_eq!(req.provider.as_deref(), Some("vast"));
     s.handle_event(
         &UpEvent {
@@ -273,7 +198,7 @@ fn menu_ready_freezes_processing_countdown() {
     let cases: serde_json::Value =
         serde_json::from_str(include_str!("../../../ui/src/fixtures/time_cases.json")).unwrap();
     for c in cases["kill_left"].as_array().unwrap() {
-        let mut s = Store::new(None, true);
+        let mut s = Store::new();
         let mut p = snap(false, Some(Stage::Ready));
         let st = p.status.as_mut().unwrap();
         st.kill_in_s = c["kill_in_s"].as_i64().unwrap();
@@ -288,7 +213,7 @@ fn menu_ready_freezes_processing_countdown() {
             c["menu"].as_str().unwrap()
         );
     }
-    let mut s = Store::new(None, true);
+    let mut s = Store::new();
     let mut p = snap(false, Some(Stage::Ready));
     p.status.as_mut().unwrap().llama = Some(Llama {
         requests_processing: 1,
@@ -300,22 +225,18 @@ fn menu_ready_freezes_processing_countdown() {
 }
 #[test]
 fn endpoint_prefers_running_state() {
-    let mut s = Store::new(None, true);
-    let (mut c, mut r) = config();
+    let mut s = Store::new();
+    let (mut c, r) = config();
     c.values.insert("LOBO_DOMAIN".into(), "lobo.x.cc".into());
-    r.local_port = 9000;
     s.apply_config(c, r);
-    s.choose(Target::Local);
     assert_eq!(
         s.view(now()).endpoint.as_deref(),
-        Some("http://127.0.0.1:9000/v1")
+        Some("http://127.0.0.1:8933/v1")
     );
-    s.choose(Target::Cloud);
     let mut p = snap(false, Some(Stage::Ready));
-    p.pod.as_mut().unwrap().provider = "local".into();
+    p.pod.as_mut().unwrap().provider = "runpod".into();
     p.pod.as_mut().unwrap().api_url = "http://127.0.0.1:8931/v1".into();
     s.apply_snap(p, now());
-    assert!(s.view(now()).is_local);
     assert_eq!(
         s.view(now()).endpoint.as_deref(),
         Some("http://127.0.0.1:8931/v1")
@@ -323,7 +244,7 @@ fn endpoint_prefers_running_state() {
 }
 #[test]
 fn apply_snap_resume_stop_note_and_cleanup() {
-    let mut s = Store::new(None, true);
+    let mut s = Store::new();
     let mut p = snap(false, Some(Stage::Download));
     p.pod.as_mut().unwrap().started_at = GoTime::from_utc(now() - chrono::TimeDelta::seconds(72));
     s.apply_snap(p, now());
@@ -350,7 +271,7 @@ fn apply_snap_resume_stop_note_and_cleanup() {
 }
 #[test]
 fn stop_failure_and_dismiss_preserve_owned_cleanup() {
-    let mut s = Store::new(None, true);
+    let mut s = Store::new();
     s.begin_up(now());
     s.begin_stop();
     s.dismiss();
@@ -380,7 +301,7 @@ fn stop_failure_and_dismiss_preserve_owned_cleanup() {
 }
 #[test]
 fn up_errors_and_tail_limits() {
-    let mut s = Store::new(None, true);
+    let mut s = Store::new();
     s.begin_up(now());
     for i in 0..12 {
         s.handle_event(
@@ -417,51 +338,14 @@ fn up_errors_and_tail_limits() {
         }
     );
     assert_eq!(s.view(now()).warning.as_deref(), Some("offline"));
-    let mut s = Store::new(None, true);
+    let mut s = Store::new();
     s.poll_failed("offline".into());
     assert_eq!(s.view(now()).phase, Phase::Off);
 }
 
 #[test]
-fn memory_selection_config_and_latest_request_discard_stale_results() {
-    for change in ["model", "target", "config", "request"] {
-        let mut store = Store::new(Some(Target::Local), true);
-        let (cfg, readiness) = config();
-        store.apply_config(cfg.clone(), readiness.clone());
-        store.apply_snap(snap(true, None), now());
-        let (generation, request, model) = store.begin_memory().unwrap();
-        let memory: LocalMemory = lobo_core::local::memory::assess(
-            &model,
-            8192,
-            &lobo_core::local::memory::MemorySnapshot {
-                total_bytes: 64 << 30,
-                available_bytes: 60 << 30,
-                metal_limit_bytes: 48 << 30,
-            },
-        )
-        .unwrap()
-        .into();
-        match change {
-            "model" => store.set_model("q6".into()),
-            "target" => store.choose(Target::Cloud),
-            "config" => {
-                let mut cfg = cfg;
-                cfg.values.insert("LOBO_CTX".into(), "65536".into());
-                store.apply_config(cfg, readiness);
-            }
-            "request" => {
-                store.begin_memory().unwrap();
-            }
-            _ => unreachable!(),
-        }
-        store.apply_memory(generation, request, memory);
-        assert_eq!(store.view(now()).local_memory, None, "{change}");
-    }
-}
-
-#[test]
 fn unchanged_config_polling_does_not_invalidate_captured_start() {
-    let mut store = Store::new(Some(Target::Local), true);
+    let mut store = Store::new();
     let (cfg, readiness) = config();
     store.apply_config(cfg.clone(), readiness.clone());
     let submission = store.submit(now());
@@ -473,35 +357,33 @@ fn unchanged_config_polling_does_not_invalidate_captured_start() {
 
 #[test]
 fn immutable_runtime_is_private_and_controls_running_identity() {
-    let mut store = Store::new(Some(Target::Cloud), true);
+    let mut store = Store::new();
     let owner = lobo_core::control::RuntimeTarget {
-        provider: "local".into(),
+        provider: "runpod".into(),
         instance_id: Some("4242".into()),
         boot_id: "private-boot".into(),
-        local_pid: Some(4242),
-        local_start_id: Some(100),
+        local_pid: None,
+        local_start_id: None,
         agent_url: None,
         api_url: None,
     };
     store.set_runtime(Some(owner.clone()));
     let mut status = snap(false, Some(Stage::Ready));
-    status.pod.as_mut().unwrap().provider = "local".into();
+    status.pod.as_mut().unwrap().provider = "runpod".into();
     status.pod.as_mut().unwrap().id = "4242".into();
     status.status.as_mut().unwrap().boot_id = "private-boot".into();
     store.apply_snap(status, now());
     store.handle_event(
         &UpEvent {
             phase: "create".into(),
-            detail: "local 4242 is starting".into(),
+            detail: "runpod 4242 is starting".into(),
             err: Some("boot private-boot".into()),
             ..Default::default()
         },
         now(),
     );
-    store.choose(Target::Cloud);
-    store.set_provider("vastai".into());
+    store.set_provider("vast".into());
     assert_eq!(store.runtime(), Some(owner));
-    assert!(store.view(now()).is_local);
     let json = serde_json::to_string(&store.view(now())).unwrap();
     assert!(json.contains("private-boot"));
     assert!(json.contains("4242"));
@@ -513,4 +395,17 @@ fn immutable_runtime_is_private_and_controls_running_identity() {
     let json = serde_json::to_string(&store.view(now())).unwrap();
     assert!(json.contains("private-boot"));
     assert!(json.contains("4242"));
+}
+
+#[test]
+fn cloud_selection_rejects_local_and_has_q6_default() {
+    let mut store = Store::new();
+    assert_eq!(store.view(now()).model, "q6");
+    store.set_provider("local".into());
+    assert_eq!(store.view(now()).provider, "runpod");
+    store.set_provider("vast".into());
+    store.set_model("q8".into());
+    let request = store.begin_up(now());
+    assert_eq!(request.provider.as_deref(), Some("vast"));
+    assert_eq!(request.model.as_deref(), Some("q8"));
 }

@@ -69,7 +69,7 @@
       >{#if v.kill}<span class="dim">{v.kill.label}</span><span
           class:amber={v.kill.warn}>{v.kill.text}</span
         >{/if}<span class="dim"> · T+{v.uptime}</span></span
-    ><span class="grow"></span><span class:dim={panel.is_local}>{v.cost}</span>
+    ><span class="grow"></span><span>{v.cost}</span>
   </div>
   <BracketButton label="STOP" tone="red" wide onclick={stop} />
 </section>

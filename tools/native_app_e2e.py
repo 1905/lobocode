@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the actual app against task-owned local fixtures, then verify cleanup."""
+"""Run cloud-only native UI checks with private config and no inference."""
 import importlib.util
 import argparse
 import json
@@ -18,21 +18,15 @@ REPO = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--setup-only", action="store_true", help="native startup/settings smoke without model memory requirements")
-    parser.add_argument("--memory-only", action="store_true", help="UI memory verdicts and forced-denied Start; never start a runtime")
+    parser.add_argument("--legacy-config", action="store_true", help="verify old local preferences and CLI config remain cloud-only")
     parser.add_argument("--check-drag", action="store_true", help="wait for a native title-bar drag and verify the window position changes")
     args = parser.parse_args()
-    if args.setup_only and args.memory_only:
-        parser.error("choose --setup-only or --memory-only")
-    if sys.platform == "darwin" and not (args.setup_only or args.memory_only):
-        parser.error("UI-only tests on this Mac: use --setup-only or --memory-only; model and lifecycle tests must run on an authorized remote host")
     root = Path(tempfile.mkdtemp(prefix="lobo-native-e2e-"))
     spec = importlib.util.spec_from_file_location("fixture", REPO / "app/e2e/fixture.py")
     fixture = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixture)
-    info = fixture.prepare(root, memory_only=args.memory_only)
+    info = fixture.prepare(root, legacy_config=args.legacy_config)
     config = Path(info["config"])
-    if not args.memory_only:
-        config.rename(root / "template.env")  # The setup test creates config through Settings.
     env = {key: value for key, value in os.environ.items() if key in {
         "HOME", "PATH", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL",
         "DISPLAY", "XAUTHORITY", "TERM", "CI",
@@ -40,8 +34,6 @@ def main():
     env.update(LOBO_E2E_ROOT=str(root), LOBO_APP_CONFIG=str(config), XDG_STATE_HOME=str(root / "state"))
     if args.setup_only:
         env["LOBO_E2E_SETUP_ONLY"] = "1"
-    if args.memory_only:
-        env["LOBO_E2E_MEMORY_ONLY"] = "1"
     if args.check_drag:
         env["LOBO_E2E_CHECK_DRAG"] = "1"
     code = 1
@@ -52,8 +44,7 @@ def main():
         code = process.wait(timeout=600)
     finally:
         if process is not None:
-            # Only this test's separate process group. The local supervisor has
-            # its own session and is cleaned up through the CLI below.
+            # Only this test's app and driver process group.
             try:
                 os.killpg(process.pid, signal.SIGTERM)
                 deadline = time.monotonic() + 10
@@ -68,25 +59,12 @@ def main():
             except ProcessLookupError:
                 pass
             process.wait()
-        state = root / "state/lobo/local.json"
-        if state.exists() and not args.memory_only:
-            # The isolated config has no cloud credentials. The ordinary CLI down
-            # owns identity checks and process-group cleanup even after a test fails.
-            cli = REPO / "bin/lobo-rs"
-            result = subprocess.run([str(cli), "--config", str(config), "down", "--json"], env=env, capture_output=True, text=True, timeout=90)
-            if result.returncode:
-                cleanup_error = "Rust CLI fixture cleanup failed; inspect task logs"
-                (root / "cleanup.log").write_text(result.stdout + result.stderr)
-        if state.exists():
-            cleanup_error = "task-owned supervisor state still exists"
-        child_file = Path(info["weights"]) / ".e2e-llama.pid"
-        if child_file.exists():
-            pid = int(child_file.read_text())
-            try:
-                os.kill(pid, 0)
-                cleanup_error = f"task-owned runtime process {pid} still exists"
-            except ProcessLookupError:
-                pass
+        if (root / "state/lobo/local.json").exists():
+            cleanup_error = "cloud-only UI test unexpectedly created local runtime state"
+        if Path(info["prefs"]).read_text() != '{"target":"local"}\n':
+            cleanup_error = "legacy preferences changed"
+        if (Path(info["weights"]) / "preserve.txt").read_text() != "existing CLI model data\n":
+            cleanup_error = "existing CLI data changed"
         artifacts = REPO / "bin/app-e2e" / root.name
         artifacts.mkdir(parents=True, exist_ok=True)
         for p in root.glob("*.png"):
@@ -95,8 +73,6 @@ def main():
             shutil.copy2(p, artifacts / p.name)
         for p in root.glob("drag-*.json"):
             shutil.copy2(p, artifacts / p.name)
-        for p in root.glob("memory-*.json"):
-            shutil.copy2(p, artifacts / p.name)
         if (root / "logs").exists():
             shutil.copytree(root / "logs", artifacts / "logs")
         (artifacts / "result.json").write_text(json.dumps({"exit_code": code, "cleanup_error": cleanup_error, "fixture": str(root)}, indent=2) + "\n")
@@ -104,7 +80,7 @@ def main():
         if cleanup_error:
             print(f"CLEANUP FAILED: {cleanup_error}; retained {root}", file=sys.stderr)
         else:
-            print("Task-owned local supervisor and runtime are stopped", flush=True)
+            print("Task-owned app and driver are stopped; CLI data preserved", flush=True)
     return 1 if cleanup_error else code
 
 

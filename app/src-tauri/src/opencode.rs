@@ -5,7 +5,7 @@ use crate::{
 };
 use lobo_core::{config, control::RuntimeTarget, opencode::Binding};
 use lobo_proto::{Snap, Stage};
-use reqwest::{Client, Url, header::HeaderValue};
+use reqwest::{header::HeaderValue, Client, Url};
 use serde::Deserialize;
 use std::{
     cell::RefCell,
@@ -138,6 +138,7 @@ pub(crate) fn binding_from_snap(
     snap: &Snap,
     api_key: String,
 ) -> Result<Binding> {
+    crate::backend::require_cloud_provider(&owner.provider)?;
     let pod = snap
         .pod
         .as_ref()
@@ -172,12 +173,7 @@ pub(crate) fn binding_from_snap(
     }
     models_url(&pod.api_url)?;
     Ok(Binding {
-        provider: if owner.provider == "local" {
-            "lobo-local"
-        } else {
-            "lobo"
-        }
-        .into(),
+        provider: "lobo".into(),
         model_alias: model.alias.clone(),
         context: status.ctx as u64,
         endpoint: pod.api_url.clone(),
@@ -261,6 +257,7 @@ pub(crate) async fn prepare<B: Backend + ?Sized>(
     owner: RuntimeTarget,
     client: &Client,
 ) -> Result<PreparedOpenCode> {
+    crate::backend::require_cloud_provider(&owner.provider)?;
     let path = backend.config_path();
     let (revision, key) = existing_key(&path)?;
     let fresh = |(actual, snap): (Option<RuntimeTarget>, Snap)| -> Result<Binding> {
@@ -391,18 +388,13 @@ pub(crate) fn configure<B: Backend + ?Sized>(
         };
         local().map_err(|_| lobo_core::Error::Other("OpenCode setup validation failed.".into()))
     };
-    let outcome = lobo_core::opencode::configure(
-        path,
-        &key_dir,
-        &prepared.binding,
-        make_default,
-        &check,
-    )
-    .map_err(|_| {
-        error(
+    let outcome =
+        lobo_core::opencode::configure(path, &key_dir, &prepared.binding, make_default, &check)
+            .map_err(|_| {
+                error(
             "OpenCode setup failed or changed during verification. No configuration was replaced.",
         )
-    })?;
+            })?;
     Ok(OpenCodeResult {
         path: outcome.path.to_string_lossy().into_owned(),
         provider: outcome.provider,

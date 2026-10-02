@@ -1,6 +1,5 @@
 import { expect, test } from 'vitest';
 import type { PanelState } from '../gen/PanelState';
-import type { LocalMemory } from '../gen/LocalMemory';
 import type { OpenCodeInfo } from '../gen/OpenCodeInfo';
 import type { OpenCodeResult } from '../gen/OpenCodeResult';
 import * as view from './view';
@@ -12,22 +11,13 @@ const fixtures = import.meta.glob<{
 }>('../fixtures/panel_*.json', { eager: true, import: 'default' });
 const f = (name: string) =>
   Object.values(fixtures).find((f) => f.name === name)!;
-test('header, limits and model rows', () => {
+test('cloud header and limits', () => {
   expect(view.headerDetail(f('boot').state)).toBe(
     'vast · offer 51401937, 18877 Mbps down, California, US · $0.73/h',
   );
   expect(view.headerDetail(f('off').state)).toBe('no pod · $0.00/h');
-  expect(view.headerDetail(f('off_local').state)).toBe('');
   expect(view.limits({})).toBe('idle 30m max 12h');
   expect(view.limits({ LOBO_IDLE_MIN: '0' })).toContain('idle 30m');
-  const rows = view.modelRows(f('off_local').state);
-  expect(rows[0]).toMatchObject({
-    id: 'q6',
-    picked: true,
-    state: 'on',
-    size: '22.1 GB',
-  });
-  expect(rows[1]).toMatchObject({ id: 'q8', state: 'partial', pct: 43 });
 });
 test('boot steps and each download state', () => {
   expect(view.stepRows(f('boot').state).map((s) => s.mark)).toEqual([
@@ -45,12 +35,21 @@ test('boot steps and each download state', () => {
   expect(
     view.stepRows(f('boot').state).find((s) => s.step === 'download')?.label,
   ).toBe('verify model');
-  expect(view.downloadLine(f('boot_local').state)).toMatchObject({
+  const download = structuredClone(f('boot').state);
+  download.download = {
+    bytes: 1000000,
+    total: 2000000,
+    mbps: 88,
+    verifying: false,
+  };
+  expect(view.downloadLine(download)).toMatchObject({
     kind: 'bytes',
     mbps: '88MB/s',
-    mbpsTone: 'text',
+    mbpsTone: 'amber',
   });
-  expect(view.downloadLine(f('verify_local').state)).toEqual({
+  download.download = null;
+  download.up_phase = 'verify';
+  expect(view.downloadLine(download)).toEqual({
     kind: 'verify',
   });
   expect(view.downloadLine(f('boot_verify_sha').state)).toMatchObject({
@@ -58,7 +57,7 @@ test('boot steps and each download state', () => {
   });
   expect(view.bootElapsed(f('boot').state, f('boot').now_ms)).toBe('T+1:12');
 });
-test('ready metrics, local differences and cost', () => {
+test('cloud ready metrics, GPU memory and cost', () => {
   const v = view.ready(f('ready').state, f('ready').now_ms);
   expect(v).toMatchObject({
     gen: '45.1',
@@ -71,11 +70,7 @@ test('ready metrics, local differences and cost', () => {
     text: '28.6/31.8 GB',
     gpu: { text: 'gpu 87%', hot: true },
   });
-  const local = view.ready(f('ready_local').state, f('ready_local').now_ms);
-  expect(local.mem?.label).toBe('memory');
-  expect(local.mem?.gpu).toBeUndefined();
-  expect(local.cost).toBe('local · $0');
-  expect(local.kill?.label).toBe('idle-stop ');
+  expect(v.kill?.label).toBe('idle-kill ');
   expect(
     view.ready(f('ready_kill_soon').state, f('ready_kill_soon').now_ms).kill
       ?.warn,
@@ -99,62 +94,24 @@ test('shared countdown cases and failure action', () => {
   expect(view.fail(f('fail').state).primary.label).toBe('RETRY');
 });
 
-test('local Start requires a current complete memory pass; Cloud is independent', () => {
-  const s = structuredClone(f('off_local').state);
-  s.local_memory = null;
+test('Start requires cloud readiness, including for legacy local-capable readiness', () => {
+  const s = structuredClone(f('off').state);
+  s.readiness = null;
   expect(view.canStart(s)).toBe(false);
-  expect(view.memoryView(s).status).toBe('checking');
-  const memory: LocalMemory = {
-    model: s.model,
-    ctx: 8192,
-    status: 'ready',
-    message: 'q6 · 8192 context tokens',
-    required_bytes: 26 * 2 ** 30,
-    budget_bytes: 28 * 2 ** 30,
-    total_bytes: 64 * 2 ** 30,
-    available_bytes: 32 * 2 ** 30,
-    metal_limit_bytes: 48 * 2 ** 30,
+  s.readiness = {
+    ...f('off').state.readiness!,
+    local_supported: true,
+    cloud_ready: false,
   };
-  s.local_memory = memory;
+  expect(view.canStart(s)).toBe(false);
+  s.readiness.cloud_ready = true;
   expect(view.canStart(s)).toBe(true);
-  expect(view.memoryView(s).values).toBe('26.0 GiB required · 28.0 GiB budget');
-  s.local_memory = { ...memory, status: 'insufficient' };
-  expect(view.canStart(s)).toBe(false);
-  s.local_memory = { ...memory, model: 'other' };
-  expect(view.canStart(s)).toBe(false);
-  expect(view.memoryView(s).status).toBe('checking');
-  s.local_memory = { ...memory, required_bytes: null };
-  expect(view.canStart(s)).toBe(false);
-  s.target = 'cloud';
-  expect(view.canStart(s)).toBe(true);
-});
-
-test('unavailable memory preserves the error and never invents byte values', () => {
-  const s = structuredClone(f('fail_local').state);
-  const message = 'Cannot assess Mac memory: '.repeat(40);
-  s.local_memory = {
-    model: s.model,
-    ctx: 8192,
-    status: 'unavailable',
-    message,
-    total_bytes: null,
-    available_bytes: null,
-    metal_limit_bytes: null,
-    required_bytes: null,
-    budget_bytes: null,
-  };
-  expect(view.memoryView(s)).toMatchObject({
-    status: 'unavailable',
-    message,
-    values: null,
-  });
-  expect(view.canStart(s)).toBe(false);
 });
 
 const openCodeInfo: OpenCodeInfo = {
   path: '/example/config/opencode.jsonc',
-  endpoint: 'http://127.0.0.1:8931/v1',
-  provider: 'lobo-local',
+  endpoint: 'http://127.0.0.1:8933/v1',
+  provider: 'lobo-cloud',
   model_alias: 'running-q6',
   context: 8192,
   can_configure: true,
@@ -163,7 +120,7 @@ const openCodeInfo: OpenCodeInfo = {
 };
 const openCodeResult: OpenCodeResult = {
   path: openCodeInfo.path,
-  provider: 'lobo-local',
+  provider: 'lobo-cloud',
   model_alias: 'running-q6',
   changed: true,
   message: 'Saved.',
@@ -202,8 +159,8 @@ test('Clients starts checked and preserves explicit uncheck and chosen path acro
   expect(state.makeDefault).toBe(false);
   expect(view.clientsView(state)).toMatchObject({
     path,
-    model: 'lobo-local/actual-running-q8',
-    endpoint: 'http://127.0.0.1:8931/v1',
+    model: 'lobo-cloud/actual-running-q8',
+    endpoint: 'http://127.0.0.1:8933/v1',
     context: '8,192 context tokens',
     disabled: false,
   });
@@ -317,7 +274,7 @@ test('Clients disables setup without Ready metadata and ignores stale refresh re
   }));
   old.resolve(openCodeInfo);
   await first;
-  expect(view.clientsView(state).model).toBe('lobo-local/new-runtime');
+  expect(view.clientsView(state).model).toBe('lobo-cloud/new-runtime');
   expect(state.refreshing).toBe(false);
 });
 test('a valid chosen file works after invalid default discovery', async () => {
@@ -347,7 +304,7 @@ test('runtime changes invalidate in-flight success; telemetry ticks do not chang
   await submit;
   expect(state.result).toBeNull();
   expect(view.clientsView(state).disabled).toBe(true);
-  const runtime = structuredClone(f('ready_local').state);
+  const runtime = structuredClone(f('ready').state);
   const key = view.clientsRuntimeKey(runtime);
   runtime.snap!.at = '2030-01-01T00:00:00Z';
   runtime.snap!.status!.idle_s++;
@@ -371,5 +328,8 @@ test('Clients bounds reason and warnings without truncating the submitted file p
     true,
   );
   expect(view.settingsTab('clients')).toBe('clients');
+  expect(view.settingsTab('cloud')).toBe('cloud');
+  expect(view.settingsTab('defaults')).toBe('defaults');
+  expect(view.settingsTab('local')).toBeNull();
   expect(view.settingsTab('unexpected')).toBeNull();
 });

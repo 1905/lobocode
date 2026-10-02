@@ -1,11 +1,9 @@
-use crate::types::Target;
 use serde::{Deserialize, Serialize};
-use std::{io::Write, path::Path};
+use std::path::Path;
 
+// Legacy target preferences are ignored. Reading never rewrites the user's file.
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Prefs {
-    pub target: Option<Target>,
-}
+pub struct Prefs {}
 impl Prefs {
     pub fn load(dir: &Path) -> Self {
         std::fs::read(dir.join("prefs.json"))
@@ -13,29 +11,18 @@ impl Prefs {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default()
     }
-    pub fn save(&self, dir: &Path) -> std::io::Result<()> {
-        std::fs::create_dir_all(dir)?;
-        let mut f = tempfile::NamedTempFile::new_in(dir)?;
-        serde_json::to_writer(&mut f, self)?;
-        f.flush()?;
-        f.persist(dir.join("prefs.json")).map_err(|e| e.error)?;
-        Ok(())
-    }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn target_persists() {
-        let d = tempfile::tempdir().unwrap();
-        assert_eq!(Prefs::load(d.path()).target, None);
-        Prefs {
-            target: Some(Target::Local),
-        }
-        .save(d.path())
-        .unwrap();
-        assert_eq!(Prefs::load(d.path()).target, Some(Target::Local));
-        std::fs::write(d.path().join("prefs.json"), "bad").unwrap();
-        assert_eq!(Prefs::load(d.path()).target, None);
+    fn legacy_local_preference_is_ignored_and_preserved() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("prefs.json");
+        let original = b"{\"target\":\"local\"}";
+        std::fs::write(&path, original).unwrap();
+        let prefs = Prefs::load(root.path());
+        assert_eq!(serde_json::to_value(prefs).unwrap(), serde_json::json!({}));
+        assert_eq!(std::fs::read(path).unwrap(), original);
     }
 }

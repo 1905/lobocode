@@ -9,10 +9,6 @@
   <p class="small dim selectable">
     {panel.config?.path ?? '~/.config/lobo/config.env'}
   </p>
-  <p class="small dim">
-    {panel.readiness?.local_supported
-      ? 'needs an api key. cloud also needs a provider key.'
-      : 'needs a provider key (RunPod or Vast).'}
-  </p>
+  <p class="small dim">needs a provider key (RunPod or Vast).</p>
   <BracketButton label="SETUP" tone="amber" wide onclick={setup} />
 </section>

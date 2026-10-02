@@ -1,11 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { PanelState } from '../gen/PanelState';
-import type { Target } from '../gen/Target';
 import type { OpenCodeInfo } from '../gen/OpenCodeInfo';
 import type { OpenCodeResult } from '../gen/OpenCodeResult';
 import type { ConfigShow } from '../proto/ConfigShow';
-import type { Listing } from '../proto/Listing';
 import type { Model } from '../proto/Model';
 import type { SettingsTab } from './view';
 export const inTauri = () => '__TAURI_INTERNALS__' in window;
@@ -18,21 +16,16 @@ export const api = {
   start: () => call<void>('start'),
   stop: () => call<void>('stop'),
   dismiss: () => call<void>('dismiss'),
-  chooseTarget: (t: Target) => call<void>('choose_target', { t }),
   setProvider: (v: string) => call<void>('set_provider', { v }),
   setModel: (v: string) => call<void>('set_model', { v }),
-  refresh: (models: boolean) => call<void>('refresh', { models }),
+  refresh: () => call<void>('refresh'),
   copyApiKey: () => call<void>('copy_api_key'),
   copyText: (s: string) => call<void>('copy_text', { s }),
   configShow: () => call<ConfigShow>('config_show'),
   configSave: (set: Record<string, string>) =>
     call<void>('config_save', { set }),
-  localModels: () => call<Listing>('local_models'),
   catalog: () => call<Model[]>('catalog'),
-  freeBytes: (path: string) => call<number | null>('free_bytes', { path }),
   genApiKey: () => call<string>('gen_api_key'),
-  chooseWeights: (start: string) =>
-    call<string | null>('choose_weights', { start }),
   opencodeInfo: (path?: string) =>
     call<OpenCodeInfo>('opencode_info', { path }),
   chooseOpencodeConfig: () => call<string | null>('choose_opencode_config'),
