@@ -377,3 +377,23 @@ remain pending. App/CLI releases remain held.
 - Master CI at `4b117c3` passed builds and setup smoke, but the obsolete local-memory retry test timed out. Do not label that run fully passed. Replace that removed feature test with cloud-only setup and legacy migration coverage.
 - The legacy release workflow couples the app to CLI publication and Q8 image builds. App-prefixed tags and a dedicated app workflow avoid that dependency.
 - This feature does not finish loading-memory telemetry, sustained output measurements, live OpenCode or Q8 availability. Validation receipts remain in the cloud-only feature plan until complete.
+
+
+## 2026-10-02 — Draft release lookup failed after a valid DMG build
+
+Release run `36992628194` built and verified app 0.2.1, uploaded all three assets,
+and downloaded them for comparison. Publication then failed with HTTP 404 because
+`getReleaseByTag` looks up published releases. A draft must be discovered through
+authenticated listing or fetched by its numeric ID.
+[GitHub documents these different lookup contracts](https://docs.github.com/en/rest/releases/releases).
+
+Independent checks verified the exact source, successful master CI, asset hashes,
+DMG layout, arm64 app signature, embedded receipt and absence of a bundled CLI.
+The owned draft `401708978` was published by ID with `make_latest: false`. Anonymous
+downloads matched all three files. The original workflow retry passed published
+asset validation without rebuilding. The first attempt remains a recorded failure.
+
+The workflow now lists authenticated releases, matches the exact tag, rejects
+duplicates, and passes the prepared numeric ID into publication. Source, tag,
+ownership and hash checks remain. Its path now triggers the required Rust CI.
+Feesh passed YAML parsing and all 14 embedded syntax checks; scratch was removed.

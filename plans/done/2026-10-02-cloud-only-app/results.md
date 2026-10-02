@@ -1,6 +1,6 @@
 # Cloud-only app execution record
 **Date:** 2026-10-02
-**Status:** in-progress
+**Status:** delivered
 
 Baseline: master4b117c3. Prior hosted run36836204672 passed units/builds/core/CLI/static agent; native startup/settings smoke failed. New clean worktree /Users/kass/dev/lobocode-cloud-only preserves prior dirty Task11 preparation.
 
@@ -27,3 +27,22 @@ Baseline: master4b117c3. Prior hosted run36836204672 passed units/builds/core/CL
 
 - Run36990463015 at `8bf47a7`: all build/lint/unit/type/fixture checks and native fresh/legacy smoke passed. Native checks exercise real IPC and real Settings saves with no providers or model runtime. Both test modes preserve the legacy preferences, CLI data and ownership sentinel. Only the expected removed/invalid-operation errors are accepted by the harness.
 - Code is ready for direct master merge. App-only release remains pending exact merged-revision CI and the release workflow.
+
+## Published release
+
+- App source/tag: `358b9cbd331902722c61ac4ffde0acc0949c1497`, `app-v0.2.1`. Direct master merge and push completed.
+- [Exact master Rust CI](https://github.com/1905/lobocode/actions/runs/36991557535) passed all four jobs: protocol/workspace, static agent, core/CLI on macOS, and app. App checks passed 79 library tests, two fixture tests, 19 UI tests, generated-file comparison and production bundle validation. Six native cases passed across fresh and legacy setup, with clean task cleanup.
+- [App release workflow](https://github.com/1905/lobocode/actions/runs/36992628194) attempt 1 built the DMG and verified draft assets, then failed publication on a draft tag-lookup 404. Independent validation passed before publishing owned draft `401708978` by ID. Attempt 2 passed the full published-asset retry path without rebuilding.
+- [Public release](https://github.com/1905/lobocode/releases/tag/app-v0.2.1) contains only `lobocode.dmg`, `app-release.json` and `SHA256SUMS`. Legacy CLI latest remains unchanged; no CLI or GPU image publication ran.
+- DMG: 5,767,384 bytes; SHA256 `50af54392577b6f51b5e78a7280b76ec69a7c2b5a92e7a12d4c17884dd52704b`. Anonymous downloads matched all three validated files byte for byte.
+- Independent Mac artifact checks: mounted layout is the app plus Applications symlink; bundle version 0.2.1 and source match the receipt; arm64 executable; strict/deep signature validation; no bundled CLI/agent. This checks the released artifact, not a local rebuild.
+- Local receipts: `/tmp/lobo-app-release-0.2.1/independent-validation.json` and `anonymous-validation.json`. Exact master native evidence: `/tmp/lobo-cloud-only-native-master-358b9cb`.
+- Future release correction: authenticated exact-tag listing for drafts, duplicate rejection and numeric release ID publication. Existing source/ownership/hash gates stay in place. Feesh YAML and 14 embedded syntax checks passed; its scratch was cleaned.
+- QA-ready Telegram notification returned `SENT: ok`. Installed app, CLI, personal config/model/runtime files and prior dirty Task11 work remain untouched. No new rental, local inference or OpenCode launch occurred.
+
+## Remaining limits
+
+The released app is ad-hoc signed and is not notarized. Drag position, Dock/global
+Command-Tab, live OpenCode and loading-memory progression remain unverified.
+Cloud lifecycle evidence from `b5617ae` remains historical; this release ran
+isolated native setup/migration checks, not another paid inference run.

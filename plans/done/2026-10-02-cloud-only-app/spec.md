@@ -1,7 +1,7 @@
 # Cloud-only Mac app
 **Date:** 2026-10-02
 **Scope:** /Users/kass/dev/lobocode
-**Status:** approved (explicit full-auto authorization)
+**Status:** delivered (explicit full-auto authorization)
 
 ## TL;DR
 **What:** Remove local execution, local settings and local memory controls from the Mac app, then release a standalone DMG.
@@ -44,7 +44,7 @@ App settings hide local-only keys and reject their writes. Shared config and unr
 | app/ui/src/{panel,settings,lib,render}; App.svelte; gen; fixtures | Remove local views/API calls and regenerate cloud-only state/types/fixtures. Update cloud selection and UI tests. |
 | app/e2e/{app.spec.js,fixture.py,fake_llama.py,memory.spec.js,wdio.conf.js}; tools/native_app_e2e.py; Makefile; .github/workflows/rust.yml | Replace obsolete local-memory native smoke with cloud-only setup/migration checks. Diagnose baseline native harness failure; no real inference in fixtures. |
 | .github/workflows/app-release.yml; app/src-tauri/{Cargo.toml,Cargo.lock,tauri.conf.json}; scripts/macos; app/ui/package.json | Independent versioned app release using tested source, public Q6 preflight, standalone DMG, checksum and release notes. Only change build scripts/package versions if required. |
-| README.md; CHANGELOG.md; AGENTS.md; docs/implementation-mistakes.md; docs/img; plans/2026-10-02-cloud-only-app | Cloud-only app documentation, regenerated relevant screenshots, execution receipts and release links. |
+| README.md; CHANGELOG.md; AGENTS.md; docs/implementation-mistakes.md; docs/img; plans/done/2026-10-02-cloud-only-app | Cloud-only app documentation, regenerated relevant screenshots, execution receipts and release links. |
 | crates/**; CLI release/Homebrew; prior dirty worktree | Preserve. Shared interfaces may be reused but do not remove CLI local support. |
 
 ## Tests
@@ -71,3 +71,12 @@ CLI feature changes, Q8 publication, personal local runtime cleanup, updater, su
 P1: Cloud-only app and focused tests; push branch and verify hosted build/native smoke.
 P2: Docs/assets plus complete required CI and whole-branch review; merge directly to master.
 P3: Verify merged source, publish app-only DMG, download/verify release and notify user.
+
+## As-built notes
+
+- App 0.2.1 ships from `358b9cb`. The shared core and optional CLI retain local support.
+- In-memory cloud configuration also resets the hidden legacy local port, so an invalid CLI-local value cannot block cloud Start. Provider selection falls back to a configured cloud key when the previous provider key is removed. Original file values remain intact.
+- Removed-command native checks handle only the expected unknown-command/invalid-operation errors at both page and driver boundaries. Unexpected transport errors still fail.
+- The release workflow uses numeric draft IDs after the initial draft tag-lookup failure. Its path is included in Rust CI triggers. Published assets passed independent download and mounted bundle validation; see results.md.
+- Native settings fit without scrolling and show rounded corners. Actual drag position and global app-switcher behavior were not established by these checks. Live cloud inference was not repeated for this release.
+- Relevant Settings assets were replaced; no new model image or CLI release was needed. The complete feature record is archived under plans/done.

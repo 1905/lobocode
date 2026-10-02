@@ -11,6 +11,7 @@ on:
       - "Makefile"
       - ".goreleaser.yaml"
       - ".github/workflows/release.yml"
+      - ".github/workflows/app-release.yml"
       - "app/**"
       - "tools/protofixtures/**"
       - "tools/corefixtures/**"

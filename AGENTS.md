@@ -2,7 +2,9 @@
 
 ## Cloud-only app release — 2026-10-02
 
-Latest request: completely remove local execution from the Mac app, full auto, then release it. This explicitly supersedes the previous app release hold. Keep CLI local support and existing model/config/runtime files. Use Feesh or hosted CI for builds and backend tests; actual native UI checks remain authorized. Do not publish the Rust CLI, rebuild Q8, resume updater work or import dirty Task11 files. Implementation and app-v0.2.1 release evidence: [cloud-only plan](plans/2026-10-02-cloud-only-app/plan-v1.0.md). Older checkpoints below are historical where they conflict.
+Latest request: completely remove local execution from the Mac app, full auto, then release it. This explicitly supersedes the previous app release hold. Keep CLI local support and existing model/config/runtime files. Use Feesh or hosted CI for builds and backend tests; actual native UI checks remain authorized. Do not publish the Rust CLI, rebuild Q8, resume updater work or import dirty Task11 files. Implementation and app-v0.2.1 release evidence: [cloud-only plan](plans/done/2026-10-02-cloud-only-app/plan-v1.0.md). Older checkpoints below are historical where they conflict.
+
+App 0.2.1 is published from `358b9cbd331902722c61ac4ffde0acc0949c1497`. Exact master Rust CI `36991557535` passed, including 81 Rust app tests, 19 UI tests and six native setup/migration cases. Release run `36992628194` attempt 2 passed against the published assets. Independent anonymous downloads, source receipt, arm64 signature, mounted DMG layout and no bundled CLI checks passed. DMG SHA256: `50af54392577b6f51b5e78a7280b76ec69a7c2b5a92e7a12d4c17884dd52704b`. The first publication attempt hit a draft tag-lookup 404; verified publication by release ID recovered it. Future workflow lookups use authenticated release listing and numeric IDs. Installed app and CLI remain unchanged. App signing is ad-hoc; notarization, drag position, Dock/Command-Tab, live OpenCode and broader loading telemetry remain unverified.
 
 ## Current delivery instruction — 2026-10-01
 

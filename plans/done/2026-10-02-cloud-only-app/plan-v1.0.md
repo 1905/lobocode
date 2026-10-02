@@ -1,6 +1,6 @@
 # Cloud-only app implementation plan v1.0
 **Date:** 2026-10-02
-**Status:** in-progress
+**Status:** done
 **Spec:** ./spec.md (approved under full auto)
 **Goal:** Remove every local-run entry point from the Mac app and publish its standalone DMG.
 **Architecture:** Cloud-only app adapters over unchanged shared core/CLI. Isolate app release from CLI/images.
@@ -20,12 +20,12 @@ Exact allowed files and directories are in spec.md. Backend implementer owns app
 - [x] 3. Native harness/CI: retrieve exact failure evidence; replace obsolete memory-only scenario with cloud-only migration/setup assertions. Use isolated fixture config/state, deny real providers. Hosted native smoke must pass without Local controls or scroll. Keep local Mac inference/build/backend-suite restrictions.
 - [x] 4. Independent app release: app-v0.2.1 tag and version0.2.1 (verify no existing conflict). Add workflow_dispatch accepting exact release tag; require tag source on master and successful Rust CI; anonymously verify latest-q6; build/validate standalone DMG on hosted macOS, SHA256 and release metadata. Do not dispatch legacy v* workflow, publish CLI or rebuild Q8. Parent owns final publish.
 - [x] 5. Parent integration: inspect changes, regenerate fixtures remotely, focused checks and required hosted CI. Inspect actual native production app from hosted artifact with private prefs/config and no real rental. Update README/changelog/assets/memory. Run one final rival-codex review per plan skill, fix material findings and rerun affected checks.
-- [ ] 6. Commit/merge/push; verify exact merged CI. Tag and dispatch app release, validate downloaded DMG/checksum/bundle, record evidence, notify. Mark done and move feature directory to plans/done only when delivered.
+- [x] 6. Commit/merge/push; verify exact merged CI. Tag and dispatch app release, validate downloaded DMG/checksum/bundle, record evidence, notify. Mark done and move feature directory to plans/done only when delivered.
 
 ## Interface consistency
 - [x] Rust PanelState and generated TS/JSON match cloud-only UI; Backend mocks have no local models/memory methods.
 - [x] Settings tabs cloud/defaults/clients match IPC validator; no app local-supervisor handler.
 - [x] Cloud provider allowlist applies before dependency work and mutation; legacy local state remains untouched.
-- [ ] Published app-only tag/version/asset identity match; optional CLI and image publication unchanged.
+- [x] Published app-only tag/version/asset identity match; optional CLI and image publication unchanged.
 
 Full-auto authorization supersedes skill handoff prompts. Parent performs task verification, with no automatic per-task model reviews. No implementation runs in primary checkout.
