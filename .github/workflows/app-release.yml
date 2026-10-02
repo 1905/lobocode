@@ -61,12 +61,12 @@ jobs:
               break;
             }
             if (!passed) throw new Error('No complete successful master Rust run, including native smoke, for this exact commit');
-            let release;
-            try {
-              release = (await github.rest.repos.getReleaseByTag({...repo, tag})).data;
-            } catch (error) {
-              if (error.status !== 404) throw error;
-            }
+            // The tag lookup can return 404 for drafts. Authenticated listing includes them.
+            const releases = (await github.paginate(github.rest.repos.listReleases, {
+              ...repo, per_page: 100,
+            })).filter(release => release.tag_name === tag);
+            if (releases.length > 1) throw new Error('Multiple releases use this app tag; refusing to continue');
+            const release = releases[0];
             if (release && (release.target_commitish !== commit.sha || release.prerelease
               || release.name !== `Lobocode app ${tag.slice(5)}`
               || !release.body?.includes(`<!-- lobocode-app-source:${commit.sha} -->`))) {
@@ -270,6 +270,7 @@ jobs:
           PY
 
       - name: Prepare owned draft release
+        id: draft
         if: steps.gate.outputs.published != 'true'
         uses: actions/github-script@v7
         env:
@@ -282,12 +283,11 @@ jobs:
             const tag = process.env.APP_TAG;
             const sha = process.env.SOURCE_SHA;
             const marker = `<!-- lobocode-app-source:${sha} -->`;
-            let release;
-            try {
-              release = (await github.rest.repos.getReleaseByTag({...repo, tag})).data;
-            } catch (error) {
-              if (error.status !== 404) throw error;
-            }
+            const releases = (await github.paginate(github.rest.repos.listReleases, {
+              ...repo, per_page: 100,
+            })).filter(release => release.tag_name === tag);
+            if (releases.length > 1) throw new Error('Multiple releases use this app tag; refusing to continue');
+            let release = releases[0];
             if (release) {
               if (!release.draft || release.target_commitish !== sha || !release.body?.includes(marker)
                 || release.name !== `Lobocode app ${process.env.APP_VERSION}` || release.prerelease) {
@@ -310,10 +310,11 @@ jobs:
                 '', `Source: ${sha}`, `Required CI: ${process.env.RUST_CI_URL}`,
                 'Asset checksums: `SHA256SUMS`. Build receipt: `app-release.json`.',
               ].join('\n');
-              await github.rest.repos.createRelease({...repo, tag_name: tag, target_commitish: sha,
+              release = (await github.rest.repos.createRelease({...repo, tag_name: tag, target_commitish: sha,
                 name: `Lobocode app ${process.env.APP_VERSION}`, body, draft: true,
-                prerelease: false, make_latest: 'false'});
+                prerelease: false, make_latest: 'false'})).data;
             }
+            core.setOutput('release_id', release.id);
 
       - name: Upload and verify draft assets
         if: steps.gate.outputs.published != 'true'
@@ -333,6 +334,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           SOURCE_SHA: ${{ steps.gate.outputs.source }}
+          RELEASE_ID: ${{ steps.draft.outputs.release_id }}
         with:
           script: |
             const repo = context.repo;
@@ -342,8 +344,11 @@ jobs:
               const {data: commit} = await github.rest.repos.getCommit({...repo, ref});
               if (commit.sha !== sha) throw new Error('Source moved during build; refusing publication');
             }
-            const {data: release} = await github.rest.repos.getReleaseByTag({...repo, tag});
-            if (!release.draft || release.target_commitish !== sha
+            const releaseId = Number(process.env.RELEASE_ID);
+            if (!Number.isSafeInteger(releaseId) || releaseId <= 0) throw new Error('Missing valid draft release ID');
+            const {data: release} = await github.rest.repos.getRelease({...repo, release_id: releaseId});
+            if (release.id !== releaseId || release.tag_name !== tag || !release.draft || release.target_commitish !== sha
+              || release.prerelease || release.name !== `Lobocode app ${tag.slice(5)}`
               || !release.body?.includes(`<!-- lobocode-app-source:${sha} -->`)) {
               throw new Error('Draft identity changed; refusing publication');
             }

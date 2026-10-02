@@ -127,7 +127,7 @@ Setup authenticates the active endpoint and uses the running model and context l
 
 The app configures the `lobo` provider for its active cloud runtime. Existing provider restrictions remain in place and appear as warnings. A new `lobo` agent enables core coding tools and disables MCP tool and skill access. Existing custom agent controls remain unchanged.
 
-The optional CLI retains its separate export command: `lobo gen-api-key` writes `opencode.lobo.json` for manual merging. It is not required for app setup. The settings screenshots show native test fixtures. Cloud setup and migration checks are recorded in the [cloud-only app results](plans/2026-10-02-cloud-only-app/results.md).
+The optional CLI retains its separate export command: `lobo gen-api-key` writes `opencode.lobo.json` for manual merging. It is not required for app setup. The settings screenshots show native test fixtures. Cloud setup and migration checks are recorded in the [cloud-only app results](plans/done/2026-10-02-cloud-only-app/results.md).
 
 ## Pod image
 

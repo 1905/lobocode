@@ -6,10 +6,12 @@
 - Preserve existing CLI local settings, model files and runtime state. Old Local preferences open cloud setup.
 - Default new cloud selections to Q6. Keep GPU metrics, private SSH and cloud OpenCode configuration.
 - Add an independent app-only DMG release with source provenance and checksums. The optional CLI release is unchanged.
-- Validation: Rust/core/CLI and app tests pass, including 19 UI tests and native fresh/legacy setup checks. Production app settings fit without scrolling. DMG publication checks remain pending until the release workflow finishes.
+- Validation: Rust/core/CLI and app tests pass, including 19 UI tests and native fresh/legacy setup checks. Production app settings fit without scrolling. Published DMG checksums, source receipt, signature, standalone contents and anonymous downloads pass.
 - Limits: ad-hoc signature; no notarization. Drag position, global Command-Tab, live OpenCode and broader loading telemetry remain unverified.
 
 ## Unreleased
+
+Historical development entries below retain their original validation limits. App 0.2.1 supersedes the app release hold and removes app-local features. CLI release and Q8 publication remain held.
 
 - Clarify the Rust source quick start, Q6-only public cloud image, separate app/CLI installation and CLI bulk-stop behavior. App/CLI releases remain held; loading-memory progression and remaining native checks are not complete.
 - Pass the actual hosted Mac app `b5617ae` cloud Start → Ready → direct reply → Stop → Off flow. The request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds; two tokens do not establish sustained output speed. Controls fit without scrolling, and rounded corners were visible. Exact pod and local tunnel cleanup, native Quit and guarded preference restoration passed.
