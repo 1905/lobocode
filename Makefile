@@ -87,7 +87,7 @@ app-e2e-build:
 
 app-e2e: app-e2e-build
 	python3 tools/native_app_e2e.py --setup-only
-	python3 tools/native_app_e2e.py --memory-only
+	python3 tools/native_app_e2e.py --legacy-config
 
 # Deferred, explicit-only inference check. No build or runtime-start dependency.
 # CONFIG must name the existing runtime's credential config. EVIDENCE_DIR must

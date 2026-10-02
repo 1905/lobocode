@@ -1,8 +1,6 @@
 import type { PanelState } from '../gen/PanelState';
 import type { OpenCodeInfo } from '../gen/OpenCodeInfo';
 import type { OpenCodeResult } from '../gen/OpenCodeResult';
-import type { Step } from '../gen/Step';
-import type { Listing } from '../proto/Listing';
 import { bar, duration, gb, tps, usd } from './fmt';
 
 export const phaseWord = (s: PanelState) =>
@@ -28,30 +26,7 @@ export const phaseTone = (s: PanelState) =>
 export const active = (s: PanelState) =>
   ['loading', 'booting', 'stopping'].includes(s.phase.kind);
 export function canStart(s: PanelState): boolean {
-  if (s.target === 'cloud') return s.readiness?.cloud_ready === true;
-  const m = s.local_memory;
-  return (
-    !!m &&
-    m.model === s.model &&
-    m.status === 'ready' &&
-    m.required_bytes !== null &&
-    m.budget_bytes !== null &&
-    m.required_bytes <= m.budget_bytes
-  );
-}
-export function memoryView(s: PanelState) {
-  const m = s.local_memory?.model === s.model ? s.local_memory : null;
-  return {
-    status: m?.status ?? 'checking',
-    message:
-      m?.status === 'insufficient'
-        ? `Not enough Mac memory for ${m.model} with ${m.ctx} context tokens. Close other apps or use Cloud.`
-        : (m?.message ?? 'Checking Mac memory…'),
-    values:
-      m && m.required_bytes !== null && m.budget_bytes !== null
-        ? `${(m.required_bytes / 2 ** 30).toFixed(1)} GiB required · ${(m.budget_bytes / 2 ** 30).toFixed(1)} GiB budget`
-        : null,
-  };
+  return s.readiness?.cloud_ready === true;
 }
 export function headerDetail(s: PanelState): string {
   const p = s.snap?.pod;
@@ -63,46 +38,18 @@ export function headerDetail(s: PanelState): string {
     ]
       .filter(Boolean)
       .join(' · ');
-  if (s.phase.kind === 'booting')
-    return s.is_local ? 'starting local' : `renting ${s.provider}`;
-  return s.phase.kind === 'off' && !s.is_local ? 'no pod · $0.00/h' : '';
+  if (s.phase.kind === 'booting') return `renting ${s.provider}`;
+  return s.phase.kind === 'off' ? 'no pod · $0.00/h' : '';
 }
 export function limits(values: Record<string, string>): string {
   const n = (key: string, fallback: number) =>
     Number(values[key]) > 0 ? Number(values[key]) : fallback;
   return `idle ${n('LOBO_IDLE_MIN', 30)}m max ${n('LOBO_MAX_HOURS', 12)}h`;
 }
-export function modelRows(s: PanelState) {
-  return (s.models?.models ?? []).map((m) => ({
-    id: m.id,
-    picked: s.model === m.id,
-    size: `${gb(m.size)} GB`,
-    state:
-      m.size > 0 && m.on_disk >= m.size
-        ? ('on' as const)
-        : m.on_disk > 0
-          ? ('partial' as const)
-          : ('missing' as const),
-    pct:
-      m.size > 0
-        ? Math.min(99, Math.floor((m.on_disk / m.size) * 100))
-        : undefined,
-  }));
-}
-export const localFooter = (l: Listing) =>
-  `${l.weights} · ${gb(l.free_bytes)} GB free`;
 export function stepRows(s: PanelState) {
   return s.boot_steps.map((step) => {
     const mark = s.steps.find((m) => m.step === step);
-    const label = s.is_local
-      ? ((
-          { rent: 'start', gpu: 'metal', download: 'model' } as Partial<
-            Record<Step, string>
-          >
-        )[step] ?? step)
-      : step === 'download'
-        ? 'verify model'
-        : step;
+    const label = step === 'download' ? 'verify model' : step;
     return {
       step,
       label,
@@ -130,7 +77,7 @@ export function downloadLine(s: PanelState) {
     bar: raster,
     gb: `${gb(d.bytes)}/${gb(d.total)}G`,
     mbps: `${Math.trunc(d.mbps)}MB/s`,
-    mbpsTone: s.is_local ? 'text' : d.mbps >= 100 ? 'green' : 'amber',
+    mbpsTone: d.mbps >= 100 ? 'green' : 'amber',
     eta: eta > 0 ? duration(eta) : undefined,
   };
 }
@@ -155,27 +102,21 @@ export function ready(s: PanelState, nowMs: number) {
     prompt: tps(st?.llama?.prompt_tps),
     mem: gpu
       ? {
-          label: s.is_local ? 'memory' : 'vram',
+          label: 'vram',
           bar: bar(gpu.vram_used_mb / Math.max(1, gpu.vram_total_mb), 12),
           text: `${(gpu.vram_used_mb / 1024).toFixed(1)}/${(gpu.vram_total_mb / 1024).toFixed(1)} GB`,
-          gpu: s.is_local
-            ? undefined
-            : { text: `gpu ${gpu.util_pct}%`, hot: gpu.util_pct > 0 },
+          gpu: { text: `gpu ${gpu.util_pct}%`, hot: gpu.util_pct > 0 },
         }
       : undefined,
     kill: st
       ? {
-          label: s.is_local ? 'idle-stop ' : 'idle-kill ',
+          label: 'idle-kill ',
           text: duration(left),
-          warn: !s.is_local && left < 300,
+          warn: left < 300,
         }
       : undefined,
     uptime: duration(uptime),
-    cost: s.is_local
-      ? 'local · $0'
-      : s.snap?.pod
-        ? usd((s.snap.pod.cost_per_hr * uptime) / 3600)
-        : '',
+    cost: s.snap?.pod ? usd((s.snap.pod.cost_per_hr * uptime) / 3600) : '',
   };
 }
 export function fail(s: PanelState) {
@@ -192,13 +133,11 @@ export function fail(s: PanelState) {
   };
 }
 export const stopping = (s: PanelState) =>
-  s.is_local
-    ? 'stopping llama.cpp'
-    : `deleting pod on ${s.snap?.pod?.provider ?? s.provider}`;
+  `deleting pod on ${s.snap?.pod?.provider ?? s.provider}`;
 
-export type SettingsTab = 'local' | 'cloud' | 'defaults' | 'clients';
+export type SettingsTab = 'cloud' | 'defaults' | 'clients';
 export function settingsTab(value: unknown): SettingsTab | null {
-  return ['local', 'cloud', 'defaults', 'clients'].includes(value as string)
+  return ['cloud', 'defaults', 'clients'].includes(value as string)
     ? (value as SettingsTab)
     : null;
 }
@@ -282,7 +221,6 @@ export function clientsRuntimeKey(s: PanelState): string {
   const st = s.snap?.status;
   return JSON.stringify([
     s.phase.kind,
-    s.target,
     s.provider,
     s.model,
     s.endpoint,

@@ -14,8 +14,8 @@
   const menubar = name.startsWith('menubar_');
   const clientsFixture: OpenCodeInfo = {
     path: '/example/config/opencode/opencode.jsonc',
-    endpoint: name === 'clients_off' ? null : 'http://127.0.0.1:8931/v1',
-    provider: name === 'clients_off' ? null : 'lobo-local',
+    endpoint: name === 'clients_off' ? null : 'http://127.0.0.1:8933/v1',
+    provider: name === 'clients_off' ? null : 'lobo-cloud',
     model_alias: name === 'clients_off' ? null : 'qwen3-coder-next-q6',
     context: name === 'clients_off' ? null : 8192,
     can_configure: name !== 'clients_off',

@@ -56,7 +56,6 @@ pub struct Controller {
     active: Mutex<Active>,
     shutdown: CancellationToken,
     quit_lock: tokio::sync::Mutex<()>,
-    prefs_dir: Option<PathBuf>,
     runtime: tokio::runtime::Handle,
 }
 impl Controller {
@@ -64,12 +63,12 @@ impl Controller {
         backend: Arc<dyn Backend>,
         notifier: Arc<dyn Notifier>,
         clock: Arc<dyn Clock>,
-        prefs: Prefs,
-        prefs_dir: Option<PathBuf>,
+        _prefs: Prefs,
+        _prefs_dir: Option<PathBuf>,
         runtime: tokio::runtime::Handle,
         emit: Arc<dyn Fn(PanelState) + Send + Sync>,
     ) -> Arc<Self> {
-        let mut store = Store::new(prefs.target, lobo_core::local::supported().is_ok());
+        let mut store = Store::new();
         match backend.load_owner() {
             Ok(owner) => store.set_runtime(owner),
             Err(e) => store.poll_failed(e.message),
@@ -83,7 +82,6 @@ impl Controller {
             active: Mutex::new(Active::default()),
             shutdown: CancellationToken::new(),
             quit_lock: tokio::sync::Mutex::new(()),
-            prefs_dir,
             runtime,
         })
     }
@@ -297,9 +295,9 @@ impl Controller {
     pub fn spawn_loops(self: &Arc<Self>) {
         let c = self.clone();
         self.runtime.spawn(async move {
-            c.load_config(true).await;
+            c.load_config().await;
             loop {
-                tokio::select! { _=c.shutdown.cancelled()=>break, _=c.refresh(false)=>{} }
+                tokio::select! { _=c.shutdown.cancelled()=>break, _=c.refresh()=>{} }
                 let wait = c.store.lock().unwrap().poll_interval();
                 tokio::select! {_=c.shutdown.cancelled()=>break,_=tokio::time::sleep(wait)=>{}}
             }
@@ -315,7 +313,7 @@ impl Controller {
             }
         });
     }
-    pub async fn load_config(&self, models: bool) {
+    pub async fn load_config(&self) {
         match self.backend.config().await {
             Ok((cfg, r)) => {
                 let _active = self.active.lock().unwrap();
@@ -329,43 +327,16 @@ impl Controller {
                 vec![]
             }),
         }
-        if models {
-            self.load_models().await;
-        }
     }
-    async fn load_models(&self) {
-        if !self
-            .state()
-            .readiness
-            .as_ref()
-            .is_some_and(|r| r.local_supported)
-        {
-            return;
+    pub async fn refresh(&self) {
+        if !self.state().readiness.is_some_and(|r| r.cloud_ready) {
+            self.load_config().await;
         }
-        match self.backend.models().await {
-            Ok(m) => {
-                let _active = self.active.lock().unwrap();
-                self.change(|s| {
-                    s.apply_models(m);
-                    vec![]
-                });
-            }
-            Err(e) => self.change(|s| {
-                s.set_warning(Some(e.message));
-                vec![]
-            }),
-        }
-    }
-    pub async fn refresh(&self, models: bool) {
-        if !self.state().readiness.is_some_and(|r| r.ready) {
-            self.load_config(false).await;
-        }
-        if !self.state().readiness.is_some_and(|r| r.ready) {
+        if !self.state().readiness.is_some_and(|r| r.cloud_ready) {
             self.change(|s| {
                 s.needs_setup();
                 vec![]
             });
-            self.refresh_memory().await;
             return;
         }
         let (provider, owner, generations) = {
@@ -374,30 +345,19 @@ impl Controller {
                 return;
             }
             let view = s.view(self.clock.now());
-            let provider = s.runtime().map_or_else(
-                || {
-                    if view.target == Target::Local {
-                        "local".into()
-                    } else {
-                        view.provider
-                    }
-                },
-                |owner| owner.provider,
-            );
+            let provider = s.runtime().map_or(view.provider, |owner| owner.provider);
             (provider, s.runtime(), s.generations())
         };
         match self.backend.snapshot_owned(&provider, owner.clone()).await {
             Ok((candidate, snap)) => {
-                let down = snap.down;
+                let _active = self.active.lock().unwrap();
                 {
-                    let _active = self.active.lock().unwrap();
-                    {
-                        let s = self.store.lock().unwrap();
-                        if s.generations() != generations || s.up_running || s.stop_running {
-                            return;
-                        }
+                    let s = self.store.lock().unwrap();
+                    if s.generations() != generations || s.up_running || s.stop_running {
+                        return;
                     }
-                    if let Some(candidate) = &candidate
+                }
+                if let Some(candidate) = &candidate
                         && let Err(e) = self.backend.adopt_owner(owner, candidate.clone())
                     {
                         self.change(|s| {
@@ -406,20 +366,16 @@ impl Controller {
                         });
                         return;
                     }
-                    self.change(|s| {
-                        if s.generations() != generations || s.up_running || s.stop_running {
-                            return vec![];
-                        }
-                        s.set_runtime(candidate);
-                        if !s.stop_running {
-                            s.set_warning(None);
-                        }
-                        s.apply_snap(snap, self.clock.now())
-                    });
-                }
-                if models && down {
-                    self.load_models().await;
-                }
+                self.change(|s| {
+                    if s.generations() != generations || s.up_running || s.stop_running {
+                        return vec![];
+                    }
+                    s.set_runtime(candidate);
+                    if !s.stop_running {
+                        s.set_warning(None);
+                    }
+                    s.apply_snap(snap, self.clock.now())
+                });
             }
             Err(e) => self.change(|s| {
                 if s.generations() != generations || s.up_running || s.stop_running {
@@ -429,38 +385,6 @@ impl Controller {
                 vec![]
             }),
         }
-        self.refresh_memory().await;
-    }
-    pub async fn refresh_memory(&self) {
-        let request = self.store.lock().unwrap().begin_memory();
-        let Some((generation, request, model)) = request else {
-            return;
-        };
-        let result = self.backend.local_memory(&model).await;
-        let memory = match result {
-            Ok(a) => LocalMemory::from(a),
-            Err(e) => {
-                let ctx = self
-                    .state()
-                    .config
-                    .as_ref()
-                    .and_then(|c| c.values.get("LOBO_CTX"))
-                    .and_then(|v| v.parse().ok())
-                    .filter(|ctx| *ctx > 0)
-                    .unwrap_or(lobo_core::release::DEFAULT_DEFAULTS.ctx);
-                LocalMemory::unavailable(model, ctx, e.message)
-            }
-        };
-        self.change(|s| {
-            s.apply_memory(generation, request, memory);
-            vec![]
-        });
-    }
-    fn schedule_memory(self: &Arc<Self>) {
-        let c = self.clone();
-        self.runtime.spawn(async move {
-            c.refresh_memory().await;
-        });
     }
     // Reserve synchronously. The returned receiver reports admission, not completion.
     pub fn submit_start(self: &Arc<Self>) -> Result<tokio::sync::oneshot::Receiver<Result<()>>> {
@@ -504,7 +428,7 @@ impl Controller {
                 notes
             });
             if !c.store.lock().unwrap().stop_running {
-                c.refresh(true).await;
+                c.refresh().await;
             }
             result
         }));
@@ -582,10 +506,6 @@ impl Controller {
                     kind: e.kind.clone(),
                     message: e.message.clone(),
                 }));
-                self.change(|s| {
-                    s.invalidate_memory();
-                    vec![]
-                });
                 return Err(e);
             }
         };
@@ -665,10 +585,8 @@ impl Controller {
                 };
                 if let Some(target) = &target {
                     c.backend.down(target.clone()).await?;
-                    if target.provider != "local" {
-                        tokio::time::sleep(Duration::from_secs(10)).await;
-                        c.backend.down(target.clone()).await?;
-                    }
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    c.backend.down(target.clone()).await?;
                     let (_, snap) = c
                         .backend
                         .snapshot_owned(&target.provider, Some(target.clone()))
@@ -765,34 +683,17 @@ impl Controller {
         });
         let c = self.clone();
         self.runtime.spawn(async move {
-            c.refresh(false).await;
+            c.refresh().await;
         });
     }
-    pub fn choose(self: &Arc<Self>, t: Target) {
-        let _active = self.active.lock().unwrap();
-        self.change(|s| {
-            s.choose(t);
-            vec![]
-        });
-        self.schedule_memory();
-        if let Some(dir) = &self.prefs_dir
-            && let Err(e) = (Prefs {
-                target: Some(self.state().target),
-            })
-            .save(dir)
-        {
-            self.change(|s| {
-                s.set_warning(Some(e.to_string()));
-                vec![]
-            });
-        }
-    }
-    pub fn set_provider(&self, p: String) {
+    pub fn set_provider(&self, p: String) -> Result<()> {
+        crate::backend::require_cloud_provider(&p)?;
         let _active = self.active.lock().unwrap();
         self.change(|s| {
             s.set_provider(p);
             vec![]
         });
+        Ok(())
     }
     pub fn set_model(self: &Arc<Self>, m: String) {
         let _active = self.active.lock().unwrap();
@@ -800,7 +701,6 @@ impl Controller {
             s.set_model(m);
             vec![]
         });
-        self.schedule_memory();
     }
     pub fn panel_shown(self: &Arc<Self>, open: bool) {
         self.change(|s| {
@@ -810,7 +710,7 @@ impl Controller {
         if open {
             let c = self.clone();
             self.runtime.spawn(async move {
-                c.refresh(true).await;
+                c.refresh().await;
             });
         }
     }

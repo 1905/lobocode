@@ -369,3 +369,11 @@ Controls fit without scrolling, and rounded corners were visible. Ready showed
 not prove live throughput updates during a request. Actual drag, global
 Command-Tab, Dock, local Metal, OpenCode, Q8 and broader telemetry acceptance
 remain pending. App/CLI releases remain held.
+
+## 2026-10-02 — Cloud-only app correction
+
+- The app retained local execution despite the user choosing a cloud-only product. Remove the controls, backend routes, provider wiring and supervisor entry point together.
+- Old CLI local defaults and app ownership must not cause the app to inspect, adopt or stop a local process. Preserve those files and choose cloud in app memory.
+- Master CI at `4b117c3` passed builds and setup smoke, but the obsolete local-memory retry test timed out. Do not label that run fully passed. Replace that removed feature test with cloud-only setup and legacy migration coverage.
+- The legacy release workflow couples the app to CLI publication and Q8 image builds. App-prefixed tags and a dedicated app workflow avoid that dependency.
+- This feature does not finish loading-memory telemetry, sustained output measurements, live OpenCode or Q8 availability. Validation receipts remain in the cloud-only feature plan until complete.

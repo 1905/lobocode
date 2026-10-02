@@ -20,9 +20,7 @@ pub async fn start(c: C<'_>) -> Result<()> {
     let controller = c.inner().clone();
     // Reserve and capture before the first await or blocking-worker queue.
     let reply = controller.submit_start()?;
-    let result = reply.await.map_err(error)?;
-    controller.refresh_memory().await;
-    result
+    reply.await.map_err(error)?
 }
 #[tauri::command]
 pub fn stop(c: C<'_>) {
@@ -33,20 +31,16 @@ pub fn dismiss(c: C<'_>) {
     c.inner().dismiss();
 }
 #[tauri::command]
-pub fn choose_target(c: C<'_>, t: Target) {
-    c.choose(t);
-}
-#[tauri::command]
-pub fn set_provider(c: C<'_>, v: String) {
-    c.set_provider(v);
+pub fn set_provider(c: C<'_>, v: String) -> Result<()> {
+    c.set_provider(v)
 }
 #[tauri::command]
 pub fn set_model(c: C<'_>, v: String) {
     c.set_model(v);
 }
 #[tauri::command]
-pub async fn refresh(c: C<'_>, models: bool) -> Result<()> {
-    c.refresh(models).await;
+pub async fn refresh(c: C<'_>) -> Result<()> {
+    c.refresh().await;
     Ok(())
 }
 #[tauri::command]
@@ -64,49 +58,24 @@ pub async fn config_show(c: C<'_>) -> Result<lobo_proto::ConfigShow> {
 }
 #[tauri::command]
 pub async fn config_save(c: C<'_>, set: BTreeMap<String, String>) -> Result<()> {
-    // Saving changes the context even while an earlier measurement is pending.
+    // A settings write invalidates queued Start and OpenCode setup.
     c.begin_config_write();
     let result = c.backend.save(set).await;
     if result.is_ok() {
-        c.load_config(true).await;
+        c.load_config().await;
     }
     c.end_config_write();
     result?;
-    c.refresh(false).await;
+    c.refresh().await;
     Ok(())
-}
-#[tauri::command]
-pub async fn local_models(c: C<'_>) -> Result<lobo_proto::Listing> {
-    c.backend.models().await
 }
 #[tauri::command]
 pub fn catalog() -> Vec<lobo_proto::catalog::Model> {
     lobo_proto::catalog::all().to_vec()
 }
 #[tauri::command]
-pub fn free_bytes(path: String) -> Option<u64> {
-    lobo_core::local::free_bytes_nearest(std::path::Path::new(&path))
-}
-#[tauri::command]
 pub fn gen_api_key() -> String {
     lobo_core::genkey::new_api_key()
-}
-#[tauri::command]
-pub async fn choose_weights(app: tauri::AppHandle, start: String) -> Result<Option<String>> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let cfg = lobo_core::config::Laptop {
-            weights_dir: start,
-            ..Default::default()
-        };
-        app.dialog()
-            .file()
-            .set_directory(cfg.weights())
-            .blocking_pick_folder()
-            .and_then(|p| p.into_path().ok())
-            .map(|p| p.to_string_lossy().into_owned())
-    })
-    .await
-    .map_err(error)
 }
 #[tauri::command]
 pub fn opencode_info(c: C<'_>, path: Option<String>) -> Result<OpenCodeInfo> {
@@ -144,7 +113,7 @@ pub async fn configure_opencode(
 pub fn open_settings(app: tauri::AppHandle, tab: Option<String>) -> Result<()> {
     if tab
         .as_deref()
-        .is_some_and(|tab| !matches!(tab, "local" | "cloud" | "defaults" | "clients"))
+        .is_some_and(|tab| !matches!(tab, "cloud" | "defaults" | "clients"))
     {
         return Err(error("Unknown settings tab."));
     }

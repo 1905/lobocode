@@ -1,5 +1,13 @@
 # Changelog
 
+## App 0.2.1 — 2026-10-02
+
+- Make the Mac app cloud-only. Remove local Start, memory/model controls, local settings, local IPC and the local supervisor entry point.
+- Preserve existing CLI local settings, model files and runtime state. Old Local preferences open cloud setup.
+- Default new cloud selections to Q6. Keep GPU metrics, private SSH and cloud OpenCode configuration.
+- Add an independent app-only DMG release with source provenance and checksums. The optional CLI release is unchanged.
+- Validation: cloud-only setup/migration and release checks are in progress. Final receipts are in the cloud-only app plan.
+
 ## Unreleased
 
 - Clarify the Rust source quick start, Q6-only public cloud image, separate app/CLI installation and CLI bulk-stop behavior. App/CLI releases remain held; loading-memory progression and remaining native checks are not complete.

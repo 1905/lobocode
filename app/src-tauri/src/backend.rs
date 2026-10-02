@@ -5,8 +5,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use lobo_core::{config, control, local};
-use lobo_proto::{ConfigShow, Listing, Readiness, Snap, Status, UpRequest};
-use local::memory::{self, MemoryAssessment, MemoryProbe};
+use lobo_proto::{ConfigShow, Readiness, Snap, Status, UpRequest};
 use std::{
     collections::BTreeMap,
     io::{Read, Write},
@@ -41,7 +40,6 @@ pub trait Backend: Send + Sync {
         opencode::configure(self, path, prepared, make_default, validate)
     }
     async fn config(&self) -> Result<(ConfigShow, Readiness)>;
-    async fn models(&self) -> Result<Listing>;
     #[allow(dead_code)] // Rust convenience API; app polling needs the paired private owner.
     async fn snapshot(&self, provider: &str) -> Result<Snap> {
         let expected = self.load_owner()?;
@@ -62,7 +60,6 @@ pub trait Backend: Send + Sync {
         provider: &str,
         captured: Option<control::RuntimeTarget>,
     ) -> Result<(Option<control::RuntimeTarget>, Snap)>;
-    async fn local_memory(&self, model: &str) -> Result<MemoryAssessment>;
     fn prepare_up(&self, req: UpRequest) -> Result<PreparedUp>;
     fn up(
         &self,
@@ -80,19 +77,25 @@ pub trait Backend: Send + Sync {
 pub struct CoreBackend {
     pub path: PathBuf,
     pub wiring: control::Wiring,
-    memory: MemoryProbe,
+    legacy_owner: Arc<Mutex<Option<control::RuntimeTarget>>>,
     owner_lock: Arc<Mutex<()>>,
     setup_client: reqwest::Client,
 }
 impl CoreBackend {
     pub fn new(path: PathBuf) -> std::io::Result<Self> {
         let path = std::path::absolute(path)?;
-        let wiring =
+        let mut wiring =
             control::Wiring::new(path.clone(), local::Spawner::app(std::env::current_exe()?));
+        // Shared core retains CLI local support. The app never constructs that provider.
+        wiring.supported = || {
+            Err(lobo_core::Error::Local(
+                "The Mac app supports cloud GPUs only.".into(),
+            ))
+        };
         Ok(Self {
             path,
             wiring,
-            memory: std::sync::Arc::new(memory::snapshot),
+            legacy_owner: Arc::new(Mutex::new(None)),
             owner_lock: Arc::new(Mutex::new(())),
             setup_client: opencode::client().map_err(std::io::Error::other)?,
         })
@@ -105,46 +108,61 @@ impl CoreBackend {
     }
     fn deps(&self) -> Result<control::Deps> {
         Ok(control::deps_from_config(
-            config::load_laptop(&self.path)?,
+            cloud_config(config::load_laptop(&self.path)?),
             &self.wiring,
         )?)
     }
-    fn local_options(&self, model: &str) -> Result<control::UpOpts> {
-        let cfg = config::Laptop::from_values(&config::values(&self.path)?);
-        self.resolve(
-            &cfg,
-            &UpRequest {
-                provider: Some("local".into()),
-                model: Some(model.into()),
-                ..Default::default()
-            },
-        )
-    }
-    fn resolve(&self, cfg: &config::Laptop, req: &UpRequest) -> Result<control::UpOpts> {
-        let mut opts = control::resolve_up(cfg, &self.path, req, self.wiring.supported)?;
-        if opts.provider == "local" && opts.ctx == 0 {
-            opts.ctx = lobo_core::release::DEFAULT_DEFAULTS.ctx;
-        }
-        Ok(opts)
-    }
-    fn probe(&self, display: bool) -> MemoryProbe {
-        #[cfg(feature = "e2e")]
-        if let Some(probe) = crate::e2e_memory::probe(&self.path, display) {
-            return probe;
-        }
-        let _ = display;
-        self.memory.clone()
-    }
     fn owner_path(&self) -> PathBuf {
         self.path.with_extension("app-runtime.json")
+    }
+    fn expected_owner(
+        &self,
+        expected: Option<control::RuntimeTarget>,
+    ) -> Option<control::RuntimeTarget> {
+        expected.or_else(|| self.legacy_owner.lock().unwrap().clone())
     }
     fn clear_owner(&self, target: &control::RuntimeTarget) -> Result<()> {
         let _guard = self.owner_lock.lock().unwrap();
         if read_owner(&self.owner_path())?.as_ref() == Some(target) {
             std::fs::remove_file(self.owner_path()).map_err(owner_error)?;
+            *self.legacy_owner.lock().unwrap() = None;
         }
         Ok(())
     }
+}
+pub(crate) fn require_cloud_provider(provider: &str) -> Result<()> {
+    if matches!(provider, "runpod" | "vast") {
+        Ok(())
+    } else {
+        Err(AppError {
+            kind: "invalid".into(),
+            message: "The Mac app supports RunPod and Vast cloud providers only.".into(),
+        })
+    }
+}
+const LOCAL_KEYS: &[&str] = &[
+    "LOBO_WEIGHTS_DIR",
+    "LOBO_LOCAL_PORT",
+    "LOBO_MODEL_SOURCE",
+    "LOBO_MODEL_SSH_KEY_FILE",
+    "LOBO_MODEL_SSH_HOSTKEY",
+    "LOBO_FEESH_HTTP_URL",
+];
+fn cloud_config(mut cfg: config::Laptop) -> config::Laptop {
+    if !matches!(cfg.provider.as_str(), "runpod" | "vast") {
+        cfg.provider = if !cfg.runpod_api_key.is_empty() {
+            "runpod"
+        } else if !cfg.vast_api_key.is_empty() {
+            "vast"
+        } else {
+            "runpod"
+        }
+        .into();
+    }
+    if cfg.model.is_empty() {
+        cfg.model = "q6".into();
+    }
+    cfg
 }
 fn owner_error(error: impl std::fmt::Display) -> AppError {
     AppError {
@@ -212,28 +230,61 @@ impl Backend for CoreBackend {
         opencode::prepare(self, owner, &self.setup_client).await
     }
     async fn config(&self) -> Result<(ConfigShow, Readiness)> {
-        Ok((config::show(&self.path)?, config::readiness(&self.path)))
-    }
-    async fn models(&self) -> Result<Listing> {
-        // Listing files does not need an API key. Settings also works before setup.
-        let cfg = config::Laptop::from_values(&config::values(&self.path)?);
-        Ok(local::list(&cfg.weights())?)
+        let mut shown = config::show(&self.path)?;
+        for key in LOCAL_KEYS {
+            shown.values.remove(*key);
+            shown.set.remove(*key);
+        }
+        let cfg = cloud_config(config::Laptop::from_values(&config::values(&self.path)?));
+        shown
+            .values
+            .insert("LOBO_PROVIDER".into(), cfg.provider.clone());
+        shown.values.insert("LOBO_MODEL".into(), cfg.model.clone());
+        let loaded = config::load_laptop(&self.path).map(cloud_config);
+        let error = loaded.as_ref().err().map(ToString::to_string);
+        let cloud_ready = loaded.is_ok() && cfg.require_cloud().is_ok();
+        let readiness = Readiness {
+            exists: self.path.exists(),
+            providers: cfg.providers(),
+            default_provider: cfg.provider,
+            default_model: cfg.model,
+            ready: cloud_ready,
+            cloud_ready,
+            error,
+            ..Default::default()
+        };
+        Ok((shown, readiness))
     }
     fn load_owner(&self) -> Result<Option<control::RuntimeTarget>> {
         let _guard = self.owner_lock.lock().unwrap();
-        read_owner(&self.owner_path())
+        let owner = read_owner(&self.owner_path())?;
+        if owner.as_ref().is_some_and(|t| t.provider == "local") {
+            let mut legacy = self.legacy_owner.lock().unwrap();
+            // Capture once. A changed legacy record must fail the later comparison.
+            if legacy.is_none() {
+                *legacy = owner;
+            }
+            return Ok(None);
+        }
+        if let Some(owner) = &owner {
+            require_cloud_provider(&owner.provider)?;
+        }
+        Ok(owner)
     }
     fn adopt_owner(
         &self,
         expected: Option<control::RuntimeTarget>,
         target: control::RuntimeTarget,
     ) -> Result<()> {
+        require_cloud_provider(&target.provider)?;
         let _guard = self.owner_lock.lock().unwrap();
+        let expected = self.expected_owner(expected);
         if read_owner(&self.owner_path())? != expected {
             return Err(owner_error("runtime changed before ownership commit"));
         }
         if expected.as_ref() != Some(&target) {
             write_owner(&self.owner_path(), &target)?;
+            *self.legacy_owner.lock().unwrap() = None;
         }
         Ok(())
     }
@@ -242,8 +293,13 @@ impl Backend for CoreBackend {
         provider: &str,
         captured: Option<control::RuntimeTarget>,
     ) -> Result<(Option<control::RuntimeTarget>, Snap)> {
-        let d = self.deps()?;
+        require_cloud_provider(provider)?;
+        if let Some(target) = &captured {
+            require_cloud_provider(&target.provider)?;
+        }
         let recorded = self.load_owner()?;
+        let expected = self.expected_owner(recorded.clone());
+        let d = self.deps()?;
         let target = match captured.or(recorded.clone()) {
             Some(target) => Some(target),
             None => control::discover_app(&d, provider).await?,
@@ -256,32 +312,22 @@ impl Backend for CoreBackend {
             },
         };
         let _guard = self.owner_lock.lock().unwrap();
-        if read_owner(&self.owner_path())? != recorded {
+        if read_owner(&self.owner_path())? != expected {
             return Err(owner_error("runtime changed while polling"));
         }
         // Discovery is a private candidate. Controller checks generations and
         // persists it before Store or IPC delivery. Polling never erases ownership.
         Ok((target, snap))
     }
-    async fn local_memory(&self, model: &str) -> Result<MemoryAssessment> {
-        let opts = self.local_options(model)?;
-        let probe = self.probe(true);
-        tokio::task::spawn_blocking(move || memory::inspect_with(&opts.model, opts.ctx, &probe))
-            .await
-            .map_err(|e| AppError {
-                kind: "local".into(),
-                message: format!("Mac memory check failed: {e}. Retry or use Cloud."),
-            })?
-            .map_err(AppError::from)
-    }
     fn prepare_up(&self, req: UpRequest) -> Result<PreparedUp> {
-        // Admit before constructing dependencies, creating files or starting workers.
-        self.load_owner()?;
-        let cfg = config::load_laptop(&self.path)?;
-        let opts = self.resolve(&cfg, &req)?;
-        if opts.provider == "local" {
-            memory::inspect_with(&opts.model, opts.ctx, &self.probe(false))?.ensure_fit()?;
+        if let Some(provider) = &req.provider {
+            require_cloud_provider(provider)?;
         }
+        // Reject before dependencies, ownership writes, or workers exist.
+        self.load_owner()?;
+        let cfg = cloud_config(config::load_laptop(&self.path)?);
+        let opts = control::resolve_up(&cfg, &self.path, &req, self.wiring.supported)?;
+        require_cloud_provider(&opts.provider)?;
         Ok(PreparedUp {
             config: cfg,
             options: opts,
@@ -294,13 +340,43 @@ impl Backend for CoreBackend {
         cancel: CancellationToken,
         owner: control::OwnerSink,
     ) -> Result<control::UpOperation> {
+        require_cloud_provider(&prepared.options.provider)?;
+        if cfg!(feature = "e2e") {
+            return Err(AppError {
+                kind: "e2e".into(),
+                message: "Cloud rentals are disabled in the native test build.".into(),
+            });
+        }
+        if let Some(previous) = &previous {
+            require_cloud_provider(&previous.provider)?;
+        }
+        let expected = self.expected_owner(previous.clone());
+        {
+            let _guard = self.owner_lock.lock().unwrap();
+            if read_owner(&self.owner_path())? != expected {
+                return Err(owner_error("runtime changed before Start"));
+            }
+        }
         let d = control::deps_from_config(prepared.config, &self.wiring)?;
         let path = self.owner_path();
         let lock = self.owner_lock.clone();
+        let expected = Mutex::new(expected);
+        let legacy_owner = self.legacy_owner.clone();
         let owner = Arc::new(move |target: control::RuntimeTarget| {
+            require_cloud_provider(&target.provider)
+                .map_err(|e| lobo_core::Error::Other(e.message))?;
             {
                 let _guard = lock.lock().unwrap();
+                let mut expected = expected.lock().unwrap();
+                let current = read_owner(&path).map_err(|e| lobo_core::Error::Other(e.message))?;
+                if current != *expected {
+                    return Err(lobo_core::Error::Other(
+                        "runtime changed before ownership commit".into(),
+                    ));
+                }
                 write_owner(&path, &target).map_err(|e| lobo_core::Error::Other(e.message))?;
+                *expected = Some(target.clone());
+                *legacy_owner.lock().unwrap() = None;
             }
             owner(target)
         });
@@ -313,11 +389,13 @@ impl Backend for CoreBackend {
         ))
     }
     async fn down(&self, target: control::RuntimeTarget) -> Result<f64> {
+        require_cloud_provider(&target.provider)?;
         let cost = control::down_app(&self.deps()?, &target).await?;
         self.clear_owner(&target)?;
         Ok(cost)
     }
     async fn telemetry(&self, target: control::RuntimeTarget) -> Result<Status> {
+        require_cloud_provider(&target.provider)?;
         Ok(control::sample_app(&self.deps()?, &target).await?)
     }
     async fn api_key(&self) -> Result<String> {
@@ -326,6 +404,15 @@ impl Backend for CoreBackend {
             .unwrap_or_default())
     }
     async fn save(&self, set: BTreeMap<String, String>) -> Result<()> {
+        if let Some(provider) = set.get("LOBO_PROVIDER").filter(|p| !p.is_empty()) {
+            require_cloud_provider(provider)?;
+        }
+        if set.keys().any(|key| LOCAL_KEYS.contains(&key.as_str())) {
+            return Err(AppError {
+                kind: "invalid".into(),
+                message: "Local model settings are unavailable in the Mac app.".into(),
+            });
+        }
         config::validate_set(&set).map_err(|message| AppError {
             kind: "invalid".into(),
             message,
@@ -340,18 +427,18 @@ mod tests {
     use super::*;
     fn target(boot: &str) -> control::RuntimeTarget {
         control::RuntimeTarget {
-            provider: "local".into(),
+            provider: "runpod".into(),
             boot_id: boot.into(),
             instance_id: Some("4242".into()),
-            local_pid: Some(4242),
-            local_start_id: Some(100),
+            local_pid: None,
+            local_start_id: None,
             agent_url: None,
             api_url: None,
         }
     }
     #[test]
     fn persisted_restart_ownership_is_private_and_old_stop_cannot_erase_new_owner() {
-        let (_root, backend) = memory_backend(0);
+        let (_root, backend) = fixture_backend();
         let old = target("old");
         write_owner(&backend.owner_path(), &old).unwrap();
         let reopened = CoreBackend::new(backend.path.clone()).unwrap();
@@ -373,7 +460,7 @@ mod tests {
     }
     #[test]
     fn malformed_or_empty_owner_fails_without_overwriting_record() {
-        let (_root, backend) = memory_backend(0);
+        let (_root, backend) = fixture_backend();
         let path = backend.owner_path();
         std::fs::write(&path, b"broken ownership").unwrap();
         assert!(backend.load_owner().is_err());
@@ -384,7 +471,7 @@ mod tests {
     }
     #[test]
     fn owner_read_is_bounded_and_rejects_links_or_special_files() {
-        let (_root, backend) = memory_backend(0);
+        let (_root, backend) = fixture_backend();
         let path = backend.owner_path();
         std::fs::write(&path, vec![b'x'; (64 << 10) + 1]).unwrap();
         assert!(backend.load_owner().is_err());
@@ -395,108 +482,158 @@ mod tests {
         std::fs::create_dir(&path).unwrap();
         assert!(backend.load_owner().is_err());
     }
-    fn memory_backend(mode: usize) -> (tempfile::TempDir, CoreBackend) {
+    fn fixture_backend() -> (tempfile::TempDir, CoreBackend) {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("config.env");
+        std::fs::write(&path, "# keep\nLOBO_API_KEY=fixture\nLOBO_PROVIDER=local\nLOBO_CTX=8192\nRUNPOD_API_KEY=fixture\nLOBO_WEIGHTS_DIR=/untouched/model\n").unwrap();
+        (root, CoreBackend::new(path).unwrap())
+    }
+    #[tokio::test]
+    async fn cloud_defaults_and_saves_preserve_legacy_config() {
+        let (_root, backend) = fixture_backend();
+        let original = std::fs::read(&backend.path).unwrap();
+        let (shown, readiness) = backend.config().await.unwrap();
+        assert_eq!(readiness.default_provider, "runpod");
+        assert_eq!(readiness.default_model, "q6");
+        assert!(readiness.cloud_ready);
+        assert!(!readiness.local_supported);
+        assert!(!shown.values.contains_key("LOBO_WEIGHTS_DIR"));
+        assert_eq!(shown.values["LOBO_PROVIDER"], "runpod");
+        assert_eq!(std::fs::read(&backend.path).unwrap(), original);
+        assert!((backend.wiring.supported)().is_err());
+        let cfg = cloud_config(config::load_laptop(&backend.path).unwrap());
+        assert!(control::local_provider_from_config(&cfg, &backend.wiring).is_none());
+        backend
+            .save(BTreeMap::from([("LOBO_CTX".into(), "65536".into())]))
+            .await
+            .unwrap();
+        let saved = std::fs::read_to_string(&backend.path).unwrap();
+        assert!(saved.contains("LOBO_PROVIDER=local"));
+        assert!(saved.contains("LOBO_WEIGHTS_DIR=/untouched/model"));
+        assert!(saved.starts_with("# keep\n"));
+        let prepared = backend.prepare_up(UpRequest::default()).unwrap();
+        assert_eq!(prepared.options.provider, "runpod");
+        assert_eq!(prepared.options.model, "q6");
+        backend
+            .save(BTreeMap::from([
+                ("LOBO_MODEL".into(), "q8".into()),
+                ("LOBO_PROVIDER".into(), "vast".into()),
+                ("VASTAI_API_KEY".into(), "fixture".into()),
+            ]))
+            .await
+            .unwrap();
+        let (_, readiness) = backend.config().await.unwrap();
+        assert_eq!(
+            (
+                readiness.default_provider.as_str(),
+                readiness.default_model.as_str()
+            ),
+            ("vast", "q8")
+        );
+    }
+    #[tokio::test]
+    async fn local_boundaries_reject_before_config_or_dependencies() {
+        let root = tempfile::tempdir().unwrap();
+        let backend = CoreBackend::new(root.path().join("missing.env")).unwrap();
+        let mut local = target("legacy");
+        local.provider = "local".into();
+        assert_eq!(
+            backend
+                .prepare_up(UpRequest {
+                    provider: Some("local".into()),
+                    ..Default::default()
+                })
+                .err()
+                .unwrap()
+                .kind,
+            "invalid"
+        );
+        assert_eq!(
+            backend.down(local.clone()).await.unwrap_err().kind,
+            "invalid"
+        );
+        assert_eq!(
+            backend.telemetry(local.clone()).await.unwrap_err().kind,
+            "invalid"
+        );
+        assert_eq!(
+            backend
+                .snapshot_owned("local", None)
+                .await
+                .unwrap_err()
+                .kind,
+            "invalid"
+        );
+        assert_eq!(
+            backend
+                .snapshot_owned("runpod", Some(local.clone()))
+                .await
+                .unwrap_err()
+                .kind,
+            "invalid"
+        );
+        assert_eq!(
+            backend
+                .prepare_opencode(local.clone())
+                .await
+                .err()
+                .unwrap()
+                .kind,
+            "invalid"
+        );
+        assert!(backend.adopt_owner(None, local).is_err());
+        for (key, value) in [
+            ("LOBO_PROVIDER", "local"),
+            ("LOBO_LOCAL_PORT", "9000"),
+            ("LOBO_WEIGHTS_DIR", "/model"),
+        ] {
+            assert_eq!(
+                backend
+                    .save(BTreeMap::from([(key.into(), value.into())]))
+                    .await
+                    .unwrap_err()
+                    .kind,
+                "invalid"
+            );
+        }
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    }
+    #[test]
+    fn legacy_owner_is_ignored_and_replaced_only_after_exact_comparison() {
+        let (_root, backend) = fixture_backend();
+        let mut legacy = target("legacy");
+        legacy.provider = "local".into();
+        legacy.local_pid = Some(4242);
+        legacy.local_start_id = Some(100);
+        write_owner(&backend.owner_path(), &legacy).unwrap();
+        let original = std::fs::read(backend.owner_path()).unwrap();
+        assert_eq!(backend.load_owner().unwrap(), None);
+        assert_eq!(std::fs::read(backend.owner_path()).unwrap(), original);
+        let mut changed = legacy.clone();
+        changed.boot_id = "new-local".into();
+        write_owner(&backend.owner_path(), &changed).unwrap();
+        assert!(backend.adopt_owner(None, target("cloud")).is_err());
+        assert_eq!(read_owner(&backend.owner_path()).unwrap(), Some(changed));
+        write_owner(&backend.owner_path(), &legacy).unwrap();
+        let cloud = target("cloud");
+        backend.adopt_owner(None, cloud.clone()).unwrap();
+        assert_eq!(backend.load_owner().unwrap(), Some(cloud));
+    }
+    #[tokio::test]
+    async fn local_config_without_cloud_keys_requires_setup() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("config.env");
         std::fs::write(
             &path,
-            "LOBO_API_KEY=fixture\nLOBO_PROVIDER=local\nLOBO_CTX=8192\n",
+            "LOBO_API_KEY=fixture\nLOBO_PROVIDER=local\nVASTAI_API_KEY=fixture\n",
         )
         .unwrap();
-        let mut backend = CoreBackend::new(path).unwrap();
-        backend.wiring.supported = || Ok(());
-        backend.memory = std::sync::Arc::new(move || {
-            if mode == 2 {
-                return Err(lobo_core::Error::Local("probe unavailable".into()));
-            }
-            Ok(memory::MemorySnapshot {
-                total_bytes: 64 << 30,
-                available_bytes: (if mode == 1 { 8 } else { 60 }) << 30,
-                metal_limit_bytes: 48 << 30,
-            })
-        });
-        (root, backend)
-    }
-    #[tokio::test]
-    async fn memory_uses_selected_model_and_saved_context() {
-        let (_root, backend) = memory_backend(0);
-        let memory = backend.local_memory("q6").await.unwrap();
-        assert_eq!((memory.model.as_str(), memory.ctx), ("q6", 8192));
-        assert!(memory.fits());
-        backend
-            .save(BTreeMap::from([("LOBO_CTX".into(), "0".into())]))
-            .await
-            .unwrap();
-        assert_eq!(
-            backend.local_memory("q8").await.unwrap().ctx,
-            lobo_core::release::DEFAULT_DEFAULTS.ctx
-        );
-        let (_root, backend) = memory_backend(1);
-        assert!(!backend.local_memory("q8").await.unwrap().fits());
-        let (_root, backend) = memory_backend(2);
-        assert!(
-            backend
-                .local_memory("q8")
-                .await
-                .unwrap_err()
-                .message
-                .contains("probe unavailable")
-        );
-    }
-    #[tokio::test]
-    async fn fresh_start_denies_before_creating_an_operation() {
-        let (root, mut backend) = memory_backend(0);
-        assert!(backend.local_memory("q8").await.unwrap().fits());
-        backend.memory = memory_backend(1).1.memory;
-        let result = backend.prepare_up(UpRequest {
-            provider: Some("local".into()),
-            model: Some("q8".into()),
-            ..Default::default()
-        });
-        let Err(error) = result else {
-            panic!("Start must deny");
-        };
-        assert!(error.message.contains("GiB"));
-        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
-        backend.memory = memory_backend(2).1.memory;
-        assert!(
-            backend
-                .prepare_up(UpRequest {
-                    provider: Some("local".into()),
-                    model: Some("q8".into()),
-                    ..Default::default()
-                })
-                .is_err()
-        );
-    }
-    #[tokio::test]
-    async fn save_validates_before_writing_and_preserves_comments() {
-        let d = tempfile::tempdir().unwrap();
-        let p = d.path().join("override.env");
-        std::fs::write(&p, "# keep\nLOBO_API_KEY=fixture\n").unwrap();
-        let b = CoreBackend::new(p.clone()).unwrap();
-        let e = b
-            .save(BTreeMap::from([("LOBO_LOCAL_PORT".into(), "80".into())]))
-            .await
-            .unwrap_err();
-        assert_eq!(e.kind, "invalid");
-        assert_eq!(
-            e.message,
-            "LOBO_LOCAL_PORT: whole number 1024-65534, or empty"
-        );
-        assert_eq!(
-            std::fs::read_to_string(&p).unwrap(),
-            "# keep\nLOBO_API_KEY=fixture\n"
-        );
-        b.save(BTreeMap::from([("LOBO_LOCAL_PORT".into(), "9000".into())]))
-            .await
-            .unwrap();
-        assert!(std::fs::read_to_string(&p).unwrap().starts_with("# keep\n"));
-        assert_eq!(b.config().await.unwrap().1.local_port, 9000);
-        assert_eq!(b.wiring.config_path, p);
-        assert_eq!(
-            b.wiring.spawner.args_prefix,
-            [local::SUPERVISOR_ARG, "local", "run"]
-        );
+        let backend = CoreBackend::new(path.clone()).unwrap();
+        assert_eq!(backend.config().await.unwrap().1.default_provider, "vast");
+        std::fs::write(&path, "LOBO_API_KEY=fixture\nLOBO_PROVIDER=local\n").unwrap();
+        let (_, readiness) = backend.config().await.unwrap();
+        assert!(!readiness.ready);
+        assert!(!readiness.cloud_ready);
+        assert_eq!(readiness.default_provider, "runpod");
     }
 }

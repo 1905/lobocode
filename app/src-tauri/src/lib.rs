@@ -1,15 +1,12 @@
 pub mod backend;
 pub mod commands;
 pub mod controller;
-#[cfg(feature = "e2e")]
-mod e2e_memory;
 pub mod fmt;
 pub mod icons;
 pub mod notify;
 mod opencode;
 pub mod prefs;
 pub mod store;
-pub mod supervisor;
 pub mod tray;
 pub mod types;
 pub mod windows;
@@ -33,7 +30,6 @@ pub fn run() {
             commands::start,
             commands::stop,
             commands::dismiss,
-            commands::choose_target,
             commands::set_provider,
             commands::set_model,
             commands::refresh,
@@ -41,11 +37,8 @@ pub fn run() {
             commands::copy_text,
             commands::config_show,
             commands::config_save,
-            commands::local_models,
             commands::catalog,
-            commands::free_bytes,
             commands::gen_api_key,
-            commands::choose_weights,
             commands::opencode_info,
             commands::choose_opencode_config,
             commands::configure_opencode,
@@ -60,6 +53,11 @@ pub fn run() {
             let handle = app.handle().clone();
             tray::build(&handle)?;
             let prefs_dir = app.path().app_config_dir()?;
+            #[cfg(feature = "e2e")]
+            let prefs_dir = std::env::var_os("LOBO_E2E_ROOT")
+                .filter(|root| !root.is_empty())
+                .map(|root| std::path::PathBuf::from(root).join("preferences"))
+                .unwrap_or(prefs_dir);
             let prefs = prefs::Prefs::load(&prefs_dir);
             let backend = Arc::new(backend::CoreBackend::new(
                 backend::CoreBackend::configured_path(),

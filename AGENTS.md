@@ -1,5 +1,9 @@
 # Lobocode project memory
 
+## Cloud-only app release — 2026-10-02
+
+Latest request: completely remove local execution from the Mac app, full auto, then release it. This explicitly supersedes the previous app release hold. Keep CLI local support and existing model/config/runtime files. Use Feesh or hosted CI for builds and backend tests; actual native UI checks remain authorized. Do not publish the Rust CLI, rebuild Q8, resume updater work or import dirty Task11 files. Implementation and app-v0.2.1 release evidence: [cloud-only plan](plans/2026-10-02-cloud-only-app/plan-v1.0.md). Older checkpoints below are historical where they conflict.
+
 ## Current delivery instruction — 2026-10-01
 
 The user explicitly requested commit, merge and README updates after cloud E2E.

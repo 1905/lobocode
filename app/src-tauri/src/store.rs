@@ -1,8 +1,6 @@
 use crate::{fmt, types::*};
 use chrono::{DateTime, Utc};
-use lobo_proto::{
-    ConfigShow, DEFAULT_MODEL, Listing, Readiness, Snap, Stage, UpEvent, UpRequest, catalog,
-};
+use lobo_proto::{catalog, ConfigShow, Readiness, Snap, Stage, UpEvent, UpRequest};
 use std::time::Duration;
 
 /// State rules only. The controller owns work and supplies the clock.
@@ -11,13 +9,8 @@ pub struct Store {
     pub up_running: bool,
     pub stop_running: bool,
     cleanup_failed: bool,
-    model_auto_picked: bool,
     user_stopped: bool,
     panel_open: bool,
-    saved_target: Option<Target>,
-    local_supported: bool,
-    memory_generation: u64,
-    memory_request: u64,
     runtime: Option<lobo_core::control::RuntimeTarget>,
     runtime_generation: u64,
     config_generation: u64,
@@ -26,27 +19,21 @@ pub struct Store {
     operation_launched: bool,
 }
 impl Store {
-    pub fn new(saved_target: Option<Target>, local_supported: bool) -> Self {
+    pub fn new() -> Self {
         let mut ids: Vec<_> = catalog::all().iter().map(|m| m.id.clone()).collect();
-        ids.sort_by_key(|s| (s != DEFAULT_MODEL, s.clone()));
+        ids.sort_by_key(|s| (s != "q6", s.clone()));
         Self {
             state: PanelState {
                 provider: "runpod".into(),
-                model: DEFAULT_MODEL.into(),
-                target: Self::default_target(saved_target, None, None, None, local_supported),
+                model: "q6".into(),
                 catalog_ids: ids,
                 ..Default::default()
             },
             up_running: false,
             stop_running: false,
             cleanup_failed: false,
-            model_auto_picked: false,
             user_stopped: false,
             panel_open: false,
-            saved_target,
-            local_supported,
-            memory_generation: 0,
-            memory_request: 0,
             runtime: None,
             runtime_generation: 0,
             config_generation: 0,
@@ -55,22 +42,9 @@ impl Store {
             operation_launched: false,
         }
     }
-    pub fn is_local(&self) -> bool {
-        if let Some(runtime) = &self.runtime {
-            return runtime.provider == "local";
-        }
-        self.state
-            .snap
-            .as_ref()
-            .and_then(|s| s.pod.as_ref())
-            .map_or(self.state.target == Target::Local, |p| {
-                p.provider == "local"
-            })
-    }
     pub fn view(&self, now: DateTime<Utc>) -> PanelState {
         let mut s = self.state.clone();
-        s.is_local = self.is_local();
-        s.boot_steps = Step::steps(s.is_local).to_vec();
+        s.boot_steps = Step::steps().to_vec();
         s.current_step = (s.phase == Phase::Booting)
             .then(|| {
                 s.boot_steps
@@ -113,7 +87,7 @@ impl Store {
                     )
                 } else {
                     s.current_step
-                        .map_or("boot", |st| st.label(s.is_local))
+                        .map_or("boot", |st| st.label())
                         .into()
                 }
             }
@@ -164,14 +138,6 @@ impl Store {
         }
         if let Some(url) = &self.state.ready_url {
             return Some(url.clone());
-        }
-        if self.is_local() {
-            let port = self
-                .state
-                .readiness
-                .as_ref()
-                .map_or(lobo_core::config::DEFAULT_LOCAL_PORT, |r| r.local_port);
-            return Some(format!("http://127.0.0.1:{port}/v1"));
         }
         self.state
             .config
@@ -229,60 +195,8 @@ impl Store {
             _ => Phase::Booting,
         }
     }
-    pub fn default_target(
-        saved: Option<Target>,
-        r: Option<&Readiness>,
-        cfg: Option<&ConfigShow>,
-        models: Option<&Listing>,
-        local_supported: bool,
-    ) -> Target {
-        if !local_supported {
-            return Target::Cloud;
-        }
-        if let Some(saved) = saved {
-            return saved;
-        }
-        if cfg
-            .and_then(|c| c.values.get("LOBO_PROVIDER"))
-            .is_some_and(|p| p == "local")
-        {
-            return Target::Local;
-        }
-        let no_keys = r.map_or_else(
-            || {
-                cfg.is_none_or(|c| {
-                    !c.set.get("RUNPOD_API_KEY").copied().unwrap_or(false)
-                        && !c.set.get("VASTAI_API_KEY").copied().unwrap_or(false)
-                })
-            },
-            |r| r.providers.is_empty(),
-        );
-        if no_keys && models.is_some_and(|l| l.models.iter().any(on_disk)) {
-            Target::Local
-        } else {
-            Target::Cloud
-        }
-    }
-    fn apply_default_target(&mut self) {
-        if !self.up_running
-            && !self.stop_running
-            && !matches!(self.state.phase, Phase::Booting | Phase::Ready)
-        {
-            self.state.target = Self::default_target(
-                self.saved_target,
-                self.state.readiness.as_ref(),
-                self.state.config.as_ref(),
-                self.state.models.as_ref(),
-                self.local_supported,
-            );
-        }
-    }
     pub fn apply_config(&mut self, c: ConfigShow, r: Readiness) {
-        let before = (
-            self.state.provider.clone(),
-            self.state.model.clone(),
-            self.state.target,
-        );
+        let before = (self.state.provider.clone(), self.state.model.clone());
         if self
             .state
             .config
@@ -294,48 +208,11 @@ impl Store {
         if !self.up_running && !self.stop_running && self.state.phase != Phase::Booting {
             self.state.provider = r.default_provider.clone();
             self.state.model = r.default_model.clone();
-            self.model_auto_picked = false;
         }
         self.state.config = Some(c);
         self.state.readiness = Some(r);
-        self.apply_default_target();
-        if before
-            != (
-                self.state.provider.clone(),
-                self.state.model.clone(),
-                self.state.target,
-            )
-        {
+        if before != (self.state.provider.clone(), self.state.model.clone()) {
             self.selection_generation = self.selection_generation.wrapping_add(1);
-        }
-    }
-    pub fn apply_models(&mut self, m: Listing) {
-        let before = (self.state.model.clone(), self.state.target);
-        let model_configured = self
-            .state
-            .config
-            .as_ref()
-            .and_then(|c| c.values.get("LOBO_MODEL"))
-            .is_some_and(|s| !s.is_empty());
-        if !self.model_auto_picked
-            && !self.up_running
-            && !self.stop_running
-            && self.state.phase != Phase::Booting
-            && !model_configured
-            && !m
-                .models
-                .iter()
-                .any(|m| m.id == self.state.model && on_disk(m))
-            && let Some(other) = m.models.iter().find(|m| on_disk(m))
-        {
-            self.state.model = other.id.clone();
-        }
-        self.model_auto_picked = true;
-        self.state.models = Some(m);
-        self.apply_default_target();
-        if before != (self.state.model.clone(), self.state.target) {
-            self.selection_generation = self.selection_generation.wrapping_add(1);
-            self.invalidate_memory();
         }
     }
     pub fn apply_snap(&mut self, s: Snap, now: DateTime<Utc>) -> Vec<Note> {
@@ -374,13 +251,7 @@ impl Store {
                 .as_ref()
                 .and_then(|s| Step::from_up_phase(s.stage.as_str()))
         {
-            let local = s
-                .pod
-                .as_ref()
-                .map_or(self.is_local(), |p| p.provider == "local");
-            for c in Step::steps(local)
-                .iter()
-                .filter(|c| c.index() <= step.index())
+            for c in Step::steps().iter().filter(|c| c.index() <= step.index())
             {
                 self.mark(*c, now);
             }
@@ -421,18 +292,9 @@ impl Store {
         self.state.log_tail.clear();
         self.state.ready_url = None;
         self.state.warning = None;
-        let local = self.state.target == Target::Local;
-        self.state.last_detail = if local {
-            "starting llama.cpp…".into()
-        } else {
-            format!("renting {}…", self.state.provider)
-        };
+        self.state.last_detail = format!("renting {}…", self.state.provider);
         UpRequest {
-            provider: Some(if local {
-                "local".into()
-            } else {
-                self.state.provider.clone()
-            }),
+            provider: Some(self.state.provider.clone()),
             model: Some(self.state.model.clone()),
             ..Default::default()
         }
@@ -462,7 +324,7 @@ impl Store {
             let cost = if r.cost_per_hr > 0.0 {
                 format!("${:.2}/h", r.cost_per_hr)
             } else {
-                "local".into()
+                "cloud".into()
             };
             return vec![Note {
                 title: "lobo ready".into(),
@@ -504,14 +366,12 @@ impl Store {
         }
         vec![]
     }
-    pub fn begin_stop(&mut self) -> bool {
-        let local = self.is_local();
+    pub fn begin_stop(&mut self) {
         self.stop_running = true;
         self.user_stopped = true;
         self.cleanup_failed = false;
         self.state.phase = Phase::Stopping;
         self.state.warning = None;
-        local
     }
     pub fn stop_failed(&mut self, message: String) {
         self.stop_running = false;
@@ -532,27 +392,14 @@ impl Store {
             self.state.phase = Phase::Off;
         }
     }
-    pub fn choose(&mut self, t: Target) {
-        if !self.up_running && !self.stop_running {
-            self.invalidate_memory();
-            self.saved_target = Some(t);
-            self.state.target = if self.local_supported {
-                t
-            } else {
-                Target::Cloud
-            };
-            self.selection_generation = self.selection_generation.wrapping_add(1);
-        }
-    }
     pub fn set_provider(&mut self, p: String) {
-        if !self.up_running && !self.stop_running {
+        if !self.up_running && !self.stop_running && matches!(p.as_str(), "runpod" | "vast") {
             self.state.provider = p;
             self.selection_generation = self.selection_generation.wrapping_add(1);
         }
     }
     pub fn set_model(&mut self, m: String) {
         if !self.up_running && !self.stop_running && self.state.catalog_ids.contains(&m) {
-            self.invalidate_memory();
             self.state.model = m;
             self.selection_generation = self.selection_generation.wrapping_add(1);
         }
@@ -574,13 +421,8 @@ impl Store {
             self.state.phase = Phase::NoConfig;
         }
     }
-    pub fn invalidate_memory(&mut self) {
-        self.memory_generation = self.memory_generation.wrapping_add(1);
-        self.state.local_memory = None;
-    }
     pub fn invalidate_config(&mut self) {
         self.config_generation = self.config_generation.wrapping_add(1);
-        self.invalidate_memory();
     }
     pub fn generations(&self) -> (u64, u64, u64) {
         (
@@ -606,6 +448,7 @@ impl Store {
         self.operation_launched = true;
     }
     pub fn set_runtime(&mut self, target: Option<lobo_core::control::RuntimeTarget>) {
+        let target = target.filter(|t| matches!(t.provider.as_str(), "runpod" | "vast"));
         if self.runtime != target {
             self.runtime_generation = self.runtime_generation.wrapping_add(1);
             self.runtime = target;
@@ -623,38 +466,11 @@ impl Store {
             && self.selection_generation == submission.selection_generation
             && !self.stop_running
     }
-    pub fn begin_memory(&mut self) -> Option<(u64, u64, String)> {
-        if self.state.target != Target::Local
-            || self.up_running
-            || self.stop_running
-            || !matches!(
-                self.state.phase,
-                Phase::Off | Phase::Failed { .. } | Phase::NoConfig
-            )
-        {
-            return None;
-        }
-        self.memory_request = self.memory_request.wrapping_add(1);
-        Some((
-            self.memory_generation,
-            self.memory_request,
-            self.state.model.clone(),
-        ))
-    }
-    pub fn apply_memory(&mut self, generation: u64, request: u64, memory: LocalMemory) {
-        if generation == self.memory_generation
-            && request == self.memory_request
-            && self.state.target == Target::Local
-            && memory.model == self.state.model
-            && !self.up_running
-            && !self.stop_running
-        {
-            self.state.local_memory = Some(memory);
-        }
-    }
 }
-fn on_disk(m: &lobo_proto::ModelState) -> bool {
-    m.size > 0 && m.on_disk >= m.size
+impl Default for Store {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]

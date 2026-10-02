@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { PanelState } from '../gen/PanelState';
-  import type { Target } from '../gen/Target';
   import { api, message } from '../lib/api';
   import { stopping, canStart } from '../lib/view';
   import Header from './Header.svelte';
@@ -43,11 +42,7 @@
   }
   function pick(kind: string, value: string) {
     void perform(() =>
-      kind === 'target'
-        ? api.chooseTarget(value as Target)
-        : kind === 'model'
-          ? api.setModel(value)
-          : api.setProvider(value),
+      kind === 'model' ? api.setModel(value) : api.setProvider(value),
     ).catch(() => {});
   }
   function keydown(e: KeyboardEvent) {
