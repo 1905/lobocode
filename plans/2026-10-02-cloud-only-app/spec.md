@@ -40,7 +40,7 @@ App settings hide local-only keys and reject their writes. Shared config and unr
 ## File-level changes
 | Files | Change |
 | --- | --- |
-| app/src-tauri/src/{backend,controller,store,types,prefs,commands,lib,main,supervisor,e2e_memory,tray}.rs; controller/tests.rs; store/tests.rs; opencode/tests.rs; tests/fixtures.rs; examples/generate_ui.rs | Remove local app behavior, migrate legacy state safely, add boundary regression tests, remove obsolete local modules. |
+| app/src-tauri/src/{backend,controller,store,types,prefs,commands,lib,main,supervisor,e2e_memory,tray,windows,opencode}.rs; controller/tests.rs; store/tests.rs; opencode/tests.rs; tests/fixtures.rs; examples/generate_ui.rs | Remove local app behavior, migrate legacy state safely, add boundary regression tests, remove obsolete local modules. |
 | app/ui/src/{panel,settings,lib,render}; App.svelte; gen; fixtures | Remove local views/API calls and regenerate cloud-only state/types/fixtures. Update cloud selection and UI tests. |
 | app/e2e/{app.spec.js,fixture.py,fake_llama.py,memory.spec.js,wdio.conf.js}; tools/native_app_e2e.py; Makefile; .github/workflows/rust.yml | Replace obsolete local-memory native smoke with cloud-only setup/migration checks. Diagnose baseline native harness failure; no real inference in fixtures. |
 | .github/workflows/app-release.yml; app/src-tauri/{Cargo.toml,Cargo.lock,tauri.conf.json}; scripts/macos; app/ui/package.json | Independent versioned app release using tested source, public Q6 preflight, standalone DMG, checksum and release notes. Only change build scripts/package versions if required. |

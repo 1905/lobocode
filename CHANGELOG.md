@@ -6,7 +6,8 @@
 - Preserve existing CLI local settings, model files and runtime state. Old Local preferences open cloud setup.
 - Default new cloud selections to Q6. Keep GPU metrics, private SSH and cloud OpenCode configuration.
 - Add an independent app-only DMG release with source provenance and checksums. The optional CLI release is unchanged.
-- Validation: cloud-only setup/migration and release checks are in progress. Final receipts are in the cloud-only app plan.
+- Validation: Rust/core/CLI and app tests pass, including 19 UI tests and native fresh/legacy setup checks. Production app settings fit without scrolling. DMG publication checks remain pending until the release workflow finishes.
+- Limits: ad-hoc signature; no notarization. Drag position, global Command-Tab, live OpenCode and broader loading telemetry remain unverified.
 
 ## Unreleased
 

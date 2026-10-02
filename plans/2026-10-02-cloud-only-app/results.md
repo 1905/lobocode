@@ -24,3 +24,6 @@ Baseline: master4b117c3. Prior hosted run36836204672 passed units/builds/core/CL
 - Title-bar drag input was issued through Computer Use. The tool does not expose window position, so actual movement is not claimed. Dock/global Command-Tab behavior remains outside this feature's verified scope.
 - Run36989404394 native setup/settings save/layout passed. Removed-command test failed because the embedded driver surfaced the expected `Command choose_target not found` outside the page catch. `8bf47a7` handles only the expected rejection messages at the driver boundary; transport/unexpected errors still fail. Full native rerun is pending.
 - README Cloud/Defaults/Clients screenshots now come from that hosted native fixture run. The obsolete Local settings image is removed.
+
+- Run36990463015 at `8bf47a7`: all build/lint/unit/type/fixture checks and native fresh/legacy smoke passed. Native checks exercise real IPC and real Settings saves with no providers or model runtime. Both test modes preserve the legacy preferences, CLI data and ownership sentinel. Only the expected removed/invalid-operation errors are accepted by the harness.
+- Code is ready for direct master merge. App-only release remains pending exact merged-revision CI and the release workflow.
