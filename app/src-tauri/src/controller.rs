@@ -1,6 +1,7 @@
 #![deny(clippy::await_holding_lock)]
 use crate::{
     backend::{Backend, Result},
+    diagnostics::Diagnostics,
     notify::Notifier,
     opencode,
     prefs::Prefs,
@@ -19,6 +20,8 @@ use std::{
 };
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+
+const START_DEADLINE: Duration = Duration::from_secs(40 * 60);
 
 #[derive(Default)]
 struct Active {
@@ -57,6 +60,7 @@ pub struct Controller {
     shutdown: CancellationToken,
     quit_lock: tokio::sync::Mutex<()>,
     runtime: tokio::runtime::Handle,
+    diagnostics: Arc<Diagnostics>,
 }
 impl Controller {
     pub fn new(
@@ -68,11 +72,35 @@ impl Controller {
         runtime: tokio::runtime::Handle,
         emit: Arc<dyn Fn(PanelState) + Send + Sync>,
     ) -> Arc<Self> {
-        let mut store = Store::new();
-        match backend.load_owner() {
-            Ok(owner) => store.set_runtime(owner),
-            Err(e) => store.poll_failed(e.message),
+        let diagnostics = Diagnostics::new(&backend.config_path());
+        if let Ok(secrets) = backend.diagnostic_secrets() {
+            diagnostics.add_secrets(secrets);
         }
+        diagnostics.write("launch", None, None, None);
+        let mut store = Store::new();
+        store.set_diagnostics(
+            diagnostics.path().to_string_lossy().into_owned(),
+            diagnostics.error(),
+        );
+        match backend.load_owner() {
+            Ok(owner) => {
+                store.set_runtime(owner);
+                diagnostics.write(
+                    "ownership_loaded",
+                    Some(&store.view(clock.now())),
+                    store.runtime().as_ref(),
+                    None,
+                );
+            }
+            Err(e) => {
+                diagnostics.write("ownership_failed", None, None, Some(&e.message));
+                store.poll_failed(diagnostics.scrub(&e.message));
+            }
+        }
+        store.set_diagnostics(
+            diagnostics.path().to_string_lossy().into_owned(),
+            diagnostics.error(),
+        );
         Arc::new(Self {
             store: Mutex::new(store),
             backend,
@@ -83,18 +111,59 @@ impl Controller {
             shutdown: CancellationToken::new(),
             quit_lock: tokio::sync::Mutex::new(()),
             runtime,
+            diagnostics,
         })
     }
     fn change(&self, f: impl FnOnce(&mut Store) -> Vec<Note>) {
-        let (s, notes) = {
-            let mut s = self.store.lock().unwrap();
-            let n = f(&mut s);
-            (s.view(self.clock.now()), n)
+        self.change_inner(None, None, f);
+    }
+    fn change_record(
+        &self,
+        event: &'static str,
+        detail: Option<&str>,
+        f: impl FnOnce(&mut Store) -> Vec<Note>,
+    ) {
+        self.change_inner(Some(event), detail, f);
+    }
+    fn change_inner(
+        &self,
+        event: Option<&'static str>,
+        detail: Option<&str>,
+        f: impl FnOnce(&mut Store) -> Vec<Note>,
+    ) {
+        let (state, notes) = {
+            let mut store = self.store.lock().unwrap();
+            let notes = f(&mut store);
+            if let Some(event) = event {
+                self.diagnostics.write(
+                    event,
+                    Some(&store.view(self.clock.now())),
+                    store.runtime().as_ref(),
+                    detail,
+                );
+            }
+            store.set_diagnostics(
+                self.diagnostics.path().to_string_lossy().into_owned(),
+                self.diagnostics.error(),
+            );
+            (store.view(self.clock.now()), notes)
         };
-        (self.emit)(s);
-        for n in notes {
-            self.notifier.send(&n);
+        (self.emit)(state);
+        for note in notes {
+            self.notifier.send(&note);
         }
+    }
+    pub fn install_panic_hook(&self) {
+        self.diagnostics.install_panic_hook();
+    }
+    pub fn log_path(&self) -> Result<PathBuf> {
+        self.diagnostics.checked_path().map_err(|e| AppError {
+            kind: "logs".into(),
+            message: format!("Cannot open startup logs: {e}"),
+        })
+    }
+    fn record(&self, event: &'static str, detail: Option<&str>) {
+        self.change_record(event, detail, |_| vec![]);
     }
     pub fn state(&self) -> PanelState {
         self.store.lock().unwrap().view(self.clock.now())
@@ -353,21 +422,25 @@ impl Controller {
         });
     }
     pub async fn load_config(&self) {
+        if let Ok(secrets) = self.backend.diagnostic_secrets() {
+            self.diagnostics.add_secrets(secrets);
+        }
         match self.backend.config().await {
             Ok((cfg, r)) => {
                 let _active = self.active.lock().unwrap();
-                self.change(|s| {
+                self.change_record("config_loaded", None, |s| {
                     s.apply_config(cfg, r);
                     vec![]
                 });
             }
-            Err(e) => self.change(|s| {
-                s.poll_failed(e.message);
+            Err(e) => self.change_record("config_failed", Some(&e.message), |s| {
+                s.poll_failed(self.diagnostics.scrub(&e.message));
                 vec![]
             }),
         }
     }
     pub async fn refresh(&self) {
+        self.expire_resumed_start();
         if !self.state().readiness.is_some_and(|r| r.cloud_ready) {
             self.load_config().await;
         }
@@ -387,7 +460,19 @@ impl Controller {
             let provider = s.runtime().map_or(view.provider, |owner| owner.provider);
             (provider, s.runtime(), s.generations())
         };
-        match self.backend.snapshot_owned(&provider, owner.clone()).await {
+        let snapshot = tokio::time::timeout(
+            Duration::from_secs(45),
+            self.backend.snapshot_owned(&provider, owner.clone()),
+        )
+        .await
+        .unwrap_or_else(|_| {
+            Err(AppError {
+                kind: "timeout".into(),
+                message: "Provider status check exceeded 45 seconds. Runtime status is unknown."
+                    .into(),
+            })
+        });
+        match snapshot {
             Ok((candidate, snap)) => {
                 let _active = self.active.lock().unwrap();
                 {
@@ -399,13 +484,20 @@ impl Controller {
                 if let Some(candidate) = &candidate
                     && let Err(e) = self.backend.adopt_owner(owner, candidate.clone())
                 {
-                    self.change(|s| {
-                        s.poll_failed(e.message);
+                    self.change_record("snapshot_failed", Some(&e.message), |s| {
+                        s.poll_failed(self.diagnostics.scrub(&e.message));
                         vec![]
                     });
                     return;
                 }
-                self.change(|s| {
+                let detail = if snap.down {
+                    "No owned runtime found."
+                } else if snap.status.is_some() {
+                    "Provider snapshot received; agent status available."
+                } else {
+                    "Provider snapshot received; agent status unavailable."
+                };
+                self.change_record("snapshot", Some(detail), |s| {
                     if s.generations() != generations || s.up_running || s.stop_running {
                         return vec![];
                     }
@@ -416,14 +508,43 @@ impl Controller {
                     s.apply_snap(snap, self.clock.now())
                 });
             }
-            Err(e) => self.change(|s| {
+            Err(e) => self.change_record("snapshot_failed", Some(&e.message), |s| {
                 if s.generations() != generations || s.up_running || s.stop_running {
                     return vec![];
                 }
-                s.poll_failed(e.message);
+                s.poll_failed(self.diagnostics.scrub(&e.message));
                 vec![]
             }),
         }
+        self.expire_resumed_start();
+    }
+    fn expire_resumed_start(&self) {
+        let expired = |store: &Store| {
+            let state = store.view(self.clock.now());
+            !store.up_running
+                && !store.stop_running
+                && state.phase == Phase::Booting
+                && state.boot_start_ms.is_some_and(|at| {
+                    self.clock.now().timestamp_millis().saturating_sub(at)
+                        >= START_DEADLINE.as_millis() as i64
+                })
+        };
+        if !expired(&self.store.lock().unwrap()) {
+            return;
+        }
+        self.change_record(
+            "resumed_start_timeout",
+            Some(
+                "Observed cloud startup exceeded 40 minutes; runtime ownership retained for Stop.",
+            ),
+            |store| {
+                if expired(store) {
+                    store.resumed_start_timed_out();
+                    store.backend_updated(self.clock.now());
+                }
+                vec![]
+            },
+        );
     }
     // Reserve synchronously. The returned receiver reports admission, not completion.
     pub fn submit_start(self: &Arc<Self>) -> Result<tokio::sync::oneshot::Receiver<Result<()>>> {
@@ -437,7 +558,7 @@ impl Controller {
                 || self.shutdown.is_cancelled()
                 || s.up_running
                 || s.stop_running
-                || !matches!(v.phase, Phase::Off | Phase::Failed { .. })
+                || !v.start_allowed
             {
                 let _ = reply.send(Ok(()));
                 return Ok(response);
@@ -449,13 +570,50 @@ impl Controller {
         self.store.lock().unwrap().set_submission_id(id);
         let cancel = CancellationToken::new();
         active.cancel = Some(cancel.clone());
+        {
+            let mut store = self.store.lock().unwrap();
+            self.diagnostics.write(
+                "start_submitted",
+                Some(&store.view(self.clock.now())),
+                store.runtime().as_ref(),
+                None,
+            );
+            store.set_diagnostics(
+                self.diagnostics.path().to_string_lossy().into_owned(),
+                self.diagnostics.error(),
+            );
+        }
         let c = self.clone();
         active.up = Some(self.runtime.spawn(async move {
-            let result = c.run_start(id, submission, previous, cancel, reply).await;
-            c.change(|s| {
+            let worker = c.clone();
+            let worker_cancel = cancel.clone();
+            let mut task = c.runtime.spawn(async move { worker.run_start(id, submission, previous, worker_cancel, reply).await });
+            let (joined, timed_out) = match tokio::time::timeout(START_DEADLINE, &mut task).await {
+                Ok(joined) => (joined, false),
+                Err(_) => {
+                    cancel.cancel();
+                    c.change_record("start_timeout", Some("Startup exceeded 40 minutes; cancellation requested, cleanup unconfirmed."), |s| {
+                        if s.owns_submission(id) && !s.stop_running {
+                            s.start_timed_out();
+                            s.backend_updated(c.clock.now());
+                        }
+                        vec![]
+                    });
+                    // Never abort or drop a possibly successful create. Observe its cleanup.
+                    (task.await, true)
+                }
+            };
+            let result = joined.unwrap_or_else(|_| Err(AppError { kind: "worker".into(), message: "Startup worker failed unexpectedly. Cleanup must be confirmed before another Start.".into() }));
+            let result = if timed_out {
+                let detail = result.as_ref().err().filter(|e| e.kind != "cancelled").map(|e| format!(" {}", e.message)).unwrap_or_default();
+                Err(AppError { kind: "timeout".into(), message: format!("Startup exceeded 40 minutes and was cancelled.{detail} Check logs and confirm cleanup with Stop.") })
+            } else { result };
+            let result = result.map_err(|e| AppError { kind: e.kind, message: c.diagnostics.scrub(&e.message) });
+            c.change_record(if result.is_ok() { "start_finished" } else { "start_failed" }, result.as_ref().err().map(|e| e.message.as_str()), |s| {
                 if !s.owns_submission(id) {
                     return vec![];
                 }
+                s.backend_updated(c.clock.now());
                 let notes = s.up_ended(result.as_ref().err().map(|e| e.message.as_str()));
                 if let Err(e) = &result
                     && e.kind != "cancelled"
@@ -513,34 +671,57 @@ impl Controller {
             let request = submission.request.clone();
             let prepared = tokio::task::spawn_blocking(move || backend.prepare_up(request))
                 .await
-                .map_err(|e| AppError {
-                    kind: "app".into(),
-                    message: format!("Start admission worker: {e}"),
+                .map_err(|_| AppError {
+                    kind: "worker".into(),
+                    message: "Start admission worker failed unexpectedly.".into(),
                 })??;
             let active = self.active.lock().unwrap();
             self.check_submission(&active, id, &submission, &cancel)?;
             let c = self.clone();
             let owner: OwnerSink = Arc::new(move |target| {
                 // No Active lock: core invokes this callback from its owned worker.
-                c.change(|s| {
+                c.change_record("ownership", None, |s| {
                     if s.owns_submission(id) {
                         s.set_runtime(Some(target));
+                        s.backend_updated(c.clock.now());
                     }
                     vec![]
                 });
                 Ok(())
             });
-            let operation = self.backend.up(prepared, previous, cancel, owner)?;
+            self.diagnostics.add_secrets(
+                [
+                    prepared.config.runpod_api_key.clone(),
+                    prepared.config.vast_api_key.clone(),
+                    prepared.config.lobo_api_key.clone(),
+                    prepared.config.cf_tunnel_token.clone(),
+                    prepared.config.r2.access_key.clone(),
+                    prepared.config.r2.secret_key.clone(),
+                ]
+                .into_iter()
+                .collect(),
+            );
+            // Keep admission atomic, but catch a synchronous backend panic while the
+            // Active guard remains outside the unwinding stack.
+            let operation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.backend.up(prepared, previous, cancel, owner)
+            }))
+            .map_err(|_| AppError {
+                kind: "worker".into(),
+                message: "Startup worker failed during admission.".into(),
+            })??;
             self.store.lock().unwrap().mark_launched();
             Ok(operation)
         }
         .await;
         let mut operation = match admitted {
             Ok(operation) => {
+                self.record("start_admitted", None);
                 let _ = reply.send(Ok(()));
                 operation
             }
             Err(e) => {
+                self.record("start_rejected", Some(&e.message));
                 let _ = reply.send(Err(AppError {
                     kind: e.kind.clone(),
                     message: e.message.clone(),
@@ -548,17 +729,40 @@ impl Controller {
                 return Err(e);
             }
         };
-        let mut events = operation.take_events().expect("new up has events");
-        while let Some(ev) = events.recv().await {
-            self.change(|s| {
-                if s.owns_submission(id) {
-                    s.handle_event(&ev, self.clock.now())
-                } else {
-                    vec![]
-                }
-            });
+        let mut events = operation.take_events().ok_or_else(|| AppError {
+            kind: "worker".into(),
+            message: "Startup worker has no progress stream.".into(),
+        })?;
+        let mut events_open = true;
+        let result = loop {
+            tokio::select! {
+                event = events.recv(), if events_open => match event {
+                    Some(event) => self.start_event(id, event),
+                    None => events_open = false,
+                },
+                result = operation.wait() => break result.map_err(AppError::from),
+            }
+        };
+        // Completion and the terminal event can become ready in the same poll.
+        while let Ok(event) = events.try_recv() {
+            self.start_event(id, event);
         }
-        operation.wait().await.map_err(AppError::from)
+        if result.is_ok() && self.state().phase != Phase::Ready {
+            return Err(AppError { kind: "worker".into(), message: "Startup ended without a Ready runtime. Check logs and stop the runtime before retrying.".into() });
+        }
+        result
+    }
+    fn start_event(&self, id: u64, mut event: lobo_proto::UpEvent) {
+        event.detail = self.diagnostics.scrub(&event.detail);
+        event.err = event.err.map(|e| self.diagnostics.scrub(&e));
+        let detail = event.err.as_deref().unwrap_or(&event.detail).to_string();
+        self.change_record("progress", Some(&detail), |s| {
+            if s.owns_submission(id) {
+                s.handle_event(&event, self.clock.now())
+            } else {
+                vec![]
+            }
+        });
     }
     pub fn stop(self: &Arc<Self>) {
         let mut active = self.active.lock().unwrap();
@@ -571,6 +775,16 @@ impl Controller {
             let up = s.up_running;
             let owner = captured;
             s.begin_stop();
+            self.diagnostics.write(
+                "stop_requested",
+                Some(&s.view(self.clock.now())),
+                s.runtime().as_ref(),
+                None,
+            );
+            s.set_diagnostics(
+                self.diagnostics.path().to_string_lossy().into_owned(),
+                self.diagnostics.error(),
+            );
             (owner, up)
         };
         let id = active.submission_id;
@@ -584,7 +798,7 @@ impl Controller {
                 let result = match tokio::time::timeout(Duration::from_secs(120), &mut task).await {
                     Ok(r) => r,
                     Err(_) => {
-                        c.change(|s| {
+                        c.change_record("stop_waiting", Some("Cleanup is still running."), |s| {
                             s.set_warning(Some("stop: cleanup is still running".into()));
                             vec![]
                         });
@@ -603,8 +817,8 @@ impl Controller {
                     _ => None,
                 };
                 if let Some(e) = error {
-                    c.change(|s| {
-                        s.stop_failed(e);
+                    c.change_record("stop_failed", Some(&e), |s| {
+                        s.stop_failed(c.diagnostics.scrub(&e));
                         vec![]
                     });
                     return;
@@ -641,19 +855,30 @@ impl Controller {
                 Ok::<_, AppError>(final_snap)
             }
             .await;
-            c.change(|s| {
-                match result {
-                    Ok(snap) => {
-                        if s.runtime() == target {
-                            s.set_runtime(None);
+            c.change_record(
+                if result.is_ok() {
+                    "stop_finished"
+                } else {
+                    "stop_failed"
+                },
+                result.as_ref().err().map(|e| e.message.as_str()),
+                |s| {
+                    s.backend_updated(c.clock.now());
+                    match &result {
+                        Ok(snap) => {
+                            if s.runtime() == target {
+                                s.set_runtime(None);
+                            }
+                            s.apply_snap(snap.clone(), c.clock.now());
+                            s.stop_done();
                         }
-                        s.apply_snap(snap, c.clock.now());
-                        s.stop_done();
+                        Err(e) => {
+                            s.stop_failed(format!("down: {}", c.diagnostics.scrub(&e.message)))
+                        }
                     }
-                    Err(e) => s.stop_failed(format!("down: {}", e.message)),
-                }
-                vec![]
-            });
+                    vec![]
+                },
+            );
             // Do not discover the UI-selected provider during Stop's final refresh.
         }));
         drop(active);
@@ -663,7 +888,16 @@ impl Controller {
     pub async fn quit(self: &Arc<Self>) -> Result<()> {
         let _quit = self.quit_lock.lock().await;
         self.active.lock().unwrap().quitting = true;
+        self.record("quit_requested", None);
         let result = self.finish_quit().await;
+        self.record(
+            if result.is_ok() {
+                "quit_finished"
+            } else {
+                "quit_failed"
+            },
+            result.as_ref().err().map(|e| e.message.as_str()),
+        );
         if result.is_ok() {
             self.shutdown.cancel();
         } else {

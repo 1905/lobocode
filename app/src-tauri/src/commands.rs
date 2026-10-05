@@ -140,6 +140,11 @@ pub fn open_config(c: C<'_>, app: tauri::AppHandle) -> Result<()> {
     Ok(())
 }
 #[tauri::command]
+pub fn open_logs(c: C<'_>, app: tauri::AppHandle) -> Result<()> {
+    let path = c.log_path()?;
+    app.opener().reveal_item_in_dir(path).map_err(error)
+}
+#[tauri::command]
 pub async fn quit(c: C<'_>, app: tauri::AppHandle) -> Result<()> {
     c.inner().quit().await?;
     app.exit(0);

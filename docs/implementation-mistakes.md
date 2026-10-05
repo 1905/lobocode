@@ -397,3 +397,18 @@ The workflow now lists authenticated releases, matches the exact tag, rejects
 duplicates, and passes the prepared numeric ID into publication. Source, tag,
 ownership and hash checks remain. Its path now triggers the required Rust CI.
 Feesh passed YAML parsing and all 14 embedded syntax checks; scratch was removed.
+
+
+## 2026-10-05 — Startup evidence was not persisted
+
+App 0.2.1 kept only six/eight progress lines in memory. Launch Services directed
+stdout and stderr to /dev/null on the installed Mac. A reported RunPod step-2
+stall therefore had no durable startup trace. Later read-only checks returned
+zero provider instances; that does not reconstruct what happened during boot.
+
+The source also checked a missing pod only after an agent first answered, and
+app failure text could prefer stale progress over the terminal error. The
+startup-diagnostics feature addresses these confirmed defects and adds durable
+private logs. Do not claim it proves the exact historical failure mechanism.
+Implementation and release acceptance are tracked in
+[the diagnostics plan](../plans/2026-10-05-startup-diagnostics/plan-v1.2.md).

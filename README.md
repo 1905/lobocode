@@ -2,7 +2,7 @@
 
 Run **Qwen3.5-27B Uncensored** (HauhauCS Aggressive) on a rented GPU from the standalone Mac app. Get an OpenAI-compatible API through a private SSH connection. The optional CLI also supports local Apple Silicon inference.
 
-**Mac app 0.2.1:** cloud-only, standalone, Apple Silicon. [Download the DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.1/lobocode.dmg). Homebrew installs the separately published CLI; the Rust CLI rewrite remains unreleased. Screenshots with performance numbers show sample data, not benchmark results.
+**Mac app 0.2.2:** cloud-only, standalone, Apple Silicon. [Download the DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.2/lobocode.dmg). Homebrew installs the separately published CLI; the Rust CLI rewrite remains unreleased. Screenshots with performance numbers show sample data, not benchmark results.
 
 The Rust cloud path resolves the latest complete public image on each new start. **Select Q6 for cloud use:** its image is public and passed RunPod TUI and native Mac Start → reply → Stop checks. New app cloud selections default to Q6. Q8 remains available as a selection, but its complete image is not published; choosing it fails before rental. Broader telemetry acceptance remains pending. See the [implementation record](docs/implementation-mistakes.md).
 
@@ -32,7 +32,7 @@ The app's Stop button targets its recorded runtime. The CLI's `down` command ret
 
 ## Install
 
-The desktop app installs from its DMG and does not require the CLI. Install the optional CLI separately through Homebrew. [Download Mac app 0.2.1](https://github.com/1905/lobocode/releases/download/app-v0.2.1/lobocode.dmg), open the DMG, and drag **lobocode** to **Applications**. Requires Apple Silicon and macOS 13 or later. The app is ad-hoc signed and is not notarized.
+The desktop app installs from its DMG and does not require the CLI. Install the optional CLI separately through Homebrew. [Download Mac app 0.2.2](https://github.com/1905/lobocode/releases/download/app-v0.2.2/lobocode.dmg), open the DMG, and drag **lobocode** to **Applications**. Requires Apple Silicon and macOS 13 or later. The app is ad-hoc signed and is not notarized.
 
 **Published CLI through Homebrew** (macOS, Linux):
 
@@ -107,7 +107,7 @@ Windows use native macOS title bars and rounded corners. Each view fits without 
 
 The Mac cloud request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds. Ready displayed 22.8 / 31.8 GB of GPU memory. The idle gauges showed `0 / 0` after the reply; live rate updates were not verified. Owned pod/tunnel cleanup, native Quit and preference restoration passed. Loading-memory progression remains unfinished. Local Metal inference and live OpenCode integration remain unverified. See the [test results and remaining checks](plans/2026-09-30-app-setup-memory-visibility/results.md).
 
-The [standalone DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.1/lobocode.dmg) contains only the app. For development, `make install-mac` builds the app and `make dmg` creates `bin/lobocode.dmg`.
+The [standalone DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.2/lobocode.dmg) contains only the app. For development, `make install-mac` builds the app and `make dmg` creates `bin/lobocode.dmg`.
 
 - The app is not notarized. If macOS blocks the first open, go to System Settings → Privacy & Security → **Open Anyway**. Or run `xattr -dr com.apple.quarantine /Applications/lobocode.app`.
 
@@ -116,6 +116,12 @@ The [standalone DMG](https://github.com/1905/lobocode/releases/download/app-v0.2
 <p><img src="docs/img/settings_defaults.png" width="520" alt="Cloud defaults: model, context size and shutdown limits"></p>
 <p><img src="docs/img/settings_clients.png" width="520" alt="Clients: configure OpenCode after the cloud runtime is Ready"></p>
 </details>
+
+## Startup diagnostics
+
+Use **logs** in the app footer to reveal the persistent diagnostic file. The default path is `~/.config/lobo/config.app-logs/app.jsonl`. A custom app config has its own adjacent log directory. Logs include the app version, session, timestamps, selected provider/model, instance identity, startup checks, failures and cleanup outcomes. Credentials and request content are excluded. Each log is limited to 2 MiB; the app retains three older files.
+
+During startup, the app shows the age of the last backend update. A missing update does not establish that the container is running. The app checks the selected provider instance before the agent connects and reports confirmed deletion. Provider errors remain unknown status. Startup timeout requests cancellation; unconfirmed cleanup blocks another Start and exposes Retry Stop. A logging failure is shown in the app.
 
 ## OpenCode
 

@@ -7,9 +7,13 @@
   <LinkButton
     label="settings ⌘,"
     onclick={() => action('settings')}
-  /><LinkButton label="config" onclick={() => action('reveal')} /><span
-    class="grow"
-  ></span><LinkButton label="quit ⌘q" onclick={() => action('quit')} />
+  /><LinkButton label="config" onclick={() => action('reveal')} /><LinkButton
+    label="logs"
+    onclick={() => action('logs')}
+  /><span class="grow"></span><LinkButton
+    label="quit ⌘q"
+    onclick={() => action('quit')}
+  />
 </footer>
 
 <style>

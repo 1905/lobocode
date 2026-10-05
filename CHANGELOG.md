@@ -1,5 +1,12 @@
 # Changelog
 
+## App 0.2.2 — pending release
+
+- Add private, rotating startup logs and a Logs control. Show the last backend update and any logging failure.
+- Check for a missing cloud instance before the agent connects. Report unknown provider status without claiming the container is running.
+- Supervise startup failures and timeouts. Preserve the actual error, retain cleanup ownership and block duplicate starts while cleanup is unresolved.
+- Validation pending. The earlier step-2 stall has no saved startup log; its exact historical cause remains unknown.
+
 ## App 0.2.1 — 2026-10-02
 
 - Make the Mac app cloud-only. Remove local Start, memory/model controls, local settings, local IPC and the local supervisor entry point.

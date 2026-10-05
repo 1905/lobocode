@@ -112,6 +112,22 @@ describe("cloud-only native app without provider calls", () => {
     for (const key of ["target", "is_local", "local_memory", "models"])
       assert.equal(key in state, false);
     assert.equal(state.readiness.cloud_ready, false);
+    assert.equal(state.start_allowed, false);
+    assert.equal(state.logging_error, null);
+    assert.equal(
+      state.log_path,
+      fixture.config.replace(/\.env$/, ".app-logs/app.jsonl"),
+    );
+    assert.equal(await $("button*=logs").isExisting(), true);
+    assert.equal(fs.statSync(state.log_path).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(path.dirname(state.log_path)).mode & 0o777, 0o700);
+    const launchLog = fs
+      .readFileSync(state.log_path, "utf8")
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    assert.ok(launchLog.some((entry) => entry.event === "launch"));
+    assert.ok(launchLog.some((entry) => entry.event === "config_loaded"));
     assert.equal(await $("button*=START").isExisting(), false);
     await noLocalControls();
     if (fixture.legacy) {
@@ -189,6 +205,14 @@ describe("cloud-only native app without provider calls", () => {
     assert.match(saved, /^LOBO_CTX=16384$/m);
     assert.match(saved, /^LOBO_CONNECTION=ssh$/m);
     assert.equal(fs.statSync(fixture.config).mode & 0o777, 0o600);
+    const diagnosticState = (await invoke("get_state")).value;
+    const diagnosticLog = fs.readFileSync(diagnosticState.log_path, "utf8");
+    const apiKey = saved.match(/^LOBO_API_KEY=(.+)$/m)?.[1];
+    assert.ok(apiKey);
+    assert.ok(
+      !diagnosticLog.includes(apiKey),
+      "diagnostics must not retain the API key",
+    );
     if (fixture.legacy) {
       assert.match(saved, /^LOBO_PROVIDER=local$/m);
       assert.match(saved, /^LOBO_LOCAL_PORT=17891$/m);

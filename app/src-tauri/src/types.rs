@@ -111,6 +111,11 @@ pub struct PanelState {
     pub steps: Vec<StepMark>,
     #[ts(type = "number | null")]
     pub boot_start_ms: Option<i64>,
+    #[ts(type = "number | null")]
+    pub last_update_ms: Option<i64>,
+    pub log_path: Option<String>,
+    pub logging_error: Option<String>,
+    pub start_allowed: bool,
     pub up_phase: Option<String>,
     pub last_detail: String,
     pub warning: Option<String>,

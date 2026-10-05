@@ -299,7 +299,9 @@ jobs:
               }
             } else {
               const body = [marker, '', 'Standalone cloud-only Mac app for Apple Silicon (macOS 13 or later).',
-                '', '- Configure RunPod or Vast and manage the selected cloud GPU.',
+                '', '- Persistent private startup logs are available from the Logs control.',
+                '- Startup reports recent checks, missing pods, worker errors and unconfirmed cleanup.',
+                '- Configure RunPod or Vast and manage the selected cloud GPU.',
                 '- Local model execution and local settings are removed from the Mac app.',
                 '- New cloud selections default to Q6. Public Q6 image availability is checked before this release.',
                 '- Each new cloud start resolves the current public image. This release does not pin its image.',

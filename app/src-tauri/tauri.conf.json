@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "lobocode",
   "mainBinaryName": "lobocode",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "identifier": "io.github.1905.lobocode",
   "build": {
     "frontendDist": "../ui/dist",

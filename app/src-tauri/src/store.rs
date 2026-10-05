@@ -44,6 +44,10 @@ impl Store {
     }
     pub fn view(&self, now: DateTime<Utc>) -> PanelState {
         let mut s = self.state.clone();
+        s.start_allowed = !self.up_running
+            && !self.stop_running
+            && !self.cleanup_failed
+            && matches!(s.phase, Phase::Off | Phase::Failed { .. });
         s.boot_steps = Step::steps().to_vec();
         s.current_step = (s.phase == Phase::Booting)
             .then(|| {
@@ -214,6 +218,7 @@ impl Store {
         }
     }
     pub fn apply_snap(&mut self, s: Snap, now: DateTime<Utc>) -> Vec<Note> {
+        self.backend_updated(now);
         let before = self.state.phase.clone();
         if let Some(st) = &s.status
             && matches!(st.stage, Stage::Download | Stage::Verify)
@@ -279,6 +284,7 @@ impl Store {
         }
     }
     pub fn begin_up(&mut self, now: DateTime<Utc>) -> UpRequest {
+        self.backend_updated(now);
         self.up_running = true;
         self.cleanup_failed = false;
         self.user_stopped = false;
@@ -297,6 +303,7 @@ impl Store {
         }
     }
     pub fn handle_event(&mut self, ev: &UpEvent, now: DateTime<Utc>) -> Vec<Note> {
+        self.backend_updated(now);
         self.state.up_phase = Some(ev.phase.clone());
         if let Some(step) = Step::from_up_phase(&ev.phase) {
             self.mark(step, now);
@@ -315,6 +322,7 @@ impl Store {
         }
         if let Some(r) = &ev.ready
             && !self.stop_running
+            && !self.cleanup_failed
         {
             self.state.ready_url = Some(r.url.clone());
             self.state.phase = Phase::Ready;
@@ -344,15 +352,7 @@ impl Store {
         if let Some(err) = last_err
             && !matches!(self.state.phase, Phase::Ready | Phase::Stopping)
         {
-            let msg = self
-                .state
-                .log_tail
-                .iter()
-                .rev()
-                .find(|s| !s.is_empty())
-                .map(String::as_str)
-                .unwrap_or(err)
-                .to_string();
+            let msg = err.to_string();
             self.state.phase = Phase::Failed {
                 message: msg.clone(),
             };
@@ -362,6 +362,38 @@ impl Store {
             }];
         }
         vec![]
+    }
+    pub fn backend_updated(&mut self, now: DateTime<Utc>) {
+        self.state.last_update_ms = Some(now.timestamp_millis());
+    }
+    pub fn set_diagnostics(&mut self, path: String, error: Option<String>) {
+        self.state.log_path = Some(path);
+        self.state.logging_error = error;
+    }
+    pub fn start_timed_out(&mut self) {
+        // Keep up_running true until the retained worker finishes cleanup.
+        self.cleanup_failed = true;
+        self.state.phase = Phase::Failed {
+            message:
+                "Startup exceeded 40 minutes. Cancellation requested; cleanup is not yet confirmed."
+                    .into(),
+        };
+        self.state.warning = Some("Cleanup is still running. Do not start another GPU.".into());
+    }
+    pub fn resumed_start_timed_out(&mut self) {
+        self.cleanup_failed = true;
+        let provider_time = self
+            .state
+            .snap
+            .as_ref()
+            .and_then(|s| s.pod.as_ref())
+            .is_some_and(|p| p.started_at.0.is_some());
+        self.state.phase = Phase::Failed { message: if provider_time {
+            "Cloud startup exceeded 40 minutes since the provider start time. Stop the runtime before retrying."
+        } else {
+            "Cloud runtime did not reach Ready during 40 minutes of observation. Its original start time is unknown. Stop it before retrying."
+        }.into() };
+        self.state.warning = Some("Runtime cleanup has not been confirmed.".into());
     }
     pub fn begin_stop(&mut self) {
         self.stop_running = true;
@@ -384,8 +416,7 @@ impl Store {
         self.clear_progress();
     }
     pub fn dismiss(&mut self) {
-        if !self.up_running && !self.stop_running {
-            self.cleanup_failed = false;
+        if !self.up_running && !self.stop_running && !self.cleanup_failed {
             self.state.phase = Phase::Off;
         }
     }
