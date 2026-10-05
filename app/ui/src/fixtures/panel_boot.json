@@ -49,9 +49,12 @@
     },
     "endpoint": "http://127.0.0.1:8933/v1",
     "last_detail": "vast 26461230, offer 51401937, 18877 Mbps down, California, US, $0.73/h",
+    "last_update_ms": 1790683200000,
+    "log_path": null,
     "log_tail": [
       "vast 26461230, offer 51401937, 18877 Mbps down, California, US, $0.73/h"
     ],
+    "logging_error": null,
     "menu_text": "56%",
     "model": "q6",
     "phase": {
@@ -88,6 +91,7 @@
       "status": null,
       "version": null
     },
+    "start_allowed": false,
     "steps": [
       {
         "at_s": 8.0,

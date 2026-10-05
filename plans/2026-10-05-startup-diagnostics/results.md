@@ -10,9 +10,14 @@
 
 ## Implementation checks
 
-- Feesh UI: 20 tests pass and production Vite build passes for the initial freshness/Logs/cleanup-control changes. Svelte type checking waits for hosted Rust-generated bindings.
+- Feesh UI: 20 tests, Svelte type checks (zero warnings), production Vite build and formatting pass with hosted Rust-generated bindings from CI 37269716115.
 - Dell core checks passed: 270 library tests, one pre-existing opt-in archive-download test ignored; all-target clippy passed. Five new cases cover pre-agent missing pods, unknown authorization state, repeated heartbeat, hung reads and cancellation. Evidence: /tmp/lobocode-startup-core-20261005-evidence/. This follows the 2026-10-03 Rust-host correction; no containers ran on Dell.
 - App Rust and native checks run on hosted macOS. No local Cargo, inference or OpenCode launch.
+
+## Review and integration
+
+- Rival review of dab5025 found three defects: Stop/Ready cleanup race, resumed deadline falsely failing a previously Ready runtime, and malformed config error exposing opaque credentials. Full output: [review.txt](review.txt). The follow-up changes accept successful completion during Stop, track established readiness per runtime identity, bound resumed observation instead of pod age, and remove config values from parser/app errors. Focused regressions and hosted validation are pending.
+- First hosted CI compiled the app and generated bindings. It found a one-character clippy fix and CLI/TUI golden expectation changes for the intentional initial agent-unreachable detail. These failures block release until corrected.
 
 ## Limits
 

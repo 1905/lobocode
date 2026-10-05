@@ -184,7 +184,7 @@ fn redact(text: &str, secrets: &[String]) -> String {
         .unwrap_or(0);
     if text.len() > MAX_TEXT {
         text.truncate(end);
-        text.push_str("…");
+        text.push('…');
     }
     text
 }

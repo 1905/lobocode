@@ -1123,26 +1123,62 @@ async fn controller_logs_survive_restart_and_disk_failure_is_visible() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn restored_runtime_timeout_keeps_owner_and_cannot_be_dismissed() {
-    let (controller, _, _) = cloud_owned_fixture();
+async fn restored_runtime_uses_observation_time_and_ready_reconnects_without_false_failure() {
+    let (controller, backend, _) = cloud_owned_fixture();
     controller.load_config().await;
     controller.refresh().await;
     let owner = controller.runtime_target().unwrap();
-    let mut snapshot = controller.state().snap.unwrap();
-    snapshot.status = None;
-    snapshot.pod.as_mut().unwrap().started_at =
-        lobo_proto::GoTime::from_utc(controller.clock.now() - chrono::TimeDelta::minutes(41));
-    controller.change(|store| store.apply_snap(snapshot, controller.clock.now()));
+    let mut ready = controller.state().snap.unwrap();
+    ready.pod.as_mut().unwrap().started_at =
+        lobo_proto::GoTime::from_utc(controller.clock.now() - chrono::TimeDelta::hours(2));
+    let mut disconnected = ready.clone();
+    disconnected.status = None;
+    controller.change(|store| {
+        store.apply_snap(
+            disconnected.clone(),
+            controller.clock.now() - chrono::TimeDelta::minutes(41),
+        )
+    });
     controller.expire_resumed_start();
-    let Phase::Failed { message } = controller.state().phase else {
-        panic!("restored boot did not fail")
+    assert!(controller.store.lock().unwrap().runtime_seen_ready());
+    assert_eq!(controller.state().phase, Phase::Booting);
+    controller.refresh().await;
+    assert_eq!(controller.state().phase, Phase::Ready);
+    let restarted = Controller::new(
+        backend,
+        Arc::new(Notes::default()),
+        backend_clock(),
+        Prefs::default(),
+        None,
+        tokio::runtime::Handle::current(),
+        Arc::new(|_| {}),
+    );
+    restarted.change(|store| store.apply_snap(disconnected.clone(), restarted.clock.now()));
+    restarted.expire_resumed_start();
+    assert_eq!(restarted.state().phase, Phase::Booting);
+    assert_eq!(
+        restarted.state().boot_start_ms,
+        Some(restarted.clock.now().timestamp_millis())
+    );
+    assert!(!restarted.store.lock().unwrap().runtime_seen_ready());
+    // Simulate forty-one minutes of observed not-ready state after a restart.
+    restarted.change(|store| {
+        store.stop_done();
+        store.apply_snap(
+            disconnected,
+            restarted.clock.now() - chrono::TimeDelta::minutes(41),
+        )
+    });
+    restarted.expire_resumed_start();
+    let Phase::Failed { message } = restarted.state().phase else {
+        panic!("observed boot did not fail")
     };
-    assert!(message.contains("provider start time"));
-    controller.dismiss();
-    assert!(!controller.state().start_allowed);
-    assert_eq!(controller.runtime_target().unwrap(), owner);
+    assert!(message.contains("40 minutes of observation"));
+    restarted.dismiss();
+    assert!(!restarted.state().start_allowed);
+    assert_eq!(restarted.runtime_target().unwrap(), owner);
     assert!(
-        std::fs::read_to_string(controller.log_path().unwrap())
+        std::fs::read_to_string(restarted.log_path().unwrap())
             .unwrap()
             .contains("resumed_start_timeout")
     );
@@ -1170,4 +1206,107 @@ async fn bounded_snapshot_reports_unknown_without_deleting_or_losing_owner() {
             .unwrap()
             .contains("snapshot_failed")
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn stop_at_ready_event_cleans_the_successful_runtime() {
+    let (old, backend, provider) = fixture(0, false, false);
+    drop(old);
+    let owner = Arc::new(Mutex::new(std::sync::Weak::<Controller>::new()));
+    let captured = owner.clone();
+    let stopped = Arc::new(tokio::sync::Notify::new());
+    let notify = stopped.clone();
+    let once = AtomicBool::new(false);
+    let controller = Controller::new(
+        backend.clone(),
+        Arc::new(Notes::default()),
+        backend_clock(),
+        Prefs::default(),
+        None,
+        tokio::runtime::Handle::current(),
+        Arc::new(move |state| {
+            if state.phase == Phase::Ready
+                && state.up_phase.as_deref() == Some("ready")
+                && !once.swap(true, Ordering::SeqCst)
+            {
+                let controller = captured.lock().unwrap().upgrade().unwrap();
+                controller.stop();
+                notify.notify_one();
+            }
+        }),
+    );
+    *owner.lock().unwrap() = Arc::downgrade(&controller);
+    start(&controller, &provider).await;
+    stopped.notified().await;
+    join_stop(&controller).await;
+    assert_eq!(controller.state().phase, Phase::Off);
+    assert!(provider.running.lock().unwrap().is_empty());
+    assert_eq!(backend.down_calls.load(Ordering::SeqCst), 2);
+    let logs = std::fs::read_to_string(controller.log_path().unwrap()).unwrap();
+    assert!(logs.contains("start_finished"));
+    assert!(!logs.contains("ended without a Ready"));
+    assert!(logs.contains("stop_finished"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn outer_start_worker_panic_is_observed_and_cleanup_blocks_another_rental() {
+    let (old, backend, provider) = fixture(20, false, false);
+    drop(old);
+    let panicked = Arc::new(AtomicBool::new(false));
+    let once = panicked.clone();
+    let controller = Controller::new(
+        backend.clone(),
+        Arc::new(Notes::default()),
+        backend_clock(),
+        Prefs::default(),
+        None,
+        tokio::runtime::Handle::current(),
+        Arc::new(move |state| {
+            if state.up_phase.as_deref() == Some("create") && !once.swap(true, Ordering::SeqCst) {
+                panic!("private request content must not appear in diagnostics");
+            }
+        }),
+    );
+    start(&controller, &provider).await;
+    let task = controller.active.lock().unwrap().up.take().unwrap();
+    let failure = task.await.unwrap().unwrap_err();
+    assert_eq!(failure.kind, "worker");
+    assert!(panicked.load(Ordering::SeqCst));
+    assert!(matches!(controller.state().phase, Phase::Failed { .. }));
+    assert!(!controller.state().start_allowed);
+    controller.submit_start().unwrap().await.unwrap().unwrap();
+    assert_eq!(backend.up_calls.load(Ordering::SeqCst), 1);
+    let logs = std::fs::read_to_string(controller.log_path().unwrap()).unwrap();
+    assert!(logs.contains("start_failed"));
+    assert!(!logs.contains("private request content"));
+    controller.stop();
+    join_stop(&controller).await;
+    assert!(provider.running.lock().unwrap().is_empty());
+    assert_eq!(controller.state().phase, Phase::Off);
+}
+
+#[tokio::test]
+async fn malformed_config_never_logs_an_opaque_credential() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("config.env");
+    let credential = "opaque-credential-with-no-known-prefix-891273";
+    std::fs::write(&path, format!("VASTAI_API_KEY=\"{credential}\n")).unwrap();
+    let backend = Arc::new(crate::backend::CoreBackend::new(path).unwrap());
+    assert!(backend.diagnostic_secrets().is_err());
+    let controller = Controller::new(
+        backend,
+        Arc::new(Notes::default()),
+        backend_clock(),
+        Prefs::default(),
+        None,
+        tokio::runtime::Handle::current(),
+        Arc::new(|_| {}),
+    );
+    controller.load_config().await;
+    let state = controller.state();
+    assert_eq!(state.warning.as_deref(), Some(CONFIG_ERROR_MESSAGE));
+    assert!(!serde_json::to_string(&state).unwrap().contains(credential));
+    let logs = std::fs::read_to_string(controller.log_path().unwrap()).unwrap();
+    assert!(logs.contains("config_failed"));
+    assert!(!logs.contains(credential));
 }

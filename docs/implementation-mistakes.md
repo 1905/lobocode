@@ -411,4 +411,4 @@ app failure text could prefer stale progress over the terminal error. The
 startup-diagnostics feature addresses these confirmed defects and adds durable
 private logs. Do not claim it proves the exact historical failure mechanism.
 Implementation and release acceptance are tracked in
-[the diagnostics plan](../plans/2026-10-05-startup-diagnostics/plan-v1.2.md).
+[the diagnostics plan](../plans/2026-10-05-startup-diagnostics/plan-v1.3.md).

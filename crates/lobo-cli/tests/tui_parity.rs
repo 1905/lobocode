@@ -12,7 +12,13 @@ fn golden(name: &str, text: String) {
         .join(format!("{name}.golden"));
     let expected = std::fs::read_to_string(path)
         .unwrap()
-        .replace(", release 2026.09.23-1, q8 ctx 8192", ", q8 ctx 65536");
+        .replace(", release 2026.09.23-1, q8 ctx 8192", ", q8 ctx 65536")
+        // Preserve the Go capture; Rust now exposes its initial unanswered
+        // agent probe. Assert the added diagnostic text rather than removing it.
+        .replace(
+            " ✓ boot container  7s     \n",
+            " ✓ boot container  7s     agent unreachable (other); ready unconfirmed\n",
+        );
     assert_eq!(text, expected, "{name}");
     insta::assert_snapshot!(name, text);
 }

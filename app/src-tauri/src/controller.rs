@@ -524,6 +524,7 @@ impl Controller {
             !store.up_running
                 && !store.stop_running
                 && state.phase == Phase::Booting
+                && !store.runtime_seen_ready()
                 && state.boot_start_ms.is_some_and(|at| {
                     self.clock.now().timestamp_millis().saturating_sub(at)
                         >= START_DEADLINE.as_millis() as i64
@@ -747,8 +748,12 @@ impl Controller {
         while let Ok(event) = events.try_recv() {
             self.start_event(id, event);
         }
-        if result.is_ok() && self.state().phase != Phase::Ready {
-            return Err(AppError { kind: "worker".into(), message: "Startup ended without a Ready runtime. Check logs and stop the runtime before retrying.".into() });
+        if result.is_ok() {
+            let store = self.store.lock().unwrap();
+            // Stop deliberately suppresses Ready while waiting for this worker.
+            if !store.stop_running && store.view(self.clock.now()).phase != Phase::Ready {
+                return Err(AppError { kind: "worker".into(), message: "Startup ended without a Ready runtime. Check logs and stop the runtime before retrying.".into() });
+            }
         }
         result
     }

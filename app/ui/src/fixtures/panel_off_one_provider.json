@@ -43,7 +43,10 @@
     "download": null,
     "endpoint": "http://127.0.0.1:8933/v1",
     "last_detail": "",
+    "last_update_ms": 1790683200000,
+    "log_path": null,
     "log_tail": [],
+    "logging_error": null,
     "menu_text": "off",
     "model": "q6",
     "phase": {
@@ -71,6 +74,7 @@
       "status": null,
       "version": null
     },
+    "start_allowed": true,
     "steps": [],
     "up_phase": null,
     "warning": null

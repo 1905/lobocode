@@ -1,0 +1,28 @@
+
+═══ RIVAL REVIEW ═══
+
+Model: codex (gpt-6-astra)
+Scope: Review master...HEAD in /Users/kass/dev/lobocode-startup-diagnostics against plans/2026-10-05-startup-diagnostics/spec.md and plan-v1.2.md. Persistent private startup logs, bounded worker/resumed-start handling, pre-agent provider absence checks, honest UI freshness and cleanup gates. Focus on material correctness, concurrency, deadlocks, secret/content leaks and cleanup ownership. The source is committed; hosted macOS generation/checks are running, so committed generated types/fixtures currently lack the new fields and will be regenerated before release. Do not run Cargo/builds/tests or inference on this Mac. Read-only review; no edits. Report actionable findings with mechanisms and file/line references.
+
+Summary: Reviewed committed master...HEAD at dab5025. Found three actionable defects. No builds or tests ran; pending generated types and fixtures were excluded.
+
+1. [high] Stop racing with Ready can skip runtime deletion — app/src-tauri/src/controller.rs:750
+   Successful completion requires the current UI phase to be Ready. Stop sets Stopping, and Store::handle_event deliberately suppresses Ready while stopping. This check then converts successful startup into a worker error. Stop receives that error and returns at lines 819–824 before calling backend.down. The rented GPU remains running.
+   Scenario: Core startup finishes successfully, but Stop runs before the controller checks completion → startup reports a false worker failure and Stop leaves the GPU running.
+   Fix: Check stop_running and phase under one Store lock. Accept successful completion during Stop so the Stop worker continues through owned cleanup. Add a regression with Ready queued when Stop begins.
+   (concurrency, confidence 10)
+
+2. [high] A temporary disconnect permanently fails an established runtime — app/src-tauri/src/controller.rs:526
+   This deadline applies to every Booting state without an active startup worker. snapshot_app returns status=None when an agent request fails. Store::apply_snap then changes an established Ready runtime to Booting and uses the original pod start time. For pods older than 40 minutes, this immediately sets cleanup_failed. Later successful Ready snapshots cannot recover because apply_snap preserves the failed phase while that flag is set.
+   Scenario: A runtime has been Ready for over 40 minutes, then one agent status request fails → the app reports startup timeout and requires Stop even after connectivity recovers.
+   Fix: Track startup completion per runtime identity. Apply the resumed-start deadline only before that runtime first reaches Ready. Keep later connectivity failures recoverable through successful snapshots.
+   (bug, confidence 10)
+
+3. [med] Malformed configuration can persist an unredacted API key — app/src-tauri/src/controller.rs:436
+   diagnostic_secrets uses the same parser as config loading, so a parse failure prevents secret registration. The raw config error is then persisted here. dotenv::extract includes the unterminated value in its error at crates/lobo-core/src/config/dotenv.rs:87–90, without its key name. An opaque credential therefore matches neither configured-secret replacement nor the credential-assignment patterns.
+   Scenario: The app launches with VASTAI_API_KEY="<opaque credential> missing its closing quote → config_failed writes the credential into app.jsonl.
+   Fix: Log a fixed config-load failure category with safe location information. Remove source values from parser errors before they reach diagnostics or UI. Add a regression using an unterminated opaque credential.
+   (security, confidence 10)
+
+Findings: 3 total — 0 crit, 2 high, 1 med, 0 low
+Log: /Users/kass/.rival/sessions/7634c15a-f1f0-4acd-b738-2451ba843f7a.log

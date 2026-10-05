@@ -5,7 +5,7 @@ expression: text
 lobo up  ·  Qwen3.5-27B on a rented RTX 5090
 
  ✓ rent pod        7s     runpod pod1, COMMUNITY, host ≥10000 Mbps, $0.69/h, q8 ctx 65536
- ✓ boot container  7s     
+ ✓ boot container  7s     agent unreachable (other); ready unconfirmed
  ✓ tunnel          7s     
  ✓ gpu check       
  ✓ download model  7s     

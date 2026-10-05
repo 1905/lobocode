@@ -1,6 +1,6 @@
-# Startup diagnostics implementation plan v1.2
+# Startup diagnostics implementation plan v1.3
 **Date:** 2026-10-05
-**Status:** superseded by plan-v1.3.md
+**Status:** in-progress
 **Spec:** ./spec.md (approved by direct implement/re-release/install instruction)
 **Goal:** Deliver app 0.2.2 with durable private logs and explicit stalled-start outcomes.
 **Architecture:** App-owned bounded JSONL diagnostics plus supervised startup; exact provider liveness in shared startup loop.
@@ -17,13 +17,13 @@ Use the exact spec map. App backend worker owns Rust app code except version met
 ## Tasks
 - [ ] 1. App diagnostics and supervision: implement the contract, expose Logs IPC, redact/bound/rotate, add regressions for privacy, worker failure and deadlines. Verify hosted `make app-lint app-test app-fixtures`.
 - [x] 2. Core startup: regression for pre-agent missing pod and heartbeat/unknown status; preserve guarded cleanup/retries. Dell focused core tests and clippy, then normal CI.
-- [ ] 3. UI: Logs action, last-update age and visible logging errors; retain fixed layout. Feesh UI tests/check/build/format; remotely generated types must match.
+- [x] 3. UI: Logs action, last-update age and visible logging errors; retain fixed layout. Feesh UI tests/check/build/format; remotely generated types must match.
 - [ ] 4. Parent integration: native diagnostics checks, version 0.2.2, docs/changelog, one whole-branch rival-codex review, fix material findings and run required CI.
 - [ ] 5. Direct merge/push; exact master CI, app-v0.2.2 app release, anonymous DMG validation, local app-only install and new durable log proof. Notify QA readiness then complete remaining suites/records; archive only after delivery.
 
 ## Interface consistency
-- [ ] PanelState last_update_ms/log_path/logging_error/start_allowed match Rust-generated TS and fixtures.
-- [ ] Logs command name `open_logs`; UI uses existing native invoke route.
+- [x] PanelState last_update_ms/log_path/logging_error/start_allowed match Rust-generated TS and fixtures.
+- [x] Logs command name `open_logs`; UI uses existing native invoke route.
 - [ ] Provider absence and unknown state remain distinct; timeout never abandons an in-flight rental.
 - [ ] App version/tag/source/install match; CLI and model images unchanged.
 
@@ -34,3 +34,6 @@ Expose backend Start permission so unresolved cleanup cannot display an actionab
 
 ## Revision v1.2
 Bound resumed startup snapshots and restored Booting state; enforce unresolved-cleanup dismissal guard in IPC as well as the UI. Keep panic payloads out of diagnostics. These close the same indefinite-boot failure modes after restart.
+
+## Revision v1.3
+Apply Rival findings: preserve cleanup during Stop/Ready races, track established readiness per runtime identity, use observed wait instead of pod age after restart, and keep malformed configuration values out of error text. Add focused regressions before the next hosted run.

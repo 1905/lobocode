@@ -252,16 +252,25 @@ async fn up_command_modes_defaults_and_report() {
         assert!(s.deleted.is_empty());
         // Frozen Go output still checks the event contract. Rust cloud starts
         // use built-in defaults and resolve an image before an agent version exists.
+        // Rust also reports initial agent reachability. Keep the frozen consumer
+        // fixtures unchanged, and assert this intentional producer difference.
         // A fixed clock keeps this command test independent of clock-read counts.
         let adapt =
             |text: String| text.replace(", release 2026.09.23-1, q8 ctx 8192", ", q8 ctx 65536");
         if flag == "--json" {
             let mut expected = json_lines(&adapt(fixture("json_up_boot.jsonl")));
+            assert_eq!(expected[1]["phase"], "image");
+            expected[1]["detail"] = "agent unreachable (other); ready unconfirmed".into();
             expected.last_mut().unwrap()["ready"]["elapsed_ns"] = 0.into();
             assert_eq!(json_lines(&out), expected);
         } else {
             assert!(out.is_empty());
-            let expected = adapt(fixture("plain_up_boot.txt")).replace("boot=15000", "boot=0");
+            let expected = adapt(fixture("plain_up_boot.txt"))
+                .replace("boot=15000", "boot=0")
+                .replace(
+                    "INF up phase=image",
+                    "INF up detail=\"agent unreachable (other); ready unconfirmed\" phase=image",
+                );
             assert!(
                 no_timestamps(&err).starts_with(&no_timestamps(&expected)),
                 "{err}"

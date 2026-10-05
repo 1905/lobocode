@@ -249,9 +249,9 @@ fn apply_snap_resume_stop_note_and_cleanup() {
     p.pod.as_mut().unwrap().started_at = GoTime::from_utc(now() - chrono::TimeDelta::seconds(72));
     s.apply_snap(p, now());
     let v = s.view(now());
-    assert_eq!(v.boot_start_ms, Some(now().timestamp_millis() - 72000));
+    assert_eq!(v.boot_start_ms, Some(now().timestamp_millis()));
     assert_eq!(v.steps.len(), 5);
-    assert!(v.steps.iter().all(|s| s.at_s == 72.0));
+    assert!(v.steps.iter().all(|s| s.at_s == 0.0));
     s.apply_snap(snap(false, Some(Stage::Ready)), now());
     let v = s.view(now());
     assert!(v.steps.is_empty() && v.download.is_none() && v.boot_start_ms.is_none());
@@ -453,4 +453,52 @@ fn freshness_tracks_backend_events_not_render_time_or_ui_actions() {
     store.begin_stop();
     store.stop_done();
     assert!(store.view(later).start_allowed);
+}
+
+#[test]
+fn restored_boot_explains_agent_is_not_confirmed() {
+    let mut store = Store::new();
+    store.apply_snap(snap(false, None), now());
+    let state = store.view(now());
+    assert_eq!(state.phase, Phase::Booting);
+    assert_eq!(state.current_step, Some(Step::Container));
+    assert_eq!(
+        state.last_detail,
+        "Cloud runtime found. Waiting for agent status."
+    );
+    assert_eq!(state.last_update_ms, Some(now().timestamp_millis()));
+}
+
+#[test]
+fn restored_observation_resets_on_identity_change_without_resetting_active_start() {
+    let mut store = Store::new();
+    let target = |id: &str| lobo_core::control::RuntimeTarget {
+        provider: "runpod".into(),
+        instance_id: Some(id.into()),
+        boot_id: id.into(),
+        agent_url: None,
+        api_url: None,
+        local_pid: None,
+        local_start_id: None,
+    };
+    store.set_runtime(Some(target("first")));
+    let mut first = snap(false, None);
+    first.pod.as_mut().unwrap().id = "first".into();
+    store.apply_snap(first, now());
+    let later = now() + chrono::TimeDelta::minutes(30);
+    store.set_runtime(Some(target("second")));
+    assert_eq!(store.view(later).boot_start_ms, None);
+    let mut second = snap(false, None);
+    second.pod.as_mut().unwrap().id = "second".into();
+    store.apply_snap(second, later);
+    assert_eq!(
+        store.view(later).boot_start_ms,
+        Some(later.timestamp_millis())
+    );
+    store.begin_up(later);
+    store.set_runtime(Some(target("third")));
+    assert_eq!(
+        store.view(later).boot_start_ms,
+        Some(later.timestamp_millis())
+    );
 }

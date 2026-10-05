@@ -17,6 +17,7 @@ pub struct Store {
     selection_generation: u64,
     submission_id: u64,
     operation_launched: bool,
+    ready_identity: Option<(String, String, String)>,
 }
 impl Store {
     pub fn new() -> Self {
@@ -40,6 +41,7 @@ impl Store {
             selection_generation: 0,
             submission_id: 0,
             operation_launched: false,
+            ready_identity: None,
         }
     }
     pub fn view(&self, now: DateTime<Utc>) -> PanelState {
@@ -241,12 +243,19 @@ impl Store {
             self.user_stopped = false;
         }
         if next == Phase::Booting && self.state.boot_start_ms.is_none() {
-            self.state.boot_start_ms = Some(
-                s.pod
-                    .as_ref()
-                    .and_then(|p| p.started_at.0)
-                    .map_or(now.timestamp_millis(), |at| at.timestamp_millis()),
-            );
+            // A pod's age does not prove it never reached Ready. After restart,
+            // only our observed not-ready duration is a trustworthy startup bound.
+            self.state.boot_start_ms = Some(now.timestamp_millis());
+        }
+        if next == Phase::Booting
+            && !self.up_running
+            && s.status.is_none()
+            && self.state.last_detail.is_empty()
+        {
+            self.state.last_detail = "Cloud runtime found. Waiting for agent status.".into();
+            self.state.up_phase = Some("boot".into());
+            self.mark(Step::Rent, now);
+            self.mark(Step::Container, now);
         }
         if next == Phase::Booting
             && let Some(step) = s
@@ -263,6 +272,12 @@ impl Store {
         }
         if next == Phase::Off {
             self.state.ready_url = None;
+        }
+        if next == Phase::Ready {
+            self.ready_identity = self.snap_identity(&s);
+        }
+        if s.down {
+            self.ready_identity = None;
         }
         self.state.phase = next;
         self.state.snap = Some(s);
@@ -286,6 +301,7 @@ impl Store {
     pub fn begin_up(&mut self, now: DateTime<Utc>) -> UpRequest {
         self.backend_updated(now);
         self.up_running = true;
+        self.ready_identity = None;
         self.cleanup_failed = false;
         self.user_stopped = false;
         self.state.phase = Phase::Booting;
@@ -326,6 +342,13 @@ impl Store {
         {
             self.state.ready_url = Some(r.url.clone());
             self.state.phase = Phase::Ready;
+            self.ready_identity = self.runtime.as_ref().map(|owner| {
+                (
+                    owner.provider.clone(),
+                    owner.instance_id.clone().unwrap_or_default(),
+                    owner.boot_id.clone(),
+                )
+            });
             let cost = if r.cost_per_hr > 0.0 {
                 format!("${:.2}/h", r.cost_per_hr)
             } else {
@@ -380,19 +403,33 @@ impl Store {
         };
         self.state.warning = Some("Cleanup is still running. Do not start another GPU.".into());
     }
+    fn snap_identity(&self, snap: &Snap) -> Option<(String, String, String)> {
+        let pod = snap.pod.as_ref()?;
+        let boot = snap
+            .status
+            .as_ref()
+            .map(|s| s.boot_id.clone())
+            .or_else(|| {
+                self.runtime
+                    .as_ref()
+                    .filter(|r| {
+                        r.provider == pod.provider
+                            && r.instance_id.as_deref() == Some(pod.id.as_str())
+                    })
+                    .map(|r| r.boot_id.clone())
+            })
+            .unwrap_or_default();
+        Some((pod.provider.clone(), pod.id.clone(), boot))
+    }
+    pub fn runtime_seen_ready(&self) -> bool {
+        self.ready_identity.is_some()
+            && self.state.snap.as_ref().and_then(|s| self.snap_identity(s)) == self.ready_identity
+    }
     pub fn resumed_start_timed_out(&mut self) {
         self.cleanup_failed = true;
-        let provider_time = self
-            .state
-            .snap
-            .as_ref()
-            .and_then(|s| s.pod.as_ref())
-            .is_some_and(|p| p.started_at.0.is_some());
-        self.state.phase = Phase::Failed { message: if provider_time {
-            "Cloud startup exceeded 40 minutes since the provider start time. Stop the runtime before retrying."
-        } else {
-            "Cloud runtime did not reach Ready during 40 minutes of observation. Its original start time is unknown. Stop it before retrying."
-        }.into() };
+        self.state.phase = Phase::Failed { message:
+            "Cloud runtime did not report Ready during 40 minutes of observation. Its original startup state is unknown. Stop it before retrying.".into()
+        };
         self.state.warning = Some("Runtime cleanup has not been confirmed.".into());
     }
     pub fn begin_stop(&mut self) {
@@ -478,6 +515,17 @@ impl Store {
     pub fn set_runtime(&mut self, target: Option<lobo_core::control::RuntimeTarget>) {
         let target = target.filter(|t| matches!(t.provider.as_str(), "runpod" | "vast"));
         if self.runtime != target {
+            let identity = |r: &lobo_core::control::RuntimeTarget| {
+                (r.provider.clone(), r.instance_id.clone(), r.boot_id.clone())
+            };
+            if self.runtime.as_ref().map(identity) != target.as_ref().map(identity) {
+                self.ready_identity = None;
+                if !self.up_running {
+                    self.clear_progress();
+                    self.state.last_detail.clear();
+                    self.state.up_phase = None;
+                }
+            }
             self.runtime_generation = self.runtime_generation.wrapping_add(1);
             self.runtime = target;
         }

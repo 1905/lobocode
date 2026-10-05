@@ -59,6 +59,11 @@ fn executable_json_outputs_match_go() {
             event.detail = event
                 .detail
                 .replace(", release 2026.09.23-1, q8 ctx 8192", ", q8 ctx 65536");
+            if event.phase == "image" {
+                // Keep Go captures intact; Rust adds a safe reachability detail.
+                assert!(event.detail.is_empty());
+                event.detail = "agent unreachable (other); ready unconfirmed".into();
+            }
             if let Some(ready) = &mut event.ready {
                 ready.elapsed_ns = 0; // Fixture clock does not advance.
             }
@@ -106,7 +111,11 @@ fn executable_plain_output_and_unknown_scenario() {
     let (boot, report) = err.split_once("\nboot timings:\n").unwrap();
     let expected = fixture("plain_up_boot.txt")
         .replace(", release 2026.09.23-1, q8 ctx 8192", ", q8 ctx 65536")
-        .replace("boot=15000", "boot=0");
+        .replace("boot=15000", "boot=0")
+        .replace(
+            "INF up phase=image",
+            "INF up detail=\"agent unreachable (other); ready unconfirmed\" phase=image",
+        );
     assert_eq!(logs(boot), logs(&expected));
     // The scripted agent has zero timings. The representative timing table is
     // independently byte-compared with Go in cli_control.

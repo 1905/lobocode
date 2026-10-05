@@ -28,6 +28,11 @@ pub fn parse(src: &str) -> Result<BTreeMap<String, String>> {
         {
             rest = left.trim_start_matches(space);
         }
+        let line = src[..src.len() - rest.len()]
+            .bytes()
+            .filter(|b| *b == b'\n')
+            .count()
+            + 1;
         let mut key = "";
         let mut offset = 0;
         for (i, b) in rest.bytes().enumerate() {
@@ -41,15 +46,14 @@ pub fn parse(src: &str) -> Result<BTreeMap<String, String>> {
             }
             if b != b'_' && b != b'.' && !(b as char).is_alphanumeric() {
                 return Err(Error::Config(format!(
-                    "unexpected character {:?} in variable name near {:?}",
-                    (b as char).to_string(),
-                    rest
+                    "line {line}: unexpected character in variable name"
                 )));
             }
         }
         let key = key.trim_end_matches(char::is_whitespace).to_owned();
         rest = rest[offset..].trim_start_matches(space);
-        let (value, left) = extract(rest, &out)?;
+        let (value, left) =
+            extract(rest, &out).map_err(|e| Error::Config(format!("line {line}: {e}")))?;
         out.insert(key, value);
         rest = left;
     }
@@ -84,11 +88,7 @@ fn extract<'a>(src: &'a str, vars: &BTreeMap<String, String>) -> Result<(String,
         }
         return Ok((value, &src[i + 1..]));
     }
-    let end = src.find('\n').unwrap_or(src.len());
-    Err(Error::Config(format!(
-        "unterminated quoted value {}",
-        &src[..end]
-    )))
+    Err(Error::Config("unterminated quoted value".into()))
 }
 fn unescape(value: &str) -> String {
     static ESCAPE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\\.").unwrap());
@@ -131,11 +131,18 @@ mod tests {
                 serde_json::from_slice(&std::fs::read(p.with_extension("json")).unwrap()).unwrap();
             let actual = parse(&std::fs::read_to_string(&p).unwrap());
             if let Some(error) = expected.get("error").and_then(|v| v.as_str()) {
-                assert!(
-                    actual
-                        .unwrap_err()
-                        .to_string()
-                        .contains(&error[..error.len().min(20)]),
+                // Go captures include source text, which may contain secrets.
+                // Keep those fixtures frozen and assert Rust's value-free error.
+                let category = if error.starts_with("unexpected character") {
+                    "unexpected character in variable name"
+                } else if error.starts_with("unterminated quoted value") {
+                    "unterminated quoted value"
+                } else {
+                    panic!("unrecognized fixture error category: {}", p.display());
+                };
+                assert_eq!(
+                    actual.unwrap_err().to_string(),
+                    format!("line 1: {category}"),
                     "{}",
                     p.display()
                 );
@@ -156,5 +163,24 @@ mod tests {
             parse("H=$HOME\nP=${PATH}\n").unwrap(),
             [("H".into(), "".into()), ("P".into(), "".into())].into()
         );
+    }
+    #[test]
+    fn malformed_credentials_never_echo_source_values_or_key_names() {
+        for (source, expected) in [
+            (
+                "# saved config\nLOBO_MODEL=q6\nPRIVATE_PROVIDER_KEY=\"OpaqueCredential9e32",
+                "line 3: unterminated quoted value",
+            ),
+            (
+                "# saved config\r\n\r\nexport PRIVATE-PROVIDER-KEY=OpaqueCredential9e32\r\nOTHER_KEY=AnotherOpaqueValue\r\n",
+                "line 3: unexpected character in variable name",
+            ),
+            (
+                "\n\nPRIVATE_PROVIDER_KEY='OpaqueCredential9e32\nOTHER_KEY=AnotherOpaqueValue",
+                "line 3: unterminated quoted value",
+            ),
+        ] {
+            assert_eq!(parse(source).unwrap_err().to_string(), expected);
+        }
     }
 }
