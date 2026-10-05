@@ -101,6 +101,9 @@ impl Provider for SlowProvider {
 type PreparationGate = Arc<(Mutex<bool>, std::sync::Condvar)>;
 
 struct FakeBackend {
+    log_root: tempfile::TempDir,
+    panic_prepare: AtomicBool,
+    panic_up: AtomicBool,
     d: control::Deps,
     calls: Mutex<Vec<&'static str>>,
     ready: AtomicBool,
@@ -119,7 +122,7 @@ struct FakeBackend {
 #[async_trait]
 impl Backend for FakeBackend {
     fn config_path(&self) -> PathBuf {
-        PathBuf::from("/fixture")
+        self.log_root.path().join("config.env")
     }
     async fn config(&self) -> Result<(ConfigShow, Readiness)> {
         self.calls.lock().unwrap().push("config");
@@ -181,6 +184,10 @@ impl Backend for FakeBackend {
         Ok((target, snap))
     }
     fn prepare_up(&self, req: UpRequest) -> Result<PreparedUp> {
+        assert!(
+            !self.panic_prepare.load(Ordering::SeqCst),
+            "fixture preparation panic"
+        );
         self.prepare_calls.fetch_add(1, Ordering::SeqCst);
         self.prepare_started.notify_one();
         let gate = self.prepare_gate.lock().unwrap().clone();
@@ -213,6 +220,10 @@ impl Backend for FakeBackend {
         c: CancellationToken,
         owner: OwnerSink,
     ) -> Result<control::UpOperation> {
+        assert!(
+            !self.panic_up.load(Ordering::SeqCst),
+            "fixture admission panic"
+        );
         self.up_calls.fetch_add(1, Ordering::SeqCst);
         self.calls.lock().unwrap().push("up");
         let persisted = self.owner.clone();
@@ -286,6 +297,9 @@ fn fixture(
     });
     d.new_agent = Arc::new(move |_| agent.clone());
     let b = Arc::new(FakeBackend {
+        log_root: tempfile::tempdir().unwrap(),
+        panic_prepare: AtomicBool::new(false),
+        panic_up: AtomicBool::new(false),
         d,
         calls: Mutex::new(vec![]),
         ready: AtomicBool::new(true),
@@ -1016,4 +1030,144 @@ async fn copy_key_requires_the_owned_cloud_ready_runtime() {
     join_stop(&controller).await;
     assert!(controller.copy_api_key().await.is_err());
     assert!(!backend.calls.lock().unwrap().contains(&"api_key"));
+}
+
+#[tokio::test]
+async fn admission_panics_end_boot_and_leave_gates_usable() {
+    for admission in [false, true] {
+        let (controller, backend, provider) = fixture(0, false, false);
+        controller.load_config().await;
+        controller.refresh().await;
+        if admission {
+            backend.panic_up.store(true, Ordering::SeqCst);
+        } else {
+            backend.panic_prepare.store(true, Ordering::SeqCst);
+        }
+        let reply = controller.submit_start().unwrap();
+        assert!(reply.await.unwrap().is_err());
+        let task = controller.active.lock().unwrap().up.take().unwrap();
+        assert!(task.await.unwrap().is_err());
+        assert!(matches!(controller.state().phase, Phase::Failed { .. }));
+        assert!(controller.state().start_allowed);
+        assert!(controller.active.try_lock().is_ok());
+        assert!(controller.store.try_lock().is_ok());
+        assert_eq!(provider.rents.load(Ordering::SeqCst), 0);
+        let logs = std::fs::read_to_string(controller.log_path().unwrap()).unwrap();
+        assert!(logs.contains("start_failed"));
+        assert!(logs.contains("start_rejected"));
+    }
+}
+#[tokio::test(start_paused = true)]
+async fn startup_deadline_retains_slow_create_and_blocks_duplicate_rent() {
+    let (controller, backend, provider) = fixture(40 * 60 + 30, false, false);
+    start(&controller, &provider).await;
+    tokio::time::advance(START_DEADLINE).await;
+    for _ in 0..20 {
+        tokio::task::yield_now().await;
+    }
+    assert!(matches!(controller.state().phase, Phase::Failed { .. }));
+    assert!(!controller.state().start_allowed);
+    assert!(controller.store.lock().unwrap().up_running);
+    controller.submit_start().unwrap().await.unwrap().unwrap();
+    assert_eq!(backend.up_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.deletes.load(Ordering::SeqCst), 0);
+    let task = controller.active.lock().unwrap().up.take().unwrap();
+    assert_eq!(task.await.unwrap().unwrap_err().kind, "timeout");
+    assert!(provider.running.lock().unwrap().is_empty());
+    assert_eq!(provider.deletes.load(Ordering::SeqCst), 1);
+    assert!(!controller.state().start_allowed);
+    controller.stop();
+    join_stop(&controller).await;
+    assert_eq!(controller.state().phase, Phase::Off);
+    assert!(controller.state().start_allowed);
+    let logs = std::fs::read_to_string(controller.log_path().unwrap()).unwrap();
+    assert!(logs.contains("start_timeout"));
+    assert!(logs.contains("stop_finished"));
+}
+#[tokio::test]
+async fn controller_logs_survive_restart_and_disk_failure_is_visible() {
+    let (first, backend, _) = fixture(0, false, false);
+    first.load_config().await;
+    let path = first.log_path().unwrap();
+    drop(first);
+    let second = Controller::new(
+        backend,
+        Arc::new(Notes::default()),
+        backend_clock(),
+        Prefs::default(),
+        None,
+        tokio::runtime::Handle::current(),
+        Arc::new(|_| {}),
+    );
+    let records: Vec<serde_json::Value> = std::fs::read_to_string(&path)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(records.iter().filter(|r| r["event"] == "launch").count(), 2);
+    assert!(records.iter().any(|r| r["event"] == "config_loaded"));
+    std::fs::remove_file(&path).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    second.load_config().await;
+    assert!(
+        second
+            .state()
+            .logging_error
+            .unwrap()
+            .contains("cannot be saved")
+    );
+    assert_eq!(second.state().log_path.as_deref(), path.to_str());
+    second.stop();
+    join_stop(&second).await;
+    assert_eq!(second.state().phase, Phase::Off);
+}
+
+#[tokio::test(start_paused = true)]
+async fn restored_runtime_timeout_keeps_owner_and_cannot_be_dismissed() {
+    let (controller, _, _) = cloud_owned_fixture();
+    controller.load_config().await;
+    controller.refresh().await;
+    let owner = controller.runtime_target().unwrap();
+    let mut snapshot = controller.state().snap.unwrap();
+    snapshot.status = None;
+    snapshot.pod.as_mut().unwrap().started_at =
+        lobo_proto::GoTime::from_utc(controller.clock.now() - chrono::TimeDelta::minutes(41));
+    controller.change(|store| store.apply_snap(snapshot, controller.clock.now()));
+    controller.expire_resumed_start();
+    let Phase::Failed { message } = controller.state().phase else {
+        panic!("restored boot did not fail")
+    };
+    assert!(message.contains("provider start time"));
+    controller.dismiss();
+    assert!(!controller.state().start_allowed);
+    assert_eq!(controller.runtime_target().unwrap(), owner);
+    assert!(
+        std::fs::read_to_string(controller.log_path().unwrap())
+            .unwrap()
+            .contains("resumed_start_timeout")
+    );
+}
+#[tokio::test(start_paused = true)]
+async fn bounded_snapshot_reports_unknown_without_deleting_or_losing_owner() {
+    let (controller, backend, provider) = cloud_owned_fixture();
+    controller.load_config().await;
+    controller.refresh().await;
+    let owner = controller.runtime_target().unwrap();
+    backend.snapshot_delay_ms.store(46_000, Ordering::SeqCst);
+    controller.refresh().await;
+    assert!(
+        controller
+            .state()
+            .warning
+            .unwrap()
+            .contains("status is unknown")
+    );
+    assert_eq!(controller.runtime_target().unwrap(), owner);
+    assert!(provider.calls().is_empty());
+    assert_eq!(backend.down_calls.load(Ordering::SeqCst), 0);
+    assert!(
+        std::fs::read_to_string(controller.log_path().unwrap())
+            .unwrap()
+            .contains("snapshot_failed")
+    );
 }

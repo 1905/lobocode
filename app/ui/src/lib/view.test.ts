@@ -105,7 +105,32 @@ test('Start requires cloud readiness, including for legacy local-capable readine
   };
   expect(view.canStart(s)).toBe(false);
   s.readiness.cloud_ready = true;
+  s.start_allowed = true;
   expect(view.canStart(s)).toBe(true);
+  s.start_allowed = false;
+  expect(view.canStart(s)).toBe(false);
+});
+
+test('boot freshness never invents a backend update or container readiness', () => {
+  const s = structuredClone(f('boot').state);
+  s.last_update_ms = null;
+  expect(view.bootHealth(s, 120000)).toEqual({
+    text: 'Waiting for a startup update',
+    stale: true,
+  });
+  s.last_update_ms = 100000;
+  expect(view.bootHealth(s, 120000)).toEqual({
+    text: 'Last update 0:20 ago',
+    stale: false,
+  });
+  expect(view.bootHealth(s, 160000)).toEqual({
+    text: 'No update for 1:00 · status unknown',
+    stale: true,
+  });
+  expect(view.bootHealth(s, 90000)).toEqual({
+    text: 'Last update 0:00 ago',
+    stale: false,
+  });
 });
 
 const openCodeInfo: OpenCodeInfo = {

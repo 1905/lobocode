@@ -1,6 +1,7 @@
 pub mod backend;
 pub mod commands;
 pub mod controller;
+pub mod diagnostics;
 pub mod fmt;
 pub mod icons;
 pub mod notify;
@@ -46,6 +47,7 @@ pub fn run() {
             commands::consume_settings_tab,
             commands::reveal_config,
             commands::open_config,
+            commands::open_logs,
             commands::quit
         ])
         .setup(|app| {
@@ -75,6 +77,7 @@ pub fn run() {
                     tray::update(&emit_app, &s);
                 }),
             );
+            controller.install_panic_hook();
             app.manage(controller.clone());
             windows::prepare(&handle)?;
             controller.spawn_loops();

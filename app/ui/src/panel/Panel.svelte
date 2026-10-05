@@ -35,6 +35,7 @@
         settings: () => api.openSettings(),
         clients: () => api.openSettings('clients'),
         reveal: api.revealConfig,
+        logs: api.openLogs,
         quit: api.quit,
       } as Record<string, () => Promise<void>>
     )[name];
@@ -105,6 +106,11 @@
         {pick}
       />{/if}{#if panel.warning}<p class="warning two-lines">
         ! {panel.warning}
+      </p>{/if}{#if panel.logging_error}<p
+        class="warning two-lines"
+        title={panel.logging_error}
+      >
+        Logs unavailable: {panel.logging_error}
       </p>{/if}{#if error && !(panel.phase.kind === 'failed' && panel.phase.message === error)}<p
         class="error"
       >

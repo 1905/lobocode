@@ -297,6 +297,10 @@ fn stop_failure_and_dismiss_preserve_owned_cleanup() {
         }
     );
     s.dismiss();
+    assert!(matches!(s.view(now()).phase, Phase::Failed { .. }));
+    assert!(!s.view(now()).start_allowed);
+    s.begin_stop();
+    s.stop_done();
     assert_eq!(s.view(now()).phase, Phase::Off);
 }
 #[test]
@@ -327,14 +331,14 @@ fn up_errors_and_tail_limits() {
         s.up_ended(Some("boom")),
         [Note {
             title: "lobo boot failed".into(),
-            body: "b".into()
+            body: "boom".into()
         }]
     );
     s.poll_failed("offline".into());
     assert_eq!(
         s.view(now()).phase,
         Phase::Failed {
-            message: "b".into()
+            message: "boom".into()
         }
     );
     assert_eq!(s.view(now()).warning.as_deref(), Some("offline"));
@@ -408,4 +412,45 @@ fn cloud_selection_rejects_local_and_has_q6_default() {
     let request = store.begin_up(now());
     assert_eq!(request.provider.as_deref(), Some("vast"));
     assert_eq!(request.model.as_deref(), Some("q8"));
+}
+
+#[test]
+fn freshness_tracks_backend_events_not_render_time_or_ui_actions() {
+    let mut store = Store::new();
+    assert_eq!(store.view(now()).last_update_ms, None);
+    store.begin_up(now());
+    store.set_panel_open(true);
+    let later = now() + chrono::TimeDelta::seconds(100);
+    assert_eq!(
+        store.view(later).last_update_ms,
+        Some(now().timestamp_millis())
+    );
+    store.handle_event(
+        &UpEvent {
+            phase: "boot".into(),
+            detail: "Provider state: unknown".into(),
+            ..Default::default()
+        },
+        later,
+    );
+    assert_eq!(
+        store.view(later).last_update_ms,
+        Some(later.timestamp_millis())
+    );
+    store.start_timed_out();
+    assert!(!store.view(later).start_allowed);
+    store.handle_event(
+        &UpEvent {
+            phase: "ready".into(),
+            ready: Some(ReadyInfo::default()),
+            ..Default::default()
+        },
+        later,
+    );
+    assert!(matches!(store.view(later).phase, Phase::Failed { .. }));
+    store.up_ended(Some("timeout"));
+    assert!(!store.view(later).start_allowed);
+    store.begin_stop();
+    store.stop_done();
+    assert!(store.view(later).start_allowed);
 }

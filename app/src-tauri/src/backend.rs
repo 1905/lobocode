@@ -24,6 +24,9 @@ pub struct PreparedUp {
 #[async_trait]
 pub trait Backend: Send + Sync {
     fn config_path(&self) -> PathBuf;
+    fn diagnostic_secrets(&self) -> Result<Vec<String>> {
+        Ok(vec![])
+    }
     fn opencode_path(&self) -> Result<PathBuf> {
         opencode::discover()
     }
@@ -227,6 +230,20 @@ fn write_owner(path: &std::path::Path, target: &control::RuntimeTarget) -> Resul
 impl Backend for CoreBackend {
     fn config_path(&self) -> PathBuf {
         self.path.clone()
+    }
+    fn diagnostic_secrets(&self) -> Result<Vec<String>> {
+        let values = config::values(&self.path)?;
+        // Do not read key files or serialize config. PEM forms are independently scrubbed.
+        Ok(values
+            .into_iter()
+            .filter_map(|(key, value)| {
+                let upper = key.to_ascii_uppercase();
+                ["KEY", "TOKEN", "SECRET", "PASSWORD"]
+                    .iter()
+                    .any(|part| upper.contains(part))
+                    .then_some(value)
+            })
+            .collect())
     }
     async fn prepare_opencode(&self, owner: control::RuntimeTarget) -> Result<PreparedOpenCode> {
         opencode::prepare(self, owner, &self.setup_client).await

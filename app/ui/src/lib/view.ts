@@ -26,7 +26,7 @@ export const phaseTone = (s: PanelState) =>
 export const active = (s: PanelState) =>
   ['loading', 'booting', 'stopping'].includes(s.phase.kind);
 export function canStart(s: PanelState): boolean {
-  return s.readiness?.cloud_ready === true;
+  return s.start_allowed === true && s.readiness?.cloud_ready === true;
 }
 export function headerDetail(s: PanelState): string {
   const p = s.snap?.pod;
@@ -83,6 +83,15 @@ export function downloadLine(s: PanelState) {
 }
 export const bootElapsed = (s: PanelState, nowMs: number) =>
   `T+${duration(s.boot_start_ms === null ? 0 : (nowMs - s.boot_start_ms) / 1000)}`;
+export function bootHealth(s: PanelState, nowMs: number) {
+  if (s.last_update_ms == null || !Number.isFinite(s.last_update_ms)) {
+    return { text: 'Waiting for a startup update', stale: true };
+  }
+  const age = Math.max(0, (nowMs - s.last_update_ms) / 1000);
+  return age > 45
+    ? { text: `No update for ${duration(age)} · status unknown`, stale: true }
+    : { text: `Last update ${duration(age)} ago`, stale: false };
+}
 function elapsed(at: string | undefined, nowMs: number) {
   const t = Date.parse(at ?? '');
   return Number.isFinite(t) && t > 0 ? Math.max(0, (nowMs - t) / 1000) : 0;

@@ -34,6 +34,7 @@ export const api = {
   openSettings: (tab?: SettingsTab) => call<void>('open_settings', { tab }),
   consumeSettingsTab: () => call<string | null>('consume_settings_tab'),
   revealConfig: () => call<void>('reveal_config'),
+  openLogs: () => call<void>('open_logs'),
   openConfig: () => call<void>('open_config'),
   quit: () => call<void>('quit'),
 };

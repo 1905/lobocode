@@ -256,6 +256,53 @@ pub(crate) fn up_scoped(
 async fn read<T>(cancel: &CancellationToken, future: impl Future<Output = Result<T>>) -> Result<T> {
     tokio::select! {biased; _=cancel.cancelled()=>Err(Error::Cancelled),r=future=>r}
 }
+const STARTUP_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
+const STARTUP_CHECK_TIMED_OUT: &str = "startup check timed out after 10s";
+
+// Read-only probes must return control to the startup deadline and cancellation
+// checks even if an AgentApi/Provider implementation never resolves. Never use
+// this for rent: dropping a submitted create could abandon a successful rental.
+async fn probe<T>(
+    cancel: &CancellationToken,
+    future: impl Future<Output = Result<T>>,
+) -> Result<T> {
+    read(cancel, async {
+        tokio::time::timeout(STARTUP_CHECK_TIMEOUT, future)
+            .await
+            .map_err(|_| Error::Other(STARTUP_CHECK_TIMED_OUT.into()))?
+    })
+    .await
+}
+fn probe_error(error: &Error) -> &'static str {
+    match error {
+        Error::Other(message) if message == STARTUP_CHECK_TIMED_OUT => "timed out",
+        Error::Http(error) if error.is_timeout() => "timed out",
+        Error::Api(message) if message.contains("HTTP 401") => "authentication failed, HTTP 401",
+        Error::Api(message) if message.contains("HTTP 403") => "access denied, HTTP 403",
+        _ => error.kind(),
+    }
+}
+fn provider_status(provider: &str, status: &str) -> String {
+    // Status and API errors are untrusted provider input. Only known status
+    // labels enter the heartbeat; never include response bodies or credentials.
+    let status = match status.to_ascii_uppercase().as_str() {
+        "RUNNING" => "RUNNING",
+        "STARTING" => "STARTING",
+        "PENDING" => "PENDING",
+        "CREATED" => "CREATED",
+        "LOADING" => "LOADING",
+        "EXITED" => "EXITED",
+        "STOPPED" => "STOPPED",
+        "STOPPING" => "STOPPING",
+        "TERMINATED" => "TERMINATED",
+        _ => "unknown",
+    };
+    if provider == "runpod" {
+        format!("provider requests {status}")
+    } else {
+        format!("provider reports {status}")
+    }
+}
 fn check_cancel(cancel: &CancellationToken) -> Result<()> {
     if cancel.is_cancelled() {
         Err(Error::Cancelled)
@@ -658,10 +705,10 @@ async fn boot(
             scope.cleanup(d, ownership).await?;
             return Err(e);
         }
-        let mut status = match read(cancel, agent.status()).await {
-            Ok(s) => Some(s),
+        let (mut status, mut agent_check) = match probe(cancel, agent.status()).await {
+            Ok(s) => (Some(s), String::new()),
             Err(Error::Cancelled) => return Err(Error::Cancelled),
-            Err(_) => None,
+            Err(error) => (None, format!("unreachable ({})", probe_error(&error))),
         };
         if status.is_none()
             && (p.name() != "local" || !scope.owned())
@@ -675,6 +722,7 @@ async fn boot(
             .is_some_and(|s| (scope.owned() || !s.boot_id.is_empty()) && s.boot_id != co.boot_id)
         {
             status = None;
+            agent_check = "unconfirmed (boot identity mismatch)".into();
         }
         if status.as_ref().is_some_and(|s| {
             s.boot_id.is_empty()
@@ -685,18 +733,47 @@ async fn boot(
                         + STALE_SLACK.as_secs_f64()
         }) {
             status = None;
+            agent_check = "unconfirmed (stale response)".into();
         }
-        if status.is_none()
-            && seen
+        if status.as_ref().is_none_or(|s| s.stage != Stage::Ready)
             && (d.clock.now() - last_check).to_std().unwrap_or_default() >= POD_CHECK_EVERY
         {
+            let provider_check = match probe(cancel, p.get(&pod.id)).await {
+                Ok(instance) => provider_status(p.name(), &instance.status),
+                Err(Error::NotFound) => {
+                    let phase = if seen { last_phase.as_str() } else { "image" };
+                    events.phase(
+                        phase,
+                        "provider confirms the pod is gone; cleaning up".into(),
+                    );
+                    // Confirmed absence still needs the exact saved connection
+                    // and keys cleaned up. Keep ownership if cleanup fails.
+                    scope.cleanup(d, ownership).await?;
+                    return Err(events.fail(
+                        "failed",
+                        "provider confirms the pod is gone".into(),
+                        Error::Other(format!(
+                            "pod {} is gone (deleted) during startup in phase {phase}",
+                            pod.id
+                        )),
+                    ));
+                }
+                Err(Error::Cancelled) => return Err(Error::Cancelled),
+                Err(error) => format!("provider status unknown ({})", probe_error(&error)),
+            };
             last_check = d.clock.now();
-            if matches!(read(cancel, p.get(&pod.id)).await, Err(Error::NotFound)) {
-                let logs = read(cancel, agent.logs(20)).await.unwrap_or_default();
-                check_cancel(cancel)?;
-                ownership.clear()?;
-                return Err(events.fail("failed","pod is gone".into(),Error::Other(format!("pod {} is gone (deleted) while the agent was unreachable in phase {last_phase}\n{}",pod.id,logs.trim()))));
-            }
+            let agent_check = status
+                .as_ref()
+                .map(|s| format!("responding in {}", s.stage.as_str()))
+                .unwrap_or_else(|| agent_check.clone());
+            let phase = status
+                .as_ref()
+                .map(|s| s.stage.as_str())
+                .unwrap_or(if seen { &last_phase } else { "image" });
+            events.phase(
+                phase,
+                format!("startup check: {provider_check}; agent {agent_check}; ready unconfirmed"),
+            );
         }
         let phase = if let Some(s) = &status {
             seen = true;
@@ -724,10 +801,10 @@ async fn boot(
             let detail = status
                 .as_ref()
                 .map(|s| s.stage_detail.clone())
-                .unwrap_or_default();
+                .unwrap_or_else(|| format!("agent {agent_check}; ready unconfirmed"));
             match phase.as_str() {
                 "ready" => {
-                    let version = read(cancel, agent.version()).await.ok();
+                    let version = probe(cancel, agent.version()).await.ok();
                     check_cancel(cancel)?;
                     let timings = status.as_ref().unwrap().timings.clone();
                     let rent_s = match (pod.started_at.0, timings.container_started_at.0) {
@@ -770,7 +847,7 @@ async fn boot(
                         scope.cleanup(d, ownership).await?;
                         return Ok(true);
                     }
-                    let logs = read(cancel, agent.logs(20)).await.unwrap_or_default();
+                    let logs = probe(cancel, agent.logs(20)).await.unwrap_or_default();
                     check_cancel(cancel)?;
                     let why = if s.stage == Stage::Terminating && s.kill_reason != "failed" {
                         format!("watchdog: {}", s.kill_reason)
@@ -807,7 +884,7 @@ async fn boot(
         if (d.clock.now() - progress).to_std().unwrap_or_default() > o.timeout
             || (d.clock.now() - start).to_std().unwrap_or_default() > o.timeout
         {
-            let logs = read(cancel, agent.logs(20)).await.unwrap_or_default();
+            let logs = probe(cancel, agent.logs(20)).await.unwrap_or_default();
             check_cancel(cancel)?;
             scope.cleanup(d, ownership).await?;
             return Err(events.fail(

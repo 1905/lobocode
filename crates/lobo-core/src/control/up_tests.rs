@@ -428,6 +428,10 @@ struct SlowProvider {
     panic_after_create: bool,
     notes: usize,
     cancel_on_delete: Option<CancellationToken>,
+    gets: AtomicUsize,
+    get_ids: Mutex<Vec<String>>,
+    get_errors: AtomicUsize,
+    hang_first_get: bool,
 }
 impl SlowProvider {
     fn new(delay: Duration) -> Self {
@@ -440,6 +444,10 @@ impl SlowProvider {
             panic_after_create: false,
             notes: 0,
             cancel_on_delete: None,
+            gets: AtomicUsize::new(0),
+            get_ids: Mutex::new(vec![]),
+            get_errors: AtomicUsize::new(0),
+            hang_first_get: false,
         }
     }
 }
@@ -475,6 +483,18 @@ impl Provider for SlowProvider {
         Ok(self.running.lock().unwrap().clone())
     }
     async fn get(&self, id: &str) -> Result<Instance> {
+        self.get_ids.lock().unwrap().push(id.into());
+        let get = self.gets.fetch_add(1, Ordering::SeqCst);
+        if self.hang_first_get && get == 0 {
+            return std::future::pending().await;
+        }
+        if self
+            .get_errors
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+            .is_ok()
+        {
+            return Err(Error::Api("HTTP 401: private-provider-body".into()));
+        }
         self.running
             .lock()
             .unwrap()
@@ -979,4 +999,192 @@ async fn up_detects_pod_gone_while_agent_silent() {
     let (events, result) = collect(d, UpOpts::default()).await;
     assert!(result.unwrap_err().to_string().contains("pod slow is gone"));
     assert_eq!(events.last().unwrap().phase, "failed");
+}
+
+#[tokio::test]
+async fn up_detects_pod_gone_before_the_agent_ever_answers() {
+    let p = Arc::new(SlowProvider::new(Duration::ZERO));
+    let mut d = slow_deps(p.clone());
+    let operations = d.operations.clone();
+    d.clock = Arc::new(StepClock::new(
+        "2026-09-23T10:00:00Z".parse().unwrap(),
+        Duration::from_secs(20),
+    ));
+    let agent = Arc::new(GoneAgent {
+        inner: FakeAgent::new(vec![None]),
+        provider: p.clone(),
+    });
+    d.new_agent = Arc::new(move |_| agent.clone());
+    let mut operation = up_app(
+        d,
+        UpOpts::default(),
+        None,
+        CancellationToken::new(),
+        Arc::new(|_| Ok(())),
+    );
+    let mut receiver = operation.take_events().unwrap();
+    let mut events = vec![];
+    while let Some(event) = receiver.recv().await {
+        events.push(event);
+    }
+    let result = operation.wait().await;
+    let error = result.unwrap_err().to_string();
+    assert!(error.contains("pod slow is gone"), "{error}");
+    assert!(error.contains("phase image"));
+    assert_eq!(events.last().unwrap().phase, "failed");
+    assert_eq!(p.rents.load(Ordering::SeqCst), 1);
+    assert!(p.get_ids.lock().unwrap().iter().all(|id| id == "slow"));
+    assert_eq!(p.deletes.load(Ordering::SeqCst), 1);
+    assert!(
+        operations
+            .acquire(&CancellationToken::new())
+            .await
+            .unwrap()
+            .pending()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn provider_error_is_unknown_not_absent_and_can_recover_without_deletion() {
+    let p = Arc::new(SlowProvider::new(Duration::ZERO));
+    p.get_errors.store(2, Ordering::SeqCst);
+    let mut d = slow_deps(p.clone());
+    d.clock = Arc::new(StepClock::new(
+        "2026-09-23T10:00:00Z".parse().unwrap(),
+        Duration::from_secs(10),
+    ));
+    let mut script = vec![None; 10];
+    script.extend(ready());
+    let agent = Arc::new(FakeAgent::new(script));
+    d.new_agent = Arc::new(move |_| agent.clone());
+    let (events, result) = collect(d, UpOpts::default()).await;
+    result.unwrap();
+    assert!(events.iter().any(|e| {
+        e.detail
+            .contains("provider status unknown (authentication failed, HTTP 401)")
+            && e.detail.contains("agent unreachable")
+    }));
+    assert!(events.iter().any(|e| {
+        e.detail.contains("provider requests unknown") && e.detail.contains("ready unconfirmed")
+    }));
+    assert!(
+        events
+            .iter()
+            .all(|e| !e.detail.contains("private-provider-body"))
+    );
+    assert_eq!(events.last().unwrap().phase, "ready");
+    assert_eq!(p.rents.load(Ordering::SeqCst), 1);
+    assert!(p.get_ids.lock().unwrap().iter().all(|id| id == "slow"));
+    assert_eq!(p.deletes.load(Ordering::SeqCst), 0);
+    assert_eq!(p.running.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn pre_agent_heartbeat_does_not_claim_requested_running_is_ready() {
+    let mut script = vec![None; 12];
+    script.extend(ready());
+    let (mut d, rp) = test_deps(script);
+    d.clock = Arc::new(StepClock::new(
+        "2026-09-23T10:00:00Z".parse().unwrap(),
+        Duration::from_secs(10),
+    ));
+    let (events, result) = collect(d, UpOpts::default()).await;
+    result.unwrap();
+    let heartbeats: Vec<_> = events
+        .iter()
+        .filter(|e| e.detail.starts_with("startup check:"))
+        .collect();
+    assert!(heartbeats.len() >= 2);
+    for event in heartbeats {
+        assert_eq!(event.phase, "image");
+        assert!(event.detail.contains("provider requests RUNNING"));
+        assert!(event.detail.contains("agent unreachable"));
+        assert!(event.detail.contains("ready unconfirmed"));
+        assert!(!event.done);
+    }
+    assert!(rp.state.lock().unwrap().deleted.is_empty());
+}
+
+struct ElapsedClock(tokio::time::Instant);
+impl crate::clock::Clock for ElapsedClock {
+    fn now(&self) -> chrono::DateTime<chrono::Utc> {
+        "2026-09-23T10:00:00Z"
+            .parse::<chrono::DateTime<chrono::Utc>>()
+            .unwrap()
+            + chrono::TimeDelta::from_std(self.0.elapsed()).unwrap()
+    }
+}
+struct HungAgent;
+#[async_trait]
+impl AgentApi for HungAgent {
+    async fn status(&self) -> Result<Status> {
+        std::future::pending().await
+    }
+    async fn logs(&self, _: usize) -> Result<String> {
+        std::future::pending().await
+    }
+    async fn version(&self) -> Result<Manifest> {
+        std::future::pending().await
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn hung_agent_and_provider_checks_cannot_bypass_startup_timeout() {
+    let mut provider = SlowProvider::new(Duration::ZERO);
+    provider.hang_first_get = true;
+    let p = Arc::new(provider);
+    let mut d = slow_deps(p.clone());
+    let started = tokio::time::Instant::now();
+    d.clock = Arc::new(ElapsedClock(started));
+    d.new_agent = Arc::new(|_| Arc::new(HungAgent));
+    let (events, result) = tokio::time::timeout(
+        Duration::from_secs(80),
+        collect(
+            d,
+            UpOpts {
+                timeout: Duration::from_secs(45),
+                ..Default::default()
+            },
+        ),
+    )
+    .await
+    .expect("hung probes must return to the startup deadline");
+    assert!(result.unwrap_err().to_string().contains("startup exceeded"));
+    assert!(events.iter().any(|e| {
+        e.detail.contains("provider status unknown (timed out)")
+            && e.detail.contains("agent unreachable (timed out)")
+    }));
+    assert_eq!(events.last().unwrap().phase, "terminated");
+    assert_eq!(p.rents.load(Ordering::SeqCst), 1);
+    assert!(p.get_ids.lock().unwrap().iter().all(|id| id == "slow"));
+    assert_eq!(p.deletes.load(Ordering::SeqCst), 1);
+    assert!(p.running.lock().unwrap().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancellation_interrupts_a_hung_provider_check_and_cleans_the_exact_pod() {
+    let mut provider = SlowProvider::new(Duration::ZERO);
+    provider.hang_first_get = true;
+    let p = Arc::new(provider);
+    let mut d = slow_deps(p.clone());
+    d.clock = Arc::new(StepClock::new(
+        "2026-09-23T10:00:00Z".parse().unwrap(),
+        Duration::from_secs(20),
+    ));
+    d.new_agent = Arc::new(|_| Arc::new(FakeAgent::new(vec![None])));
+    let mut operation = up(d, UpOpts::default(), CancellationToken::new());
+    let _events = operation.take_events().unwrap();
+    while p.gets.load(Ordering::SeqCst) == 0 {
+        tokio::task::yield_now().await;
+    }
+    operation.cancel();
+    let result = tokio::time::timeout(Duration::from_secs(1), operation.wait())
+        .await
+        .expect("cancellation must not await the provider read timeout");
+    assert!(matches!(result, Err(Error::Cancelled)));
+    assert_eq!(p.rents.load(Ordering::SeqCst), 1);
+    assert!(p.get_ids.lock().unwrap().iter().all(|id| id == "slow"));
+    assert_eq!(p.deletes.load(Ordering::SeqCst), 1);
+    assert!(p.running.lock().unwrap().is_empty());
 }

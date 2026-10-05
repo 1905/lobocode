@@ -25,14 +25,20 @@
           {line}
         </p>{/each}
     </div>{/if}
-  {#if !panel.snap?.pod}<StartCard
+  {#if !panel.snap?.pod && panel.start_allowed}<StartCard
       {panel}
       {action}
       {pick}
       startLabel="RETRY"
     />{/if}
   <div class="row">
-    {#if panel.snap?.pod}
+    {#if !panel.start_allowed}
+      <BracketButton
+        label="RETRY STOP"
+        tone="red"
+        onclick={() => action('stop')}
+      />
+    {:else if panel.snap?.pod}
       <BracketButton
         label={v.primary.label}
         tone={v.primary.tone}
@@ -40,6 +46,7 @@
       />{/if}<BracketButton
       label="DISMISS"
       tone="dim"
+      disabled={!panel.start_allowed}
       onclick={() => action('dismiss')}
     />
   </div>

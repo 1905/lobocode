@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PanelState } from '../gen/PanelState';
-  import { stepRows, downloadLine, bootElapsed } from '../lib/view';
+  import { stepRows, downloadLine, bootElapsed, bootHealth } from '../lib/view';
   import Cursor from '../widgets/Cursor.svelte';
   import BracketButton from '../widgets/BracketButton.svelte';
   let {
@@ -9,6 +9,7 @@
     stop,
   }: { panel: PanelState; nowMs: number; stop: () => void } = $props();
   const dl = $derived(downloadLine(panel));
+  const health = $derived(bootHealth(panel, nowMs));
 </script>
 
 <section class="boot">
@@ -42,6 +43,9 @@
         </div>{/if}
     </div>{/each}
   <p class="tiny faint two-lines detail">{panel.last_detail}</p>
+  <p class:amber={health.stale} class:dim={!health.stale} class="tiny">
+    {health.text}
+  </p>
   <div class="row spread bottom">
     <strong class="cyan">{bootElapsed(panel, nowMs)}</strong><BracketButton
       label="ABORT"
