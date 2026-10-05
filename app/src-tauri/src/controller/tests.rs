@@ -1262,9 +1262,10 @@ async fn outer_start_worker_panic_is_observed_and_cleanup_blocks_another_rental(
         None,
         tokio::runtime::Handle::current(),
         Arc::new(move |state| {
-            if state.up_phase.as_deref() == Some("create") && !once.swap(true, Ordering::SeqCst) {
-                panic!("private request content must not appear in diagnostics");
-            }
+            assert!(
+                state.up_phase.as_deref() != Some("create") || once.swap(true, Ordering::SeqCst),
+                "private request content must not appear in diagnostics"
+            );
         }),
     );
     start(&controller, &provider).await;
