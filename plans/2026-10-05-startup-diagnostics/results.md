@@ -16,7 +16,7 @@
 
 ## Review and integration
 
-- Rival review of dab5025 found three defects: Stop/Ready cleanup race, resumed deadline falsely failing a previously Ready runtime, and malformed config error exposing opaque credentials. Full output: [review.txt](review.txt). The follow-up changes accept successful completion during Stop, track established readiness per runtime identity, bound resumed observation instead of pod age, and remove config values from parser/app errors. Focused regressions and hosted validation are pending.
+- Rival review of dab5025 found three defects: Stop/Ready cleanup race, resumed deadline falsely failing a previously Ready runtime, and malformed config error exposing opaque credentials. Full output: [review.txt](review.txt). The follow-up changes accept successful completion during Stop, track established readiness per runtime identity, bound resumed observation instead of pod age, and remove config values from parser/app errors. Dell follow-up passes 34 configuration tests and 53 CLI tests with test-fakes, including Go consumers and all TUI snapshots. Feature-enabled core/CLI clippy passes. Hosted app validation is running on 28e32e9 (CI 37270507497).
 - First hosted CI compiled the app and generated bindings. It found a one-character clippy fix and CLI/TUI golden expectation changes for the intentional initial agent-unreachable detail. These failures block release until corrected.
 
 ## Limits
