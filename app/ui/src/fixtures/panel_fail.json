@@ -43,11 +43,14 @@
     "download": null,
     "endpoint": "http://127.0.0.1:8933/v1",
     "last_detail": "vast 26461301, offer 51399812, 9129 Mbps down, Quebec, CA",
+    "last_update_ms": 1790683200000,
+    "log_path": null,
     "log_tail": [
       "Docker image model shard failed SHA-256 verification; instance deleted",
       "create: bad host, renting another pod (4/4)",
       "vast 26461301, offer 51399812, 9129 Mbps down, Quebec, CA"
     ],
+    "logging_error": null,
     "menu_text": "FAIL",
     "model": "q6",
     "phase": {
@@ -77,6 +80,7 @@
       "status": null,
       "version": null
     },
+    "start_allowed": false,
     "steps": [],
     "up_phase": "failed",
     "warning": null

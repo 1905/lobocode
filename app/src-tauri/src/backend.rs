@@ -260,7 +260,10 @@ impl Backend for CoreBackend {
             .insert("LOBO_PROVIDER".into(), cfg.provider.clone());
         shown.values.insert("LOBO_MODEL".into(), cfg.model.clone());
         let loaded = config::load_laptop(&self.path).map(cloud_config);
-        let error = loaded.as_ref().err().map(ToString::to_string);
+        let error = loaded
+            .as_ref()
+            .err()
+            .map(|_| crate::types::CONFIG_ERROR_MESSAGE.to_string());
         let cloud_ready = loaded.is_ok() && cfg.require_cloud().is_ok();
         let readiness = Readiness {
             exists: self.path.exists(),

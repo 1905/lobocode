@@ -159,11 +159,18 @@ pub struct AppError {
     pub kind: String,
     pub message: String,
 }
+pub const CONFIG_ERROR_MESSAGE: &str = "Configuration could not be loaded. Check the config file syntax and required values in Settings.";
+
 impl From<lobo_core::Error> for AppError {
     fn from(e: lobo_core::Error) -> Self {
         Self {
             kind: e.kind().into(),
-            message: e.to_string(),
+            // Dotenv parse errors can include the original line, including credentials.
+            message: if matches!(&e, lobo_core::Error::Config(_)) {
+                CONFIG_ERROR_MESSAGE.into()
+            } else {
+                e.to_string()
+            },
         }
     }
 }

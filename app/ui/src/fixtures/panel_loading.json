@@ -22,7 +22,10 @@
     "download": null,
     "endpoint": null,
     "last_detail": "",
+    "last_update_ms": null,
+    "log_path": null,
     "log_tail": [],
+    "logging_error": null,
     "menu_text": "lobo",
     "model": "q6",
     "phase": {
@@ -32,6 +35,7 @@
     "readiness": null,
     "ready_url": null,
     "snap": null,
+    "start_allowed": false,
     "steps": [],
     "up_phase": null,
     "warning": null
