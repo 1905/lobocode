@@ -1,5 +1,13 @@
 # Lobocode project memory
 
+## Startup diagnostics release and local update — 2026-10-05
+
+The user explicitly requested durable startup logs, re-release and local update. This authorized app 0.2.2 publication and installation; older app holds below are historical. CLI release, Q8/image rebuilds, updater work, local inference and OpenCode launch remain outside this task. Rust compilation/tests ran on Dell or hosted macOS under the 2026-10-03 host correction. Feesh ran UI checks; this Mac only handled source, orchestration and the authorized installation.
+
+App `0.2.2` is published and installed at `/Applications/lobocode.app`, source `24b30284063a49a3492e029b38c8a34cf32ae6a5`. Exact master CI `37271794244` and release `37272648758` passed. App tests: 95 Rust library tests plus two binary tests, 20 UI tests and six native setup/migration cases. Anonymous asset, checksum, arm64 signature, mounted contents and no bundled CLI checks passed. DMG SHA256: `c080fa94f04dfb9e389836a067606b273a91ae48598a8ae4815d47a3ec7b3b32`.
+
+Real logs now persist at `~/.config/lobo/config.app-logs/app.jsonl` (0600 file, 0700 directory, 2 MiB plus three archives). Launch/config/snapshot records and configured-secret absence were verified after installation. Config, preferences and CLI hashes are unchanged. The old RunPod step-2 stall has no durable trace, so its exact cause remains unknown. Current provider checks found zero instances. No new GPU rental occurred. Local Computer Use could not start; hosted native no-scroll checks passed. Ad-hoc signing remains; notarization and broader native acceptance remain unverified. See [diagnostics results](plans/done/2026-10-05-startup-diagnostics/results.md).
+
 ## Cloud-only app release — 2026-10-02
 
 Latest request: completely remove local execution from the Mac app, full auto, then release it. This explicitly supersedes the previous app release hold. Keep CLI local support and existing model/config/runtime files. Use Feesh or hosted CI for builds and backend tests; actual native UI checks remain authorized. Do not publish the Rust CLI, rebuild Q8, resume updater work or import dirty Task11 files. Implementation and app-v0.2.1 release evidence: [cloud-only plan](plans/done/2026-10-02-cloud-only-app/plan-v1.0.md). Older checkpoints below are historical where they conflict.

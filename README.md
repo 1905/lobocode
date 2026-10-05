@@ -119,6 +119,8 @@ The [standalone DMG](https://github.com/1905/lobocode/releases/download/app-v0.2
 
 ## Startup diagnostics
 
+<p><img src="docs/img/panel_setup_logs.png" width="340" alt="Native Mac setup view with the Logs control"></p>
+
 Use **logs** in the app footer to reveal the persistent diagnostic file. The default path is `~/.config/lobo/config.app-logs/app.jsonl`. A custom app config has its own adjacent log directory. Logs include the app version, session, timestamps, selected provider/model, instance identity, startup checks, failures and cleanup outcomes. Credentials and request content are excluded. Each log is limited to 2 MiB; the app retains three older files.
 
 During startup, the app shows the age of the last backend update. A missing update does not establish that the container is running. The app checks the selected provider instance before the agent connects and reports confirmed deletion. Provider errors remain unknown status. Startup timeout requests cancellation; unconfirmed cleanup blocks another Start and exposes Retry Stop. A logging failure is shown in the app.

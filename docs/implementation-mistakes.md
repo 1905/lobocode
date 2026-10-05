@@ -411,4 +411,11 @@ app failure text could prefer stale progress over the terminal error. The
 startup-diagnostics feature addresses these confirmed defects and adds durable
 private logs. Do not claim it proves the exact historical failure mechanism.
 Implementation and release acceptance are tracked in
-[the diagnostics plan](../plans/2026-10-05-startup-diagnostics/plan-v1.3.md).
+[the diagnostics plan](../plans/done/2026-10-05-startup-diagnostics/plan-v1.3.md).
+
+App 0.2.2 is now released and installed. Exact source `24b3028` passed master CI,
+native checks and public artifact verification. Real launch/config/provider-check
+records persist locally. Review also found and fixed a Stop/Ready cleanup race,
+a false resumed timeout based on pod age, and malformed config credential leakage.
+Config, preferences and CLI are unchanged. Local visual automation was unavailable;
+hosted native checks passed. No new paid GPU run was performed.

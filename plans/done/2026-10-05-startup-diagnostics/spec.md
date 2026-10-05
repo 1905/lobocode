@@ -1,7 +1,7 @@
 # Persistent startup diagnostics and bounded boot state
 **Date:** 2026-10-05
 **Scope:** /Users/kass/dev/lobocode
-**Status:** approved (user requested implementation, re-release and local update)
+**Status:** done (approved by direct implementation, re-release and local-update request)
 
 ## TL;DR
 **What:** Save private, redacted startup logs and expose Logs from the app.
@@ -40,7 +40,7 @@ Check the exact provider instance while waiting for the agent, including before 
 | crates/lobo-core/src/control/up.rs; up_tests.rs; testkit.rs; provider/runpod.rs; provider/runpod/tests.rs | Provider checks/heartbeats during pre-agent wait; preserve ownership and cancellation; change only files required by evidence. |
 | app/ui/src/{panel,lib,gen,fixtures}; app/e2e/app.spec.js; fixture.py; tools/native_app_e2e.py | Freshness/Logs affordance, visible logging errors and native fixture coverage; regenerate bindings remotely. |
 | app/src-tauri/tauri.conf.json; app/ui/package.json; .github/workflows/{rust,app-release}.yml; Makefile | App 0.2.2 metadata and required check/release adaptations only. |
-| README.md; CHANGELOG.md; AGENTS.md; docs/implementation-mistakes.md; docs/img; plans/2026-10-05-startup-diagnostics | Log location, failure behavior, release/install evidence and unresolved historical diagnosis. |
+| README.md; CHANGELOG.md; AGENTS.md; docs/implementation-mistakes.md; docs/img; plans/done/2026-10-05-startup-diagnostics | Log location, failure behavior, release/install evidence and unresolved historical diagnosis. |
 
 ## Tests
 - Logger: write/reopen/rotation/permissions, symlink rejection, secret and PEM scrubbing, write failure surfaced, bounded line length.
