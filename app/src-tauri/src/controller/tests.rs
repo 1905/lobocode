@@ -444,6 +444,15 @@ async fn opencode_duplicate_and_cancelled_verification_release_reservation() {
     let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "runpod", "q6");
     b.gated.store(true, Ordering::SeqCst);
     let c = setup_controller(b.clone());
+    let directory_names = || {
+        let mut names: Vec<_> = std::fs::read_dir(b.root.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        names.sort();
+        names
+    };
+    let original_names = directory_names();
     let controller = c.clone();
     let chosen = setup_path(&b);
     let task = tokio::spawn(async move { controller.configure_opencode(chosen, true).await });
@@ -453,7 +462,7 @@ async fn opencode_duplicate_and_cancelled_verification_release_reservation() {
     task.abort();
     assert!(task.await.unwrap_err().is_cancelled());
     assert!(c.active.lock().unwrap().setup.is_none());
-    assert_eq!(std::fs::read_dir(b.root.path()).unwrap().count(), 2);
+    assert_eq!(directory_names(), original_names);
 }
 
 #[tokio::test]
