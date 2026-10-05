@@ -1,11 +1,13 @@
 # Changelog
 
-## App 0.2.2 — pending release
+## App 0.2.2 — 2026-10-05
 
 - Add private, rotating startup logs and a Logs control. Show the last backend update and any logging failure.
 - Check for a missing cloud instance before the agent connects. Report unknown provider status without claiming the container is running.
 - Supervise startup failures and timeouts. Preserve the actual error, retain cleanup ownership and block duplicate starts while cleanup is unresolved.
-- Validation pending. The earlier step-2 stall has no saved startup log; its exact historical cause remains unknown.
+- Keep established runtimes recoverable after a temporary disconnect. Bound resumed startup by observed wait, not pod age. Keep malformed configuration values out of error text.
+- Validation: 95 app Rust library tests, two binary tests, 20 UI tests and six native checks pass. Exact master CI and app release pass. Public DMG/source/signature checks and local installation pass; real private launch/config/provider-check logs are verified.
+- Limits: the earlier step-2 stall has no saved startup log, so its exact cause remains unknown. No fresh paid GPU test. Local visual automation was unavailable; hosted native checks passed. Ad-hoc signature; no notarization.
 
 ## App 0.2.1 — 2026-10-02
 
