@@ -1,5 +1,5 @@
 # Release the Rust `lobo` CLI (not the pod agent: that ships to the bucket via `make release`).
-# CI (.github/workflows/release.yml) runs this on a v* tag push.
+# Run it locally: `goreleaser release --clean` (no CI).
 project_name: lobo
 version: 2
 
