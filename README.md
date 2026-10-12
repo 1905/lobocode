@@ -193,7 +193,7 @@ Cloud and local port pairs must not overlap. SSH mode selects RunPod hosts with 
 | Area | Source | Checks |
 |---|---|---|
 | Shared protocol | `crates/lobo-proto` | `make proto-ts` |
-| Pod agent and shared core | `crates/lobo-agent`, `crates/lobo-core` | `make rust-test rust-lint` on CI or a test host |
+| Pod agent and shared core | `crates/lobo-agent`, `crates/lobo-core` | `make rust-test rust-lint` on a test host |
 | Rust CLI and TUI | `crates/lobo-cli` | `cargo test -p lobo-cli --test tui_parity` |
 | Native app | `app/src-tauri`, `app/ui` | `make app-lint`, `pnpm -C app/ui test` |
 | Native UI smoke | `app/e2e` | `make app-e2e` (cloud setup, legacy migration and removed IPC) |
@@ -202,10 +202,19 @@ The app calls the shared Rust core directly and does not bundle the CLI. Go sour
 
 On the development Mac, run UI checks only. Run model inference and backend/lifecycle suites on an authorized remote host. Live checks can rent GPUs. `make release` publishes an agent; it is not a local build command.
 
-Complete-image builds need substantial disk space. The image workflow checks for 200 GiB free Docker storage per concurrent build. Set `POD_IMAGE_RUNNER` to a suitable Linux AMD64 runner. Standard hosted runners do not meet that capacity check. This is a maintainer build requirement, not a user installation requirement.
+The repository has no hosted CI. Maintainers run the former workflows locally with the scripts in `tools/ci/`. Each script prints its usage with `--help`.
 
-The app-only `App release` workflow accepts an `app-vX.Y.Z` tag at the exact tested `master` commit. It requires successful Rust CI and native UI smoke, checks anonymous public Q6 access, and publishes a DMG, checksums and source receipt. It does not rebuild GPU images or release the CLI.
+| Script | Replaces | Host |
+|---|---|---|
+| `tools/ci/check.py` | Rust CI: protocol, static agent, macOS core, native app and UI smoke | Linux for `protocol` and `agent-musl`, Apple Silicon macOS for `core-macos` and `app` |
+| `tools/ci/pod_image.py` | Q6/Q8 model image build, publication and `latest-*` promotion | Linux AMD64 with Docker buildx |
+| `tools/ci/release.py` | `v*` release: images, then the GoReleaser CLI, then the DMG | Linux for `images`, macOS for `cli` and `dmg` |
+| `tools/ci/app_release.py` | App-only `app-vX.Y.Z` release | Apple Silicon macOS |
 
-The legacy `v*` release workflow still builds Q6 and Q8 before publishing CLI assets. Image publication is separate from normal app startup. End users always resolve the current public image at each new start.
+Complete-image builds need substantial disk space. `pod_image.py build` checks for 200 GiB free Docker storage per build. This is a maintainer build requirement, not a user installation requirement.
+
+`app_release.py` accepts an `app-vX.Y.Z` tag at the exact `master` commit. It requires passing `check.py` receipts for all four jobs, including the native UI smoke. It checks anonymous public Q6 access, then publishes a DMG, checksums and a source receipt. It does not rebuild GPU images or release the CLI.
+
+`release.py` builds Q6 and Q8 before it publishes CLI assets. Image publication is separate from normal app startup. End users always resolve the current public image at each new start.
 
 Maintainers must make the `1905/lobocode` container package public before release acceptance. New GHCR packages default to private. The anonymous-access check deliberately fails until visibility is public. End users do not need a GitHub account or registry credentials. See [GitHub's container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).

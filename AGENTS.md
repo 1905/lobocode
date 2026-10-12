@@ -1,5 +1,41 @@
 # Lobocode project memory
 
+## No hosted CI: local scripts in tools/ci — 2026-10-12
+
+The user removed all GitHub Actions (`.github/` deleted at `345418b`) to stop Actions billing. Do not add workflows back. Run the former workflows with these scripts. Each script prints full usage with `--help`. Older notes below that mention "hosted CI", "Rust CI runs" or "release run" IDs describe the removed workflows.
+
+| Script | Replaces | Where to run |
+|---|---|---|
+| `tools/ci/check.py` | `rust.yml` | Dell: `protocol`, `agent-musl`. Air: `core-macos`, `app` |
+| `tools/ci/pod_image.py` | `pod-image.yml` | Linux x86_64 with Docker buildx |
+| `tools/ci/release.py` | `release.yml` (`v*` tags) | `images` on Linux, then `cli` and `dmg` on the Air |
+| `tools/ci/app_release.py` | `app-release.yml` (`app-v*` tags) | Air |
+
+Checks (`check.py`):
+- Commit first. With no `--job`, it runs every job that fits the host.
+- A job that passes on a clean tree writes `bin/ci-receipts/<sha>-<job>.json`. `--allow-dirty` runs on uncommitted changes and writes no receipt.
+- `--no-native-e2e` skips the native UI smoke. That `app` receipt does not satisfy `app_release.py`.
+- `agent-musl` uses `musl-gcc` when present, else `cargo zigbuild`. The Dell has zig 0.16.0 (`~/.local/bin/zig`) and cargo-zigbuild 0.23.4.
+
+App release (`app_release.py app-vX.Y.Z --notes notes.md`):
+1. Bump the four app versions, merge to `master`, push, then tag `app-vX.Y.Z` on that commit and push the tag.
+2. On the Dell: `python3 tools/ci/check.py`. On the Air: `python3 tools/ci/check.py`.
+3. Copy the Dell receipts into the Air checkout: `rsync -a <dell-checkout>/bin/ci-receipts/ air:<air-checkout>/bin/ci-receipts/`.
+4. On the Air: `python3 tools/ci/app_release.py app-vX.Y.Z --dry-run`, then without `--dry-run`. `--notes` holds the change bullets for the release body.
+- It refuses unless the tag, HEAD and `origin/master` are one commit, all four receipts exist, the versions match and public `latest-q6` verifies anonymously.
+- It publishes with `make_latest=false`. A rerun after publication only re-validates the published assets.
+
+`v*` release (`release.py`): check out the pushed tag. Run `images` on a Linux builder, then `cli` and `dmg` on the Air. `cli` refuses until `<tag>-q6` and `<tag>-q8` are public. It needs `HOMEBREW_TAP_KEY` in the environment.
+
+Images (`pod_image.py`):
+- `build [--model q6|q8] [--publish] [--promote]` checks 200 GiB free Docker storage. The Dell Docker root is on `/` with about 77 GiB free, so pass `--builder` and `--storage` for a BuildKit builder on `/storage`.
+- `prebuilt --layout ... --metadata ... --source-sha ... --image-digest ... [--publish] [--promote-latest]` verifies a prepared Q6 OCI export, then pushes it with oras. The old artifact-transfer action is gone. `tools/cloud_candidate_transfer.py` stays but nothing calls it.
+- Publishing needs a GHCR login with `write:packages`: `gh auth refresh -s write:packages`, then `gh auth token | docker login ghcr.io -u <user> --password-stdin`. oras reads the same Docker credentials.
+
+Missing tools (checked 2026-10-12):
+- Air: no `pnpm`, `go`, `goreleaser`, `zig`, `cargo-zigbuild`, `oras`. System `python3` is 3.9; the scripts support it.
+- Dell: no `musl-gcc`, `goreleaser`, `oras`. `latest-q8` is not published, so only Q6 verifies.
+
 ## Startup diagnostics release and local update — 2026-10-05
 
 The user explicitly requested durable startup logs, re-release and local update. This authorized app 0.2.2 publication and installation; older app holds below are historical. CLI release, Q8/image rebuilds, updater work, local inference and OpenCode launch remain outside this task. Rust compilation/tests ran on Dell or hosted macOS under the 2026-10-03 host correction. Feesh ran UI checks; this Mac only handled source, orchestration and the authorized installation.
