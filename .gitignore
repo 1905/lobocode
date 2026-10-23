@@ -21,3 +21,7 @@ app/ui/node_modules/
 app/ui/dist/
 app/e2e/node_modules/
 app/e2e/__pycache__/
+
+# local-only: specs, plans, notes
+/plans/
+/docs/

@@ -4,7 +4,7 @@ Run **Qwen3.5-27B Uncensored** (HauhauCS Aggressive) on a rented GPU from the st
 
 **Mac app 0.2.2:** cloud-only, standalone, Apple Silicon. [Download the DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.2/lobocode.dmg). Homebrew installs the separately published CLI; the Rust CLI rewrite remains unreleased. Screenshots with performance numbers show sample data, not benchmark results.
 
-The Rust cloud path resolves the latest complete public image on each new start. **Select Q6 for cloud use:** its image is public and passed RunPod TUI and native Mac Start → reply → Stop checks. New app cloud selections default to Q6. Q8 remains available as a selection, but its complete image is not published; choosing it fails before rental. Broader telemetry acceptance remains pending. See the [implementation record](docs/implementation-mistakes.md).
+The Rust cloud path resolves the latest complete public image on each new start. **Select Q6 for cloud use:** its image is public and passed RunPod TUI and native Mac Start → reply → Stop checks. New app cloud selections default to Q6. Q8 remains available as a selection, but its complete image is not published; choosing it fails before rental. Broader telemetry acceptance remains pending.
 
 <p align="center">
   <img src="assets/panel_boot.png" width="340" alt="booting: rent, image pull, private connection, GPU check and bundled-model verification">
@@ -62,7 +62,7 @@ Open **Settings → Cloud**, enter a RunPod or Vast API key, save, and start Q6.
 
 `lobo config` asks for what your choice needs and writes `~/.config/lobo/config.env`.
 
-New Rust configurations use a [private SSH connection](docs/cloud-without-domain.md). Lobocode creates its own keys, checks the server identity, and forwards requests automatically. No domain, Cloudflare tunnel account, or connection subscription is required. GPU and provider bandwidth charges still apply.
+New Rust configurations use a private SSH connection. Lobocode creates its own keys, checks the server identity, and forwards requests automatically. No domain, Cloudflare tunnel account, or connection subscription is required. GPU and provider bandwidth charges still apply.
 
 The connection survives closing the app or finishing `lobo up`. It reconnects after a network interruption. The endpoint works only on that computer. Stop deletes the instance and closes the connection.
 
@@ -105,7 +105,7 @@ Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. The
 
 Windows use native macOS title bars and rounded corners. Each view fits without scrolling. Settings groups controls into Cloud, Defaults and Clients tabs. The actual hosted app passed cloud Start, Ready, a direct reply, Stop and Off without scrolling; rounded corners were visible. Drag, Dock and Command-Tab behavior remain unverified.
 
-The Mac cloud request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds. Ready displayed 22.8 / 31.8 GB of GPU memory. The idle gauges showed `0 / 0` after the reply; live rate updates were not verified. Owned pod/tunnel cleanup, native Quit and preference restoration passed. Loading-memory progression remains unfinished. Local Metal inference and live OpenCode integration remain unverified. See the [test results and remaining checks](plans/2026-09-30-app-setup-memory-visibility/results.md).
+The Mac cloud request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds. Ready displayed 22.8 / 31.8 GB of GPU memory. The idle gauges showed `0 / 0` after the reply; live rate updates were not verified. Owned pod/tunnel cleanup, native Quit and preference restoration passed. Loading-memory progression remains unfinished. Local Metal inference and live OpenCode integration remain unverified.
 
 The [standalone DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.2/lobocode.dmg) contains only the app. For development, `make install-mac` builds the app and `make dmg` creates `bin/lobocode.dmg`.
 
@@ -135,7 +135,7 @@ Setup authenticates the active endpoint and uses the running model and context l
 
 The app configures the `lobo` provider for its active cloud runtime. Existing provider restrictions remain in place and appear as warnings. A new `lobo` agent enables core coding tools and disables MCP tool and skill access. Existing custom agent controls remain unchanged.
 
-The optional CLI retains its separate export command: `lobo gen-api-key` writes `opencode.lobo.json` for manual merging. It is not required for app setup. The settings screenshots show native test fixtures. Cloud setup and migration checks are recorded in the [cloud-only app results](plans/done/2026-10-02-cloud-only-app/results.md).
+The optional CLI retains its separate export command: `lobo gen-api-key` writes `opencode.lobo.json` for manual merging. It is not required for app setup. The settings screenshots show native test fixtures.
 
 ## Pod image
 
@@ -198,7 +198,7 @@ Cloud and local port pairs must not overlap. SSH mode selects RunPod hosts with 
 | Native app | `app/src-tauri`, `app/ui` | `make app-lint`, `pnpm -C app/ui test` |
 | Native UI smoke | `app/e2e` | `make app-e2e` (cloud setup, legacy migration and removed IPC) |
 
-The app calls the shared Rust core directly and does not bundle the CLI. Go source and frozen compatibility fixtures remain until cutover. Plans and validation limits are recorded in [execution.md](plans/2026-09-29-rust-rewrite/execution.md).
+The app calls the shared Rust core directly and does not bundle the CLI. Go source and frozen compatibility fixtures remain until cutover.
 
 On the development Mac, run UI checks only. Run model inference and backend/lifecycle suites on an authorized remote host. Live checks can rent GPUs. `make release` publishes an agent; it is not a local build command.
 
