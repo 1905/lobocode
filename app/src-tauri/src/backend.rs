@@ -104,10 +104,14 @@ impl CoreBackend {
             .unwrap_or_else(config::default_path)
     }
     fn deps(&self) -> Result<control::Deps> {
-        Ok(control::deps_from_config(
-            config::load_laptop(&self.path)?,
-            &self.wiring,
-        )?)
+        self.dependencies(config::load_laptop(&self.path)?)
+    }
+    fn dependencies(&self, cfg: config::Laptop) -> Result<control::Deps> {
+        #[cfg(feature = "e2e")]
+        if let Some(deps) = crate::e2e_runtime::deps(&self.path, cfg.clone())? {
+            return Ok(deps);
+        }
+        Ok(control::deps_from_config(cfg, &self.wiring)?)
     }
     fn local_options(&self, model: &str) -> Result<control::UpOpts> {
         let cfg = config::Laptop::from_values(&config::values(&self.path)?);
@@ -275,6 +279,8 @@ impl Backend for CoreBackend {
             .map_err(AppError::from)
     }
     fn prepare_up(&self, req: UpRequest) -> Result<PreparedUp> {
+        #[cfg(feature = "e2e")]
+        crate::e2e_runtime::deny_start(&self.path)?;
         // Admit before constructing dependencies, creating files or starting workers.
         self.load_owner()?;
         let cfg = config::load_laptop(&self.path)?;
@@ -294,7 +300,9 @@ impl Backend for CoreBackend {
         cancel: CancellationToken,
         owner: control::OwnerSink,
     ) -> Result<control::UpOperation> {
-        let d = control::deps_from_config(prepared.config, &self.wiring)?;
+        #[cfg(feature = "e2e")]
+        crate::e2e_runtime::deny_start(&self.path)?;
+        let d = self.dependencies(prepared.config)?;
         let path = self.owner_path();
         let lock = self.owner_lock.clone();
         let owner = Arc::new(move |target: control::RuntimeTarget| {

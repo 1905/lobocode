@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { click } from "./native-helpers.js";
 
 const root = process.env.LOBO_E2E_ROOT;
 const fixture = JSON.parse(fs.readFileSync(path.join(root, "fixture.json")));
@@ -76,9 +77,6 @@ async function verdict(status, model, ctx) {
     JSON.stringify(evidence, null, 2),
   );
   return state.local_memory;
-}
-async function click(text) {
-  await $(`button*=${text}`).click();
 }
 function files(dir) {
   if (!fs.existsSync(dir)) return [];
@@ -226,26 +224,16 @@ describe("native memory guard (UI only; no passing Start)", () => {
     // Replace the passing display fixture before invoking Start. The current
     // displayed pass cannot authorize the fresh denying backend snapshot.
     mode("insufficient");
-    await browser.execute(() => {
-      const invoke = window.__TAURI_INTERNALS__.invoke;
-      window.__loboStartError = null;
-      window.__TAURI_INTERNALS__.invoke = async function (command, args) {
-        try {
-          return await invoke.call(this, command, args);
-        } catch (error) {
-          if (command === "start") window.__loboStartError = error;
-          throw error;
-        }
-      };
-    });
     await click("START");
     await browser.waitUntil(async () =>
-      browser.execute(() => !!window.__loboStartError),
+      (await ipc("get_state")).phase.kind === "failed",
     );
     assert.match(
-      (await browser.execute(() => window.__loboStartError)).message,
+      (await ipc("get_state")).phase.message,
       /requires .* GiB/,
     );
+    assert.equal(await $("main.panel").getAttribute("data-phase"), "failed");
+    assert.match(await $("main.panel").getText(), /requires .* GiB/);
     await verdict("insufficient", "q8", 65536);
     assert.equal((await ipc("get_state")).phase.kind, "failed");
     assert.equal(await $("button*=RETRY").isEnabled(), false);
@@ -254,6 +242,8 @@ describe("native memory guard (UI only; no passing Start)", () => {
       false,
       "phase already contains the Start error",
     );
+    // These direct calls inspect fresh rejection metadata. They do not capture
+    // the original button call's exception or mutate Tauri's immutable invoke.
     for (let attempt = 0; attempt < 2; attempt++) {
       const error = await browser.execute(async () => {
         try {

@@ -26,7 +26,9 @@ def ports():
     raise RuntimeError("no isolated E2E port pair available")
 
 
-def prepare(root, memory_only=False):
+def prepare(root, memory_only=False, runtime_ui_only=False):
+    if memory_only and runtime_ui_only:
+        raise ValueError("fixture modes are mutually exclusive")
     root.mkdir(parents=True, exist_ok=True)
     if list(root.iterdir()):
         raise RuntimeError("E2E fixture directory must be empty")
@@ -40,14 +42,14 @@ def prepare(root, memory_only=False):
     assert meta.st_blocks * 512 < 1_048_576, "fixture must remain sparse"
     (weights / (file.name + ".sha256-ok")).write_text(f'{model["sha256"]} {meta.st_size} {meta.st_mtime_ns}\n')
     runtime = weights / "runtime/llama-b11118"
-    if not memory_only:
+    if not (memory_only or runtime_ui_only):
         runtime.mkdir(parents=True)
         script = (Path(__file__).parent / "fake_llama.py").read_text().split("\n", 1)[1]
         server = runtime / "llama-server"
         server.write_text(f"#!{sys.executable}\n{script}")
         server.chmod(0o755)
     else:
-        (root / "memory.json").write_text(json.dumps({"mode": "insufficient"}) + "\n")
+        (root / "memory.json").write_text(json.dumps({"mode": "ready" if runtime_ui_only else "insufficient"}) + "\n")
     port = ports()
     config = root / "config.env"
     config.write_text(
@@ -58,7 +60,26 @@ def prepare(root, memory_only=False):
         f"LOBO_WEIGHTS_DIR={weights}\nLOBO_LOCAL_PORT={port}\n"
     )
     config.chmod(0o600)
-    info = {"root": str(root), "config": str(config), "weights": str(weights), "port": port}
+    if runtime_ui_only:
+        with config.open("a") as stream:
+            stream.write("RUNPOD_API_KEY=invalid-fixture-only\nVASTAI_API_KEY=invalid-fixture-only\n")
+        opencode = root / "config-home/opencode"
+        opencode.mkdir(parents=True, mode=0o700)
+        (opencode / "opencode.jsonc").write_text('''{
+  // Native fixture comment must survive Configure/Repair.
+  "provider": {"other": {"name": "preserved"}},
+  "model": "other/saved-default",
+  "default_agent": "existing",
+  "agent": {"lobo": {"temperature": 0.2, "permission": {"edit": "ask"}}}
+}
+''')
+        state = root / "state/lobo"
+        state.mkdir(parents=True, mode=0o700)
+        (state / "operation.json").write_text(json.dumps({"provider": "runpod", "boot_id": "foreign-pending",
+            "before": ["foreign-instance"], "instance_id": "foreign-instance"}) + "\n")
+        (state / "operation.json").chmod(0o600)
+    info = {"root": str(root), "config": str(config), "weights": str(weights), "port": port,
+            "mode": "runtime-ui-only" if runtime_ui_only else "memory-only" if memory_only else "setup"}
     (root / "fixture.json").write_text(json.dumps(info, indent=2) + "\n")
     return info
 

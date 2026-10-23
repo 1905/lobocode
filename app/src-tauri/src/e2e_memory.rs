@@ -22,17 +22,8 @@ struct Fixture {
 }
 
 fn fixture_root(config: &Path) -> Option<PathBuf> {
-    let root = PathBuf::from(std::env::var_os("LOBO_E2E_ROOT")?);
-    let root = root.canonicalize().ok()?;
-    if !root.file_name()?.to_str()?.starts_with("lobo-native-e2e-") {
-        return None;
-    }
+    let root = crate::e2e_runtime::metadata_root().ok()?;
     if config.canonicalize().ok()? != root.join("config.env") {
-        return None;
-    }
-    let metadata: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root.join("fixture.json")).ok()?).ok()?;
-    if metadata["config"].as_str()? != config.to_str()? {
         return None;
     }
     Some(root)

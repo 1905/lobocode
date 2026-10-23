@@ -89,6 +89,8 @@ fn create(app: &tauri::AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
     let a = app.clone();
     w.on_window_event(move |e| match e {
         tauri::WindowEvent::CloseRequested { api, .. } => {
+            #[cfg(feature = "e2e")]
+            crate::e2e_trace::event("native_close_requested", Some(window.label()));
             api.prevent_close();
             let _ = window.hide();
             update_open(&a);
@@ -129,6 +131,8 @@ pub fn show(app: &tauri::AppHandle, label: &str) -> tauri::Result<()> {
     };
     window.show()?;
     window.set_focus()?;
+    #[cfg(feature = "e2e")]
+    crate::e2e_trace::event("native_window_shown", Some(label));
     if label != "settings" {
         update_open(app);
     }

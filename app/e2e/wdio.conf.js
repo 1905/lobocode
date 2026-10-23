@@ -16,7 +16,9 @@ const binary = path.resolve(
 export const config = {
   runner: "local",
   specs: [
-    process.env.LOBO_E2E_MEMORY_ONLY === "1"
+    process.env.LOBO_E2E_RUNTIME_UI_ONLY === "1"
+      ? "./runtime.spec.js"
+      : process.env.LOBO_E2E_MEMORY_ONLY === "1"
       ? "./memory.spec.js"
       : "./app.spec.js",
   ],
@@ -26,7 +28,7 @@ export const config = {
   ],
   services: [
     [
-      "@wdio/tauri-service",
+      path.join(here, "trace-service.js"),
       {
         appBinaryPath: binary,
         driverProvider: "embedded",
@@ -35,6 +37,11 @@ export const config = {
           LOBO_E2E_ROOT: root,
           LOBO_APP_CONFIG: fixture.config,
           XDG_STATE_HOME: path.join(root, "state"),
+          XDG_CONFIG_HOME: path.join(root, "config-home"),
+          LOBO_E2E_SETUP_ONLY: process.env.LOBO_E2E_SETUP_ONLY || "0",
+          LOBO_E2E_MEMORY_ONLY: process.env.LOBO_E2E_MEMORY_ONLY || "0",
+          LOBO_E2E_RUNTIME_UI_ONLY: process.env.LOBO_E2E_RUNTIME_UI_ONLY || "0",
+          LOBO_E2E_CHECK_DRAG: process.env.LOBO_E2E_CHECK_DRAG || "0",
         },
         captureBackendLogs: true,
         captureFrontendLogs: true,

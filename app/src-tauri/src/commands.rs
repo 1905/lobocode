@@ -17,11 +17,24 @@ pub fn get_state(c: C<'_>) -> PanelState {
 }
 #[tauri::command]
 pub async fn start(c: C<'_>) -> Result<()> {
+    #[cfg(feature = "e2e")]
+    crate::e2e_trace::event("start_entry", None);
     let controller = c.inner().clone();
     // Reserve and capture before the first await or blocking-worker queue.
-    let reply = controller.submit_start()?;
+    let reply = controller.submit_start().inspect_err(|error| {
+        #[cfg(feature = "e2e")]
+        crate::e2e_trace::event("start_denied", Some(&error.kind));
+        let _ = error;
+    })?;
+    #[cfg(feature = "e2e")]
+    crate::e2e_trace::event("start_admitted", None);
     let result = reply.await.map_err(error)?;
     controller.refresh_memory().await;
+    #[cfg(feature = "e2e")]
+    crate::e2e_trace::event("start_completed", Some(match &result {
+        Ok(()) => "ok",
+        Err(error) => &error.kind,
+    }));
     result
 }
 #[tauri::command]
@@ -138,7 +151,16 @@ pub async fn configure_opencode(
     path: String,
     make_default: bool,
 ) -> Result<OpenCodeResult> {
-    c.inner().configure_opencode(path, make_default).await
+    #[cfg(feature = "e2e")]
+    crate::e2e_trace::event("configure_opencode_entry", None);
+    let result = c.inner().configure_opencode(path, make_default).await;
+    #[cfg(feature = "e2e")]
+    crate::e2e_trace::event("configure_opencode_completed", Some(if result.is_ok() {
+        "ok"
+    } else {
+        "denied"
+    }));
+    result
 }
 #[tauri::command]
 pub fn open_settings(app: tauri::AppHandle, tab: Option<String>) -> Result<()> {
@@ -172,17 +194,35 @@ pub fn open_config(c: C<'_>, app: tauri::AppHandle) -> Result<()> {
 }
 #[tauri::command]
 pub async fn quit(c: C<'_>, app: tauri::AppHandle) -> Result<()> {
-    c.inner().quit().await?;
+    #[cfg(feature = "e2e")]
+    crate::e2e_trace::event("quit_entry", None);
+    c.inner().quit().await.inspect_err(|error| {
+        #[cfg(feature = "e2e")]
+        crate::e2e_trace::event("quit_controller", Some(&error.kind));
+        let _ = error;
+    })?;
+    #[cfg(feature = "e2e")]
+    crate::e2e_trace::event("quit_controller", Some("ok"));
+    #[cfg(feature = "e2e")]
+    crate::e2e_trace::event("quit_app_exit", Some("zero"));
     app.exit(0);
     Ok(())
 }
 pub fn request_quit(app: &tauri::AppHandle) {
+    #[cfg(feature = "e2e")]
+    crate::e2e_trace::event("request_quit_entry", None);
     let a = app.clone();
     let c = app.state::<Arc<Controller>>().inner().clone();
     tauri::async_runtime::spawn(async move {
         if let Err(e) = c.quit().await {
+            #[cfg(feature = "e2e")]
+            crate::e2e_trace::event("request_quit_controller", Some(&e.kind));
             eprintln!("quit: {e}");
         } else {
+            #[cfg(feature = "e2e")]
+            crate::e2e_trace::event("request_quit_controller", Some("ok"));
+            #[cfg(feature = "e2e")]
+            crate::e2e_trace::event("request_quit_app_exit", Some("zero"));
             a.exit(0);
         }
     });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { click } from "./native-helpers.js";
 
 const root = process.env.LOBO_E2E_ROOT;
 const fixture = JSON.parse(fs.readFileSync(path.join(root, "fixture.json")));
@@ -42,9 +43,6 @@ async function fits() {
       }),
     { timeoutMsg: "native view must fit without scrolling or clipping" },
   );
-}
-async function click(text) {
-  await $(`button*=${text}`).click();
 }
 async function window(label) {
   await browser.waitUntil(async () =>
