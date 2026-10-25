@@ -12,10 +12,6 @@ jobs:
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.98.1"
-      - uses: Swatinem/rust-cache@v2
       - id: model
         run: |
           set -euo pipefail

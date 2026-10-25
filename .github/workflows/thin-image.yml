@@ -51,6 +51,12 @@ jobs:
           export BASE sha256
           seq 0 $((len - 1)) | xargs -P 16 -I{} sh -c \
             'n=$(printf %03d {}); code=$(curl -sS -o /dev/null -I -w "%{http_code}" "$BASE/models/$sha256/$n"); [ "$code" = 200 ] || { echo "chunk $n answered $code" >&2; exit 1; }'
+          for i in 0 $((len - 1)); do
+            n=$(printf %03d "$i")
+            want=$(jq -r ".chunk_sha[$i]" <<< "$entry")
+            got=$(curl -fsS "$BASE/models/$sha256/$n" | sha256sum | cut -d ' ' -f 1)
+            [ "$got" = "$want" ] || { echo "CDN chunk $n hash mismatch" >&2; exit 1; }
+          done
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
