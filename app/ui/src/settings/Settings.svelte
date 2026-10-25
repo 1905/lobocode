@@ -97,6 +97,7 @@
     fields = loadFields(config);
     const state = await api.getState();
     readiness = state.readiness ?? undefined;
+    catalog = state.catalog;
     updateRuntime(state);
   }
   onMount(() => {
