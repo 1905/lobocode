@@ -58,7 +58,15 @@ fn image_entrypoint_terminates_both_providers_when_required_content_is_missing()
         ("runpod", true),
         ("vast", true),
     ] {
-        for missing in ["agent", "runtime", "manifest", "tunnel", "none"] {
+        // "manifest" is a thin image: no bundled weights, so they come from the base URL.
+        for missing in [
+            "agent",
+            "runtime",
+            "manifest and base URL",
+            "tunnel",
+            "none",
+            "manifest",
+        ] {
             if rejected && missing != "agent" {
                 continue;
             }
@@ -73,13 +81,13 @@ fn image_entrypoint_terminates_both_providers_when_required_content_is_missing()
             if missing != "agent" {
                 executable(
                     &lobo.join("lobo-agent"),
-                    "#!/bin/sh\nprintf started > \"$FIXTURE_AGENT_START\"\nexit 0\n",
+                    "#!/bin/sh\nprintf 'started %s' \"${LOBO_IMAGE_MODEL:-unset}\" > \"$FIXTURE_AGENT_START\"\nexit 0\n",
                 );
             }
             if missing != "runtime" {
                 executable(&app.join("llama-server"), "#!/bin/sh\nexit 0\n");
             }
-            if missing != "manifest" {
+            if !missing.starts_with("manifest") {
                 std::fs::write(lobo.join("model.json"), "{}").unwrap();
             }
             if missing != "tunnel" {
@@ -113,6 +121,14 @@ fi
                 .env("PATH", format!("{}:/usr/bin:/bin", commands.display()))
                 .env("LOBO_PROVIDER", provider)
                 .env("LOBO_CONNECTION", "cloudflare")
+                .env(
+                    "LOBO_MODEL_BASE_URL",
+                    if missing == "manifest and base URL" {
+                        ""
+                    } else {
+                        "https://models.example"
+                    },
+                )
                 .env("RUNPOD_POD_ID", "pod\"with\\quotes")
                 .env("RUNPOD_API_KEY", "fixture-runpod-key")
                 .env("CONTAINER_ID", "1234")
@@ -122,13 +138,17 @@ fi
                 .env("FIXTURE_AGENT_START", &agent_start)
                 .output()
                 .unwrap();
-            if missing == "none" {
+            if missing == "none" || missing == "manifest" {
                 assert!(
                     out.status.success(),
-                    "{provider}: {}",
+                    "{provider}/{missing}: {}",
                     String::from_utf8_lossy(&out.stderr)
                 );
-                assert_eq!(std::fs::read(&agent_start).unwrap(), b"started");
+                let image_model = if missing == "none" { "1" } else { "unset" };
+                assert_eq!(
+                    std::fs::read_to_string(&agent_start).unwrap(),
+                    format!("started {image_model}")
+                );
                 assert!(
                     !request.exists(),
                     "healthy entrypoint must not request provider cleanup"
