@@ -149,13 +149,17 @@ A controlled Q6 check used a 65,536-token context and exactly 47,000 uncached sy
 
 Model weights use native GGUF shards in separate image layers. Startup verifies each shard before loading. Missing or corrupt files fail startup and trigger instance cleanup. Boot never downloads replacement weights, an agent archive or OS packages.
 
+`qwen38-q6` is the exception. It runs from a thin image (Dockerfile target `thin`) without weights and downloads its 22,430,999,840-byte GGUF as 84 content-addressed 256 MiB chunks from `{LOBO_MODEL_BASE_URL}/models/{sha256}/{nnn}`, by default `https://models.stealthcopilot.io`. The agent verifies the sha256 of every chunk. It starts 4 parallel streams, adds 4 per 5 s window while aggregate throughput rises by at least 10 %, and stops at the cap from the control plane (default 32). A stream that is far slower than the rest restarts once per chunk. The hidden `--conns` option overrides the cap; values below 2 are rejected. The slow-host check (`LOBO_MIN_MBPS`) uses the rate over the last 5 s before the 20 s check. No user needs a token to download. `q6` and `q8` keep their complete images (Dockerfile target `full`, the default build).
+
+Maintainers publish a chunked model on the fork in two steps. Push the tag `publish-model/<id>`: the workflow `.github/workflows/publish-model.yml` uploads the chunks with a one-time R2 token held in the fork secrets `R2_ACCOUNT_ID`, `R2_ACCESS_KEY` and `R2_SECRET_KEY`, and produces the artifact `chunk-sha-<id>`. Pin the chunk hashes in `crates/lobo-proto/catalog.json`. Then push the tag `thin-image/<id>`: `.github/workflows/thin-image.yml` checks that every chunk answers 200, builds and smoke-tests the thin image and promotes `latest-<id>`. It refuses `q6` and `q8`. The hidden command `lobo publish-model <ID> --file <PATH>` does the upload. The chunk upload, the thin image and live acceptance on a rented GPU are pending.
+
 For CLI development only, an explicit complete-image override is available:
 
 ```sh
 lobo up --image ghcr.io/1905/lobocode@sha256:<digest>
 ```
 
-Normal starts ignore old `LOBO_POD_IMAGE`, bucket and model-source settings. The obsolete `--release`, `--source`, `--conns` and debug `--ssh` options return an error before rental.
+Normal starts ignore old `LOBO_POD_IMAGE`, bucket and model-source settings. The obsolete `--release`, `--source` and debug `--ssh` options return an error before rental.
 
 Image pulls can transfer roughly 22–29 GB of weights plus the runtime. The default startup limit is 40 minutes. A host that cannot start the container within 30 minutes is removed. Cancellation also removes the owned instance.
 
@@ -173,6 +177,7 @@ The table describes shared CLI configuration. App settings exclude local weights
 | `LOBO_CONNECTION` (ssh, cloudflare) | | ssh for new configurations |
 | `LOBO_CLOUD_PORT` (control API on port + 1) | | 8933 |
 | `LOBO_MODEL` (catalog id: qwen38-q6, q6, q8) | `--q6` | q8 |
+| `LOBO_MODEL_BASE_URL` (base URL of the model chunks; https only, trailing slash ignored; shown unmasked by `lobo config show`) | | `https://models.stealthcopilot.io` |
 | `LOBO_IMAGE_REPO` (GHCR repository of the complete model images) | | 1905/lobocode |
 | `LOBO_CTX` | `--ctx` | 65536 |
 | `LOBO_IDLE_MIN` | `--idle-min` | 30 |

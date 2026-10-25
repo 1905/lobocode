@@ -1,5 +1,9 @@
 # Lobocode project memory
 
+## Chunked weights delivery — 2026-10-25
+
+The user's decision supersedes the 2026-09-30 complete-image rule for chunk-delivered models: `qwen38-q6` runs from a thin image and downloads 84 verified 256 MiB chunks from `LOBO_MODEL_BASE_URL` (default `https://models.stealthcopilot.io`). `q6` keeps its complete image. The permanent R2 token stays in `config.env`. The one-time upload token lives only in the fork secrets until revoked; never write token values or account IDs into the repository. Publication: tag `publish-model/<id>`, pin hashes in `crates/lobo-proto/catalog.json`, then tag `thin-image/<id>`. Status: code done; chunk upload, thin image and live acceptance on a rented GPU are pending. Results will be recorded in `.superpowers/sdd/2026-10-25-2142-chunked-weights-delivery/progress.md` and in this section.
+
 ## Startup diagnostics release and local update — 2026-10-05
 
 The user explicitly requested durable startup logs, re-release and local update. This authorized app 0.2.2 publication and installation; older app holds below are historical. CLI release, Q8/image rebuilds, updater work, local inference and OpenCode launch remain outside this task. Rust compilation/tests ran on Dell or hosted macOS under the 2026-10-03 host correction. Feesh ran UI checks; this Mac only handled source, orchestration and the authorized installation.
