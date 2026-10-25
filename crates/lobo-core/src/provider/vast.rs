@@ -11,7 +11,8 @@ use tokio_util::sync::CancellationToken;
 use super::{CreateOpts, Instance, POD_NAME, Provider, on_domain};
 use crate::{Error, Result, bootstrap, http};
 
-pub const DEFAULT_BASE_URL: &str = "https://console.vast.ai/api/v0";
+// Vast retired `GET /api/v0/instances/` (HTTP 410); listing uses v1, the rest stays on v0.
+pub const DEFAULT_BASE_URL: &str = "https://console.vast.ai";
 pub const DISK_GB: i64 = 80;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
@@ -154,11 +155,13 @@ impl Client {
         if direct {
             query["direct_port_count"] = json!({"gte":2});
         }
-        let v: Offers = self.json(Method::POST, "/bundles", Some(&query)).await?;
+        let v: Offers = self
+            .json(Method::POST, "/api/v0/bundles", Some(&query))
+            .await?;
         Ok(v.offers.unwrap_or_default())
     }
     pub async fn create(&self, offer_id: i64, body: &Value) -> Result<i64> {
-        let path = format!("/asks/{offer_id}/");
+        let path = format!("/api/v0/asks/{offer_id}/");
         let bytes = match self.request(Method::PUT, &path, Some(body)).await {
             Ok(bytes) => bytes,
             Err(e) if (400..500).contains(&e.status) => {
@@ -200,9 +203,25 @@ impl Client {
         #[derive(Deserialize)]
         struct Instances {
             instances: Option<Vec<Inst>>,
+            next_token: Option<String>,
         }
-        let v: Instances = self.json(Method::GET, "/instances/", None).await?;
-        Ok(v.instances.unwrap_or_default())
+        let mut all = Vec::new();
+        let mut after_token: Option<String> = None;
+        loop {
+            let mut path = String::from("/api/v1/instances/");
+            if let Some(token) = &after_token {
+                let query = url::form_urlencoded::Serializer::new(String::new())
+                    .append_pair("after_token", token)
+                    .finish();
+                path = format!("{path}?{query}");
+            }
+            let page: Instances = self.json(Method::GET, &path, None).await?;
+            all.extend(page.instances.unwrap_or_default());
+            match page.next_token {
+                Some(token) if !token.is_empty() => after_token = Some(token),
+                _ => return Ok(all),
+            }
+        }
     }
     pub async fn get(&self, id: i64) -> Result<Inst> {
         #[derive(Deserialize)]
@@ -210,13 +229,13 @@ impl Client {
             instances: Option<Inst>,
         }
         let v: OneInstance = self
-            .json(Method::GET, &format!("/instances/{id}/"), None)
+            .json(Method::GET, &format!("/api/v0/instances/{id}/"), None)
             .await?;
         v.instances.ok_or(Error::NotFound)
     }
     pub async fn destroy(&self, id: i64) -> Result<()> {
         match self
-            .request(Method::DELETE, &format!("/instances/{id}/"), None)
+            .request(Method::DELETE, &format!("/api/v0/instances/{id}/"), None)
             .await
         {
             Ok(_) => Ok(()),
