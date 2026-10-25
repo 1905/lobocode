@@ -34,6 +34,7 @@ pub struct Laptop {
     pub vast_api_key: String,
     pub vast_max_dph: String,
     pub pod_image: String,
+    pub image_repo: String,
     pub provider: String,
     pub model: String,
     pub cloud: String,
@@ -63,6 +64,7 @@ impl Laptop {
             vast_api_key: get("VASTAI_API_KEY"),
             vast_max_dph: get("LOBO_VAST_MAX_DPH"),
             pod_image: get("LOBO_POD_IMAGE"),
+            image_repo: get("LOBO_IMAGE_REPO"),
             provider: get("LOBO_PROVIDER"),
             model: get("LOBO_MODEL"),
             cloud: get("LOBO_CLOUD"),
@@ -124,6 +126,15 @@ impl Laptop {
     }
     pub fn uses_ssh(&self) -> bool {
         matches!(self.connection_mode(), Ok("ssh"))
+    }
+    pub fn image_repo(&self) -> String {
+        let v = self.image_repo.trim();
+        if v.is_empty() {
+            return crate::images::REPOSITORY.to_owned();
+        }
+        let v = v.to_lowercase();
+        let v = v.strip_prefix("ghcr.io/").unwrap_or(&v);
+        v.trim_end_matches('/').to_owned()
     }
     pub fn cloud_port(&self) -> u16 {
         if self.cloud_port.is_empty() || self.cloud_port == "0" {
@@ -315,7 +326,7 @@ pub fn defaults_partial(l: &Laptop) -> (Defaults, BTreeMap<String, String>) {
     };
     let mut d = Defaults {
         provider: one_of("LOBO_PROVIDER", &l.provider, &["runpod", "vast", "local"]),
-        model: one_of("LOBO_MODEL", &l.model, &["q8", "q6"]),
+        model: one_of("LOBO_MODEL", &l.model, &lobo_proto::catalog::ids()),
         cloud: one_of("LOBO_CLOUD", &l.cloud, &["secure", "community"]),
         ..Default::default()
     };
