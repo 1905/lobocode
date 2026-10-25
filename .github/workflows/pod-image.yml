@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [q6, q8, qwen38-q6]
+        model: [q6, q8]
     steps:
       - uses: actions/checkout@v4
       - name: Check build capacity
@@ -151,11 +151,11 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - name: Promote all accepted model images
         run: |
-          for model in q6 q8 qwen38-q6; do
+          for model in q6 q8; do
             digest=$(cat "digest/$model.txt")
             [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
           done
-          for model in q6 q8 qwen38-q6; do
+          for model in q6 q8; do
             digest=$(cat "digest/$model.txt")
             docker buildx imagetools create --prefer-index=false \
               --tag "ghcr.io/${GITHUB_REPOSITORY,,}:latest-$model" "ghcr.io/${GITHUB_REPOSITORY,,}@$digest"

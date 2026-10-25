@@ -1,0 +1,98 @@
+name: Thin image
+
+# Triggered by a tag thin-image/<id>; the workflow file comes from the tagged commit.
+on:
+  push:
+    tags: ["thin-image/*"]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  thin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          set -euo pipefail
+          id=${GITHUB_REF_NAME#thin-image/}
+          sha=$(git rev-parse --short=12 HEAD)
+          repo_path=${GITHUB_REPOSITORY,,}
+          repo=ghcr.io/$repo_path
+          llama=$(sed -n 's/.*DEFAULT_LLAMA_IMAGE: &str = "\(.*\)";/\1/p' crates/lobo-proto/src/release.rs)
+          [ -n "$llama" ] || { echo "DEFAULT_LLAMA_IMAGE not found" >&2; exit 1; }
+          base=$(sed -n 's/.*DEFAULT_MODEL_BASE_URL: &str = "\(.*\)";/\1/p' crates/lobo-proto/src/release.rs)
+          [ -n "$base" ] || { echo "DEFAULT_MODEL_BASE_URL not found" >&2; exit 1; }
+          {
+            echo "id=$id"
+            echo "sha=$sha"
+            echo "repo=$repo"
+            echo "repo_path=$repo_path"
+            echo "llama=$llama"
+            echo "base=$base"
+          } >> "$GITHUB_OUTPUT"
+      - name: Check that every chunk is published
+        env:
+          ID: ${{ steps.meta.outputs.id }}
+          BASE: ${{ steps.meta.outputs.base }}
+        run: |
+          set -euo pipefail
+          entry=$(jq -ce --arg id "$ID" '.[] | select(.id == $id)' crates/lobo-proto/catalog.json) \
+            || { echo "Unknown model id: $ID" >&2; exit 1; }
+          sha256=$(jq -r .sha256 <<< "$entry")
+          size=$(jq -r .size <<< "$entry")
+          len=$(jq '.chunk_sha | length' <<< "$entry")
+          want=$(( (size + 268435455) / 268435456 ))
+          [ "$len" -gt 0 ] && [ "$len" -eq "$want" ] || { echo "chunk_sha has $len entries, expected $want" >&2; exit 1; }
+          export BASE sha256
+          seq 0 $((len - 1)) | xargs -P 16 -I{} sh -c \
+            'curl -fsS -o /dev/null -I "$BASE/models/$sha256/$(printf %03d {})"'
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/pod/Dockerfile
+          target: thin
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            VERSION=sha-${{ steps.meta.outputs.sha }}
+            GIT_SHA=${{ steps.meta.outputs.sha }}
+            LLAMA_IMAGE=${{ steps.meta.outputs.llama }}
+          tags: ${{ steps.meta.outputs.repo }}:sha-${{ steps.meta.outputs.sha }}-thin
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ steps.meta.outputs.repo_path }}
+      - name: Smoke test
+        env:
+          REF: ${{ steps.meta.outputs.repo }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /bin/sh "$REF" -c 'test ! -e /lobo/model.json && test -x /lobo/bin/cloudflared && /lobo/lobo-agent version'
+      - name: Promote
+        env:
+          REF: ${{ steps.meta.outputs.repo }}@${{ steps.build.outputs.digest }}
+          TAG: ${{ steps.meta.outputs.repo }}:latest-${{ steps.meta.outputs.id }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create --tag "$TAG" "$REF"
+      - name: Verify anonymous manifest access
+        env:
+          TAG: latest-${{ steps.meta.outputs.id }}
+        run: |
+          set -euo pipefail
+          # An authenticated push alone does not prove this is a public package.
+          token=$(curl --fail --silent --show-error 'https://ghcr.io/token?service=ghcr.io&scope=repository:${{ steps.meta.outputs.repo_path }}:pull' | jq -er .token) \
+            || { echo 'Anonymous token request failed; make the package public.' >&2; exit 1; }
+          curl --fail --silent --show-error -H "Authorization: Bearer $token" \
+            -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/${{ steps.meta.outputs.repo_path }}/manifests/$TAG" -o /dev/null \
+            || { echo "Anonymous manifest access failed; the package must be public." >&2; exit 1; }
+          echo "${{ steps.meta.outputs.repo }}:$TAG anonymously readable" >> "$GITHUB_STEP_SUMMARY"
