@@ -5,14 +5,18 @@ use crate::{
 use futures_util::{StreamExt, TryStreamExt, stream};
 use lobo_proto::DownloadProgress;
 use sha2::{Digest, Sha256};
-use std::{future::Future, time::Duration};
+use std::{collections::HashMap, future::Future, time::Duration};
 use std::{
     path::Path,
-    sync::atomic::{AtomicI64, Ordering},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicI64, Ordering},
+    },
 };
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
+    sync::Semaphore,
     time::Instant,
 };
 use tokio_util::sync::CancellationToken;
@@ -24,12 +28,18 @@ type Progress<'a> = Option<&'a (dyn Fn(DownloadProgress) + Sync)>;
 pub struct Tuning {
     pub stall: Duration,
     pub chunk: i64,
+    /// Throughput window that drives the stream ramp.
+    pub window: Duration,
+    /// Minimum stream age and span of its recent rate before a slow stream is dropped.
+    pub slow_after: Duration,
 }
 impl Default for Tuning {
     fn default() -> Self {
         Self {
             stall: Duration::from_secs(30),
             chunk: lobo_proto::catalog::CHUNK_SIZE,
+            window: Duration::from_secs(5),
+            slow_after: Duration::from_secs(10),
         }
     }
 }
@@ -242,15 +252,84 @@ pub async fn download(
     Ok(())
 }
 
+/// Stream count: starts at `min(4, max)`, adds 4 while each window beats the last
+/// growth window by at least 10 %, then holds for good.
+pub(crate) struct Ramp {
+    max: usize,
+    permits: usize,
+    baseline: Option<f64>,
+    holding: bool,
+}
+impl Ramp {
+    pub(crate) fn new(max: usize) -> Self {
+        Self {
+            max,
+            permits: max.min(4),
+            baseline: None,
+            holding: false,
+        }
+    }
+    pub(crate) fn permits(&self) -> usize {
+        self.permits
+    }
+    /// Takes one window's aggregate MB/s and returns the new stream count.
+    pub(crate) fn on_window(&mut self, mbps: f64) -> usize {
+        if !self.holding {
+            if self.baseline.is_none_or(|b| mbps >= b * 1.1) {
+                self.baseline = Some(mbps);
+                self.permits = (self.permits + 4).min(self.max);
+            } else {
+                self.holding = true;
+            }
+        }
+        self.permits
+    }
+}
+
+/// A stream is dropped when it is old enough, not alone, and under 25 % of the mean per-stream rate.
+pub(crate) fn too_slow(
+    age: Duration,
+    recent_mbps: f64,
+    aggregate_mbps: f64,
+    active: usize,
+    slow_after: Duration,
+) -> bool {
+    age >= slow_after && active >= 2 && recent_mbps < 0.25 * aggregate_mbps / active as f64
+}
+
+fn mbps(bytes: i64, elapsed: Duration) -> f64 {
+    bytes as f64 / elapsed.as_secs_f64().max(1e-9) / 1e6
+}
+
+/// One open chunk attempt, keyed by chunk index. Its read loop only bumps `bytes`.
+struct Stream {
+    started: Instant,
+    bytes: Arc<AtomicI64>,
+    drop: CancellationToken,
+    droppable: bool,
+    /// Snapshot `(at, bytes)` the recent rate is measured from, refreshed every `slow_after`.
+    seen: (Instant, i64),
+}
+type Streams = Mutex<HashMap<usize, Stream>>;
+struct Registered<'a>(&'a Streams, usize);
+impl Drop for Registered<'_> {
+    fn drop(&mut self) {
+        self.0.lock().unwrap().remove(&self.1);
+    }
+}
+
 // Each range opens its own file description. try_clone shares seek offsets on Unix.
+#[allow(clippy::too_many_arguments)]
 async fn fetch_chunk(
     cancel: &CancellationToken,
     src: &dyn Source,
     dst: Option<&Path>,
+    index: usize,
     start: i64,
     end: i64,
     sha: Option<&str>,
     count: &AtomicI64,
+    streams: &Streams,
 ) -> Result<()> {
     let mut file = match dst {
         Some(path) => Some(OpenOptions::new().write(true).open(path).await?),
@@ -258,57 +337,91 @@ async fn fetch_chunk(
     };
     let mut pos = start;
     let mut buf = vec![0; 1 << 20];
-    for attempt in 0..=MAX_RESUMES {
-        if pos >= end {
-            return Ok(());
-        }
-        if attempt > 0 {
-            sleep(cancel, Duration::from_secs(attempt as u64)).await?;
-        }
+    let mut attempt = 0;
+    let mut droppable = true;
+    while pos < end {
         if sha.is_some() {
             pos = start;
         }
         let mut hash = Sha256::new();
         let from = pos;
-        let (mut body, _) = match cancelled(cancel, src.open(pos, end - pos)).await {
-            Ok(v) => v,
+        // The monitor cancels `abort` to drop this attempt; `cancel` still means the user.
+        let abort = cancel.child_token();
+        let streamed = Arc::new(AtomicI64::new(0));
+        let now = Instant::now();
+        streams.lock().unwrap().insert(
+            index,
+            Stream {
+                started: now,
+                bytes: streamed.clone(),
+                drop: abort.clone(),
+                droppable,
+                seen: (now, 0),
+            },
+        );
+        let registered = Registered(streams, index);
+        let mut dropped = false;
+        match cancelled(&abort, src.open(pos, end - pos)).await {
+            Ok((mut body, _)) => {
+                if let Some(file) = &mut file {
+                    file.seek(std::io::SeekFrom::Start(pos as u64)).await?;
+                }
+                while pos < end {
+                    let limit = buf.len().min((end - pos) as usize);
+                    let n = match read(&abort, &mut body, &mut buf[..limit]).await {
+                        Ok(0) => break,
+                        Ok(n) => n,
+                        Err(Error::Cancelled) if cancel.is_cancelled() => {
+                            return Err(Error::Cancelled);
+                        }
+                        Err(Error::Cancelled) => {
+                            dropped = true;
+                            break;
+                        }
+                        Err(_) => break,
+                    };
+                    if let Some(file) = &mut file {
+                        file.write_all(&buf[..n]).await?;
+                    }
+                    hash.update(&buf[..n]);
+                    pos += n as i64;
+                    count.fetch_add(n as i64, Ordering::Relaxed);
+                    streamed.fetch_add(n as i64, Ordering::Relaxed);
+                }
+                if let Some(sha) = sha
+                    && (pos < end || hex::encode(hash.finalize()) != sha)
+                {
+                    count.fetch_sub(pos - from, Ordering::Relaxed);
+                    pos = start;
+                }
+                if pos == end {
+                    if let Some(file) = &mut file {
+                        file.flush().await?;
+                    }
+                    return Ok(());
+                }
+            }
+            Err(Error::Cancelled) if !cancel.is_cancelled() => dropped = true,
             Err(e) if e.is_permanent() || matches!(e, Error::Cancelled) => return Err(e),
-            Err(_) => continue,
-        };
-        if let Some(file) = &mut file {
-            file.seek(std::io::SeekFrom::Start(pos as u64)).await?;
+            Err(_) => {}
         }
-        while pos < end {
-            let limit = buf.len().min((end - pos) as usize);
-            let n = match read(cancel, &mut body, &mut buf[..limit]).await {
-                Ok(0) => break,
-                Ok(n) => n,
-                Err(Error::Cancelled) => return Err(Error::Cancelled),
-                Err(_) => break,
-            };
-            if let Some(file) = &mut file {
-                file.write_all(&buf[..n]).await?;
-            }
-            hash.update(&buf[..n]);
-            pos += n as i64;
-            count.fetch_add(n as i64, Ordering::Relaxed);
-        }
-        if let Some(sha) = sha
-            && (pos < end || hex::encode(hash.finalize()) != sha)
-        {
-            count.fetch_sub(pos - from, Ordering::Relaxed);
+        drop(registered);
+        // A drop restarts the chunk at once, from its first byte, and costs no resume.
+        if dropped {
+            count.fetch_sub(pos - start, Ordering::Relaxed);
             pos = start;
+            droppable = false;
+            continue;
         }
-        if pos == end {
-            if let Some(file) = &mut file {
-                file.flush().await?;
-            }
-            return Ok(());
+        attempt += 1;
+        if attempt > MAX_RESUMES {
+            return Err(Error::msg(format!(
+                "chunk {start}-{end}: gave up after {MAX_RESUMES} resumes"
+            )));
         }
+        sleep(cancel, Duration::from_secs(attempt as u64)).await?;
     }
-    Err(Error::msg(format!(
-        "chunk {start}-{end}: gave up after {MAX_RESUMES} resumes"
-    )))
+    Ok(())
 }
 
 async fn fetch_ranges(
@@ -320,27 +433,94 @@ async fn fetch_ranges(
     chunk_sha: &[String],
     count: &AtomicI64,
 ) -> Result<()> {
-    let chunk = tuning().chunk;
+    let Tuning {
+        chunk,
+        window,
+        slow_after,
+        ..
+    } = tuning();
     if size < 0 || chunk <= 0 {
         return Err(Error::msg("invalid download size or chunk size"));
     }
+    let mut ramp = Ramp::new(conns.max(1));
+    let permits = Semaphore::new(ramp.permits());
+    let streams = Streams::default();
     let ranges = (0..size).step_by(chunk as usize).enumerate();
-    stream::iter(ranges)
-        .map(|(i, start)| async move {
-            fetch_chunk(
-                cancel,
-                src,
-                dst,
-                start,
-                (start + chunk).min(size),
-                chunk_sha.get(i).map(String::as_str),
-                count,
-            )
-            .await
+    let work = stream::iter(ranges)
+        .map(|(i, start)| {
+            let (permits, streams) = (&permits, &streams);
+            async move {
+                let _permit = permits.acquire().await.expect("semaphore is never closed");
+                fetch_chunk(
+                    cancel,
+                    src,
+                    dst,
+                    i,
+                    start,
+                    (start + chunk).min(size),
+                    chunk_sha.get(i).map(String::as_str),
+                    count,
+                    streams,
+                )
+                .await
+            }
         })
         .buffer_unordered(conns.max(1))
-        .try_collect::<Vec<_>>()
-        .await?;
+        .try_collect::<Vec<_>>();
+    tokio::pin!(work);
+    let started = Instant::now();
+    let (mut last_at, mut last_n, mut drops) = (started, 0, 0);
+    let mut ticker = tokio::time::interval(window);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    ticker.tick().await;
+    let result = loop {
+        tokio::select! {
+            result = &mut work => break result,
+            _ = ticker.tick() => {
+                let (now, n) = (Instant::now(), count.load(Ordering::Relaxed));
+                let window_mbps = mbps(n - last_n, now - last_at);
+                (last_at, last_n) = (now, n);
+                let old = ramp.permits();
+                let new = ramp.on_window(window_mbps);
+                if new > old {
+                    permits.add_permits(new - old);
+                    tracing::info!(service = "lobo-agent", streams = new, mbps = window_mbps, "download streams raised");
+                }
+                let mut streams = streams.lock().unwrap();
+                let active = streams.len();
+                for (&i, s) in streams.iter_mut() {
+                    if !s.droppable || now - s.seen.0 < slow_after {
+                        continue;
+                    }
+                    let bytes = s.bytes.load(Ordering::Relaxed);
+                    let recent = mbps(bytes - s.seen.1, now - s.seen.0);
+                    s.seen = (now, bytes);
+                    if too_slow(now - s.started, recent, window_mbps, active, slow_after) {
+                        s.drop.cancel();
+                        s.droppable = false;
+                        drops += 1;
+                        tracing::info!(
+                            service = "lobo-agent",
+                            chunk = i,
+                            stream_mbps = recent,
+                            mean_mbps = window_mbps / active as f64,
+                            "slow download stream dropped"
+                        );
+                    }
+                }
+            }
+        }
+    };
+    tracing::info!(
+        service = "lobo-agent",
+        elapsed_s = started.elapsed().as_secs_f64(),
+        avg_mbps = mbps(count.load(Ordering::Relaxed), started.elapsed()),
+        peak_streams = ramp.permits(),
+        drops,
+        source = src.summary(),
+        "download summary"
+    );
+    result?;
     Ok(())
 }
 
@@ -432,8 +612,8 @@ pub async fn bench(
 mod tests {
     use super::*;
     use crate::{
-        source::HttpSource,
-        testutil::{self, Fault, RangeServer, within},
+        source::{ChunkSource, HttpSource},
+        testutil::{self, ChunkOpts, Fault, RangeServer, within},
     };
     use std::sync::{Arc, Mutex};
 
@@ -444,6 +624,7 @@ mod tests {
         Tuning {
             stall: Duration::from_millis(200),
             chunk: 64 << 10,
+            ..Default::default()
         }
     }
 
@@ -765,5 +946,126 @@ mod tests {
     fn default_tuning() {
         assert_eq!(tuning().stall, Duration::from_secs(30));
         assert_eq!(tuning().chunk, lobo_proto::catalog::CHUNK_SIZE);
+    }
+    #[test]
+    fn ramp_starts_at_four_and_respects_small_caps() {
+        assert_eq!(Ramp::new(2).permits(), 2);
+        assert_eq!(Ramp::new(32).permits(), 4);
+    }
+    #[test]
+    fn ramp_grows_on_ten_percent_gain_then_holds() {
+        let mut r = Ramp::new(32);
+        assert_eq!(r.on_window(100.0), 8); // first window is the baseline, then grow
+        assert_eq!(r.on_window(115.0), 12); // +15 %
+        assert_eq!(r.on_window(120.0), 12); // +4.3 %: hold
+        assert_eq!(r.on_window(500.0), 12); // holding is final
+    }
+    #[test]
+    fn ramp_never_exceeds_cap() {
+        let mut r = Ramp::new(10);
+        assert_eq!(r.on_window(10.0), 8);
+        assert_eq!(r.on_window(20.0), 10);
+        assert_eq!(r.on_window(40.0), 10);
+    }
+    #[test]
+    fn too_slow_rules() {
+        let s = Duration::from_secs(10);
+        assert!(!too_slow(Duration::from_secs(9), 1.0, 100.0, 4, s)); // too young
+        assert!(!too_slow(Duration::from_secs(11), 1.0, 100.0, 1, s)); // only stream
+        assert!(too_slow(Duration::from_secs(11), 6.0, 100.0, 4, s)); // 6 < 0.25 * 25
+        assert!(!too_slow(Duration::from_secs(11), 7.0, 100.0, 4, s));
+    }
+    fn saturated() -> Tuning {
+        Tuning {
+            stall: Duration::from_secs(5),
+            chunk: 64 << 10,
+            window: Duration::from_millis(50),
+            slow_after: Duration::from_millis(200),
+        }
+    }
+    async fn chunked_case(
+        chunks: usize,
+        opts: ChunkOpts,
+        conns: usize,
+        cancel: CancellationToken,
+    ) -> (RangeServer, Result<()>, Vec<u8>, Arc<Vec<u8>>) {
+        let chunk = 64 << 10;
+        let data = testutil::data(chunks * chunk);
+        let server = RangeServer::chunked(data.clone(), chunk, opts).await;
+        let src = ChunkSource::new(server.prefix.clone(), data.len() as i64);
+        let temp = tempfile::tempdir().unwrap();
+        let dst = temp.path().join("model");
+        let result = within(
+            Duration::from_secs(20),
+            with_tuning(
+                saturated(),
+                download_parallel(
+                    cancel,
+                    &src,
+                    &dst,
+                    data.len() as i64,
+                    &sha(&data),
+                    &testutil::chunk_table(&data, chunk as i64),
+                    conns,
+                    None,
+                ),
+            ),
+        )
+        .await;
+        let got = tokio::fs::read(&dst).await.unwrap_or_default();
+        (server, result, got, data)
+    }
+    #[tokio::test]
+    async fn parallel_drops_a_slow_stream_and_finishes() {
+        // pace keeps the other streams active while chunk 1 is slow; a drop needs >= 2 active streams.
+        let opts = ChunkOpts {
+            pace: Duration::from_millis(1),
+            slow_first: Some((1, Duration::from_millis(200))),
+            ..Default::default()
+        };
+        let (server, result, got, data) = chunked_case(32, opts, 4, CancellationToken::new()).await;
+        result.unwrap();
+        assert_eq!(got, *data);
+        assert_eq!(server.calls_for(1), 2); // dropped once, never twice
+    }
+    #[tokio::test]
+    async fn parallel_never_exceeds_stream_cap() {
+        let opts = ChunkOpts {
+            pace: Duration::from_millis(1),
+            ..Default::default()
+        };
+        let (server, result, got, data) = chunked_case(8, opts, 2, CancellationToken::new()).await;
+        result.unwrap();
+        assert_eq!(got, *data);
+        assert_eq!(server.max_inflight(), 2);
+    }
+    #[tokio::test]
+    async fn parallel_ramps_streams_up_to_cap() {
+        let opts = ChunkOpts {
+            pace: Duration::from_millis(1),
+            ..Default::default()
+        };
+        let (server, result, got, data) = chunked_case(32, opts, 8, CancellationToken::new()).await;
+        result.unwrap();
+        assert_eq!(got, *data);
+        assert_eq!(server.max_inflight(), 8); // starts at 4; the first window adds 4
+    }
+    #[tokio::test]
+    async fn cancel_while_streams_are_slow_returns_cancelled() {
+        // conns 4: the single-stream path cannot read chunk objects.
+        let opts = ChunkOpts {
+            slow_first: Some((0, Duration::from_secs(1))),
+            ..Default::default()
+        };
+        let cancel = CancellationToken::new();
+        let timer = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            timer.cancel();
+        });
+        let started = Instant::now();
+        let (_server, result, _, _) = chunked_case(1, opts, 4, cancel).await;
+        assert!(matches!(result, Err(Error::Cancelled)));
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 }

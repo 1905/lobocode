@@ -597,6 +597,7 @@ mod ssh_tests {
             Tuning {
                 stall: Duration::from_millis(200),
                 chunk: 65536,
+                ..Default::default()
             },
             async {
                 let Err(e) = within(Duration::from_secs(2), s.open(0, -1)).await else {
@@ -617,6 +618,7 @@ mod ssh_tests {
             Tuning {
                 stall: Duration::from_secs(2),
                 chunk: 65536,
+                ..Default::default()
             },
             async {
                 within(
