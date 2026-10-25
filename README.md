@@ -141,6 +141,8 @@ The optional CLI retains its separate export command: `lobo gen-api-key` writes 
 
 The Rust candidate uses separate complete images for Q6 and Q8. Each image includes the agent, inference runtime, SSH server and model weights. The Q6 tag, `ghcr.io/1905/lobocode:latest-q6`, is public and passed anonymous manifest verification on October 1, 2026. Q8 publication remains pending. Direct RunPod TUI inference and the native Mac cloud lifecycle passed. Broader telemetry acceptance and the Rust CLI release remain pending.
 
+The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The fork registry `ghcr.io/sandquattro/lobocode` carries `latest-qwen38-q6` (digest `<digest pending Task 9>`) and `latest-q6` (digest `<digest pending Task 9>`).
+
 The app resolves the selected tag again before each new start. The provider receives `ghcr.io/1905/lobocode@sha256:<digest>`. It may reuse identical layers, but cannot substitute an older image digest.
 
 A controlled Q6 check used a 65,536-token context and exactly 47,000 uncached synthetic input tokens. It returned the expected `4` in two output tokens. First content arrived after 24.040 seconds; the server reported 2,186.677 prompt tok/s. Its reported 45.271 output tok/s covers only two tokens and is not a sustained benchmark. Exact test-pod and tunnel cleanup passed. This does not validate local Metal inference or OpenCode.
@@ -170,7 +172,8 @@ The table describes shared CLI configuration. App settings exclude local weights
 | `LOBO_PROVIDER` (runpod, vast, local) | `--provider` | runpod |
 | `LOBO_CONNECTION` (ssh, cloudflare) | | ssh for new configurations |
 | `LOBO_CLOUD_PORT` (control API on port + 1) | | 8933 |
-| `LOBO_MODEL` (q8, q6) | `--q6` | q8 |
+| `LOBO_MODEL` (catalog id: qwen38-q6, q6, q8) | `--q6` | q8 |
+| `LOBO_IMAGE_REPO` (GHCR repository of the complete model images) | | 1905/lobocode |
 | `LOBO_CTX` | `--ctx` | 65536 |
 | `LOBO_IDLE_MIN` | `--idle-min` | 30 |
 | `LOBO_MAX_HOURS` | `--max-life` | 12 |
