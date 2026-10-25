@@ -106,6 +106,31 @@ fn env_matches_go() {
 }
 
 #[test]
+fn env_image_start_carries_download_keys() {
+    let e = env(
+        &CreateOpts {
+            image_model: true,
+            model_base_url: "https://m.example".into(),
+            dl_conns: 32,
+            min_mbps: 100,
+            ..fixture_opts()
+        },
+        "runpod",
+    );
+    assert_eq!(e["LOBO_MODEL_BASE_URL"], "https://m.example");
+    assert_eq!(e["LOBO_DL_CONNS"], "32");
+    assert_eq!(e["LOBO_MIN_MBPS"], "100");
+    for k in [
+        "LOBO_IMAGE_MODEL",
+        "LOBO_MODEL_URL",
+        "LOBO_RELEASE_URL",
+        "LOBO_MODEL_SSH_KEY",
+    ] {
+        assert!(!e.contains_key(k), "{k}");
+    }
+}
+
+#[test]
 fn env_never_has_account_secrets() {
     for k in env(&fixture_opts(), "vast").keys() {
         assert!(!k.starts_with("R2_"));

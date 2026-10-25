@@ -35,6 +35,7 @@ pub struct Laptop {
     pub vast_max_dph: String,
     pub pod_image: String,
     pub image_repo: String,
+    pub model_base_url: String,
     pub provider: String,
     pub model: String,
     pub cloud: String,
@@ -65,6 +66,7 @@ impl Laptop {
             vast_max_dph: get("LOBO_VAST_MAX_DPH"),
             pod_image: get("LOBO_POD_IMAGE"),
             image_repo: get("LOBO_IMAGE_REPO"),
+            model_base_url: get("LOBO_MODEL_BASE_URL"),
             provider: get("LOBO_PROVIDER"),
             model: get("LOBO_MODEL"),
             cloud: get("LOBO_CLOUD"),
@@ -135,6 +137,13 @@ impl Laptop {
         let v = v.to_lowercase();
         let v = v.strip_prefix("ghcr.io/").unwrap_or(&v);
         v.trim_end_matches('/').to_owned()
+    }
+    pub fn model_base_url(&self) -> String {
+        let v = self.model_base_url.trim().trim_end_matches('/');
+        if v.is_empty() {
+            return lobo_proto::release::DEFAULT_MODEL_BASE_URL.to_owned();
+        }
+        v.to_owned()
     }
     pub fn cloud_port(&self) -> u16 {
         if self.cloud_port.is_empty() || self.cloud_port == "0" {
@@ -341,6 +350,13 @@ pub fn defaults_partial(l: &Laptop) -> (Defaults, BTreeMap<String, String>) {
         bad.insert(
             "LOBO_IMAGE_REPO".into(),
             format!("want <owner>/<name>, got {:?}", l.image_repo.trim()),
+        );
+    }
+    let base = l.model_base_url();
+    if !(base.starts_with("https://") && valid_url(&base)) {
+        bad.insert(
+            "LOBO_MODEL_BASE_URL".into(),
+            format!("want an https URL, got {:?}", l.model_base_url.trim()),
         );
     }
     let mut num = |key: &str, v: &str, min: i64| {

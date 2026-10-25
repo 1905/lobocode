@@ -144,7 +144,7 @@ pub struct UpArgs {
         default_value_t = 0,
         allow_hyphen_values = true,
         hide = true,
-        help = "obsolete: model weights are included in the public image"
+        help = "parallel download streams for chunked models (default 32)"
     )]
     pub conns: i64,
     #[arg(
