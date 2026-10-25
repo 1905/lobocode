@@ -358,3 +358,22 @@ test('Clients bounds reason and warnings without truncating the submitted file p
   expect(view.settingsTab('local')).toBeNull();
   expect(view.settingsTab('unexpected')).toBeNull();
 });
+test('model labels, options and caption come from the catalog', () => {
+  const catalog = f('off').state.catalog;
+  expect(catalog.map((m) => m.id)).toEqual(['qwen38-q6', 'q6', 'q8']);
+  const [qwen38, q6, q8] = catalog;
+  expect(view.modelLabel(qwen38)).toBe('qwen3.8-27b abliterated · q6_k');
+  expect(view.modelOption(qwen38)).toBe(
+    'qwen3.8-27b abliterated · q6_k · 22.4 GB',
+  );
+  expect(view.modelOption(q6)).toBe('qwen3.5-27b uncensored · q6_k · 22.1 GB');
+  expect(view.modelOption(q8)).toBe('qwen3.5-27b uncensored · q8_0 · 28.6 GB');
+  expect(view.modelCaption(qwen38)).toBe(
+    'huihui-ai · Q6_K · fits RTX 5090 with 65k context',
+  );
+  expect(view.modelCaption(q6)).toBe(
+    'HauhauCS · Q6_K · fits RTX 5090 with 65k context',
+  );
+  expect(f('off').state.model).toBe('q6');
+  expect(f('setup').state.model).toBe('qwen38-q6');
+});

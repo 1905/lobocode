@@ -1,4 +1,27 @@
 {
+  "catalog": [
+    {
+      "id": "qwen38-q6",
+      "name": "qwen3.8-27b abliterated",
+      "quant": "Q6_K",
+      "repo": "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF",
+      "size": 22430999840
+    },
+    {
+      "id": "q6",
+      "name": "qwen3.5-27b uncensored",
+      "quant": "Q6_K",
+      "repo": "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive",
+      "size": 22082528352
+    },
+    {
+      "id": "q8",
+      "name": "qwen3.5-27b uncensored",
+      "quant": "Q8_0",
+      "repo": "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive",
+      "size": 28595762272
+    }
+  ],
   "config": {
     "exists": true,
     "path": "/Users/you/.config/lobo/config.env",

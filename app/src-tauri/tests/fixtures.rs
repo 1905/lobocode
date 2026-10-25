@@ -267,7 +267,7 @@ pub fn write_render_fixtures() {
         dir.join("settings.json"),
         format!(
             "{}\n",
-            serde_json::to_string_pretty(&serde_json::json!({"config":c,"readiness":r})).unwrap()
+            serde_json::to_string_pretty(&serde_json::json!({"config":c,"readiness":r,"catalog":Store::new().view(now()).catalog})).unwrap()
         ),
     )
     .unwrap();
