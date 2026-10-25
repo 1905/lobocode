@@ -194,7 +194,7 @@ fn catalog_cloud_entry_qwen38() {
         (m.name.as_str(), m.quant.as_str(), m.local),
         ("qwen3.8-27b abliterated", "Q6_K", false)
     );
-    assert!(m.chunk_sha.is_empty());
+    assert_eq!(m.chunk_sha.len(), 84);
     assert_eq!(catalog::ids(), ["q6", "q8", "qwen38-q6"]);
     assert_eq!(catalog::get(DEFAULT_CLOUD_MODEL).unwrap().id, "qwen38-q6");
     assert!(
