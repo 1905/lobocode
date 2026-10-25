@@ -63,14 +63,21 @@ pub fn list(weights: &Path) -> Result<Listing> {
     }
     Ok(listing)
 }
-/// Error text for a cloud-only model id requested in local mode.
-pub fn cloud_only_message(id: &str) -> String {
-    let local: Vec<_> = catalog::all()
+fn local_ids() -> String {
+    let ids: Vec<_> = catalog::all()
         .iter()
         .filter(|m| m.local)
         .map(|m| m.id.as_str())
         .collect();
-    format!("{id} is cloud-only; this Mac can run: {}", local.join(", "))
+    ids.join(", ")
+}
+/// Error text for a cloud-only model id requested in local mode.
+pub fn cloud_only_message(id: &str) -> String {
+    format!("{id} is cloud-only; this Mac can run: {}", local_ids())
+}
+/// Error text for an unknown id in local mode; lists local-capable ids only.
+pub fn unknown_message(id: &str) -> String {
+    format!("unknown model {id:?}, valid: {}", local_ids())
 }
 pub fn free_space(dir: &Path) -> Result<u64> {
     match nix::sys::statvfs::statvfs(dir) {

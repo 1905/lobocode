@@ -185,10 +185,8 @@ fn assess_rejects_cloud_only_model() {
         .unwrap_err()
         .to_string();
     assert_eq!(err, "qwen38-q6 is cloud-only; this Mac can run: q6, q8");
-    assert!(
-        assess("q4", 65536, &snapshot)
-            .unwrap_err()
-            .to_string()
-            .contains("unknown model")
+    assert_eq!(
+        assess("q4", 65536, &snapshot).unwrap_err().to_string(),
+        "unknown model \"q4\", valid: q6, q8"
     );
 }

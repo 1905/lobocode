@@ -346,3 +346,11 @@ fn validate_values_rejects_cloud_only_model() {
         .to_string();
     assert!(err.contains("cloud-only"), "{err}");
 }
+
+#[test]
+fn validate_values_unknown_model_lists_local_ids() {
+    let err = validate_values("q2", 4096, 5, 8931, 8932)
+        .unwrap_err()
+        .to_string();
+    assert_eq!(err, "unknown model \"q2\", valid: q6, q8");
+}

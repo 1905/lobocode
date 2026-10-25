@@ -53,7 +53,8 @@ pub fn snapshot() -> Result<MemorySnapshot> {
 }
 
 pub fn assess(model: &str, ctx: i64, snapshot: &MemorySnapshot) -> Result<MemoryAssessment> {
-    let entry = lobo_proto::catalog::get(model).map_err(|e| Error::Local(e.to_string()))?;
+    let entry = lobo_proto::catalog::get(model)
+        .map_err(|_| Error::Local(super::models::unknown_message(model)))?;
     if !entry.local {
         return Err(Error::Local(super::models::cloud_only_message(model)));
     }
