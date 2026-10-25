@@ -1,5 +1,5 @@
 use crate::{
-    app::{App, Io, load_cfg},
+    app::{App, Io, read_cfg},
     cli::PublishModelArgs,
 };
 use lobo_core::release::{Store, models::publish_model};
@@ -12,7 +12,7 @@ pub async fn run(
     path: &Path,
     io: &mut Io,
 ) -> anyhow::Result<()> {
-    let cfg = load_cfg(path)?;
+    let cfg = read_cfg(path)?;
     cfg.require_r2()?;
     let store = Store::models(&cfg.r2)?;
     let model = catalog::get(&args.id)?;

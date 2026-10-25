@@ -280,12 +280,16 @@ impl Laptop {
 fn valid_url(value: &str) -> bool {
     url::Url::parse(value).is_ok()
 }
-pub fn load_laptop(path: &Path) -> Result<Laptop> {
+/// Parses the config without validation; callers check the keys they use.
+pub fn read_laptop(path: &Path) -> Result<Laptop> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| Error::Config(format!("read {}: {e}", path.display())))?;
     let m =
         dotenv::parse(&text).map_err(|e| Error::Config(format!("read {}: {e}", path.display())))?;
-    let l = Laptop::from_values(&m);
+    Ok(Laptop::from_values(&m))
+}
+pub fn load_laptop(path: &Path) -> Result<Laptop> {
+    let l = read_laptop(path)?;
     let mut bad = Vec::new();
     if l.lobo_api_key.is_empty() {
         bad.push("LOBO_API_KEY: required");

@@ -80,6 +80,12 @@ impl App {
     }
 }
 pub fn load_cfg(path: &Path) -> anyhow::Result<Laptop> {
+    open_cfg(path, config::load_laptop)
+}
+pub fn read_cfg(path: &Path) -> anyhow::Result<Laptop> {
+    open_cfg(path, config::read_laptop)
+}
+fn open_cfg(path: &Path, read: fn(&Path) -> lobo_core::Result<Laptop>) -> anyhow::Result<Laptop> {
     if let Err(e) = std::fs::metadata(path)
         && e.kind() == std::io::ErrorKind::NotFound
     {
@@ -92,5 +98,5 @@ pub fn load_cfg(path: &Path) -> anyhow::Result<Laptop> {
             path.display()
         );
     }
-    Ok(config::load_laptop(path)?)
+    Ok(read(path)?)
 }
