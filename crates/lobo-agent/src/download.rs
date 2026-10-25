@@ -10,7 +10,7 @@ use std::{
     path::Path,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicI64, Ordering},
+        atomic::{AtomicI64, AtomicUsize, Ordering},
     },
 };
 use tokio::{
@@ -310,11 +310,75 @@ struct Stream {
     /// Snapshot `(at, bytes)` the recent rate is measured from, refreshed every `slow_after`.
     seen: (Instant, i64),
 }
-type Streams = Mutex<HashMap<usize, Stream>>;
+/// State shared by the chunk tasks of one download and its monitor.
+#[derive(Default)]
+struct Streams {
+    open: Mutex<HashMap<usize, Stream>>,
+    /// Every byte read, including bytes a restart throws away; it never goes down.
+    received: AtomicI64,
+    /// Most attempts open at once.
+    peak: AtomicUsize,
+}
 struct Registered<'a>(&'a Streams, usize);
 impl Drop for Registered<'_> {
     fn drop(&mut self) {
-        self.0.lock().unwrap().remove(&self.1);
+        self.0.open.lock().unwrap().remove(&self.1);
+    }
+}
+
+/// Grows the stream count and drops slow streams, once per `tuning().window`.
+struct Monitor {
+    ramp: Ramp,
+    /// Window start: instant and `received` bytes.
+    last: (Instant, i64),
+    drops: usize,
+}
+impl Monitor {
+    fn new(max: usize, at: Instant) -> Self {
+        Self {
+            ramp: Ramp::new(max),
+            last: (at, 0),
+            drops: 0,
+        }
+    }
+    /// Returns how many permits to add.
+    fn tick(&mut self, now: Instant, streams: &Streams, slow_after: Duration) -> usize {
+        let n = streams.received.load(Ordering::Relaxed);
+        let window_mbps = mbps(n - self.last.1, now - self.last.0);
+        self.last = (now, n);
+        let old = self.ramp.permits();
+        let new = self.ramp.on_window(window_mbps);
+        if new > old {
+            tracing::info!(
+                service = "lobo-agent",
+                streams = new,
+                mbps = window_mbps,
+                "download streams raised"
+            );
+        }
+        let mut open = streams.open.lock().unwrap();
+        let active = open.len();
+        for (&i, s) in open.iter_mut() {
+            if !s.droppable || now - s.seen.0 < slow_after {
+                continue;
+            }
+            let bytes = s.bytes.load(Ordering::Relaxed);
+            let recent = mbps(bytes - s.seen.1, now - s.seen.0);
+            s.seen = (now, bytes);
+            if too_slow(now - s.started, recent, window_mbps, active, slow_after) {
+                s.drop.cancel();
+                s.droppable = false;
+                self.drops += 1;
+                tracing::info!(
+                    service = "lobo-agent",
+                    chunk = i,
+                    stream_mbps = recent,
+                    mean_mbps = window_mbps / active as f64,
+                    "slow download stream dropped"
+                );
+            }
+        }
+        new - old
     }
 }
 
@@ -349,16 +413,20 @@ async fn fetch_chunk(
         let abort = cancel.child_token();
         let streamed = Arc::new(AtomicI64::new(0));
         let now = Instant::now();
-        streams.lock().unwrap().insert(
-            index,
-            Stream {
-                started: now,
-                bytes: streamed.clone(),
-                drop: abort.clone(),
-                droppable,
-                seen: (now, 0),
-            },
-        );
+        {
+            let mut open = streams.open.lock().unwrap();
+            open.insert(
+                index,
+                Stream {
+                    started: now,
+                    bytes: streamed.clone(),
+                    drop: abort.clone(),
+                    droppable,
+                    seen: (now, 0),
+                },
+            );
+            streams.peak.fetch_max(open.len(), Ordering::Relaxed);
+        }
         let registered = Registered(streams, index);
         let mut dropped = false;
         match cancelled(&abort, src.open(pos, end - pos)).await {
@@ -386,6 +454,7 @@ async fn fetch_chunk(
                     hash.update(&buf[..n]);
                     pos += n as i64;
                     count.fetch_add(n as i64, Ordering::Relaxed);
+                    streams.received.fetch_add(n as i64, Ordering::Relaxed);
                     streamed.fetch_add(n as i64, Ordering::Relaxed);
                 }
                 if let Some(sha) = sha
@@ -424,6 +493,9 @@ async fn fetch_chunk(
     Ok(())
 }
 
+/// `adaptive` ramps the stream count up to `conns` and drops slow streams; otherwise
+/// `conns` streams run from the start, as `bench` needs.
+#[allow(clippy::too_many_arguments)]
 async fn fetch_ranges(
     cancel: &CancellationToken,
     src: &dyn Source,
@@ -432,6 +504,7 @@ async fn fetch_ranges(
     conns: usize,
     chunk_sha: &[String],
     count: &AtomicI64,
+    adaptive: bool,
 ) -> Result<()> {
     let Tuning {
         chunk,
@@ -442,8 +515,13 @@ async fn fetch_ranges(
     if size < 0 || chunk <= 0 {
         return Err(Error::msg("invalid download size or chunk size"));
     }
-    let mut ramp = Ramp::new(conns.max(1));
-    let permits = Semaphore::new(ramp.permits());
+    let started = Instant::now();
+    let mut monitor = Monitor::new(conns.max(1), started);
+    let permits = Semaphore::new(if adaptive {
+        monitor.ramp.permits()
+    } else {
+        conns.max(1)
+    });
     let streams = Streams::default();
     let ranges = (0..size).step_by(chunk as usize).enumerate();
     let work = stream::iter(ranges)
@@ -468,55 +546,23 @@ async fn fetch_ranges(
         .buffer_unordered(conns.max(1))
         .try_collect::<Vec<_>>();
     tokio::pin!(work);
-    let started = Instant::now();
-    let (mut last_at, mut last_n, mut drops) = (started, 0, 0);
     let mut ticker = tokio::time::interval(window);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     ticker.tick().await;
     let result = loop {
         tokio::select! {
             result = &mut work => break result,
-            _ = ticker.tick() => {
-                let (now, n) = (Instant::now(), count.load(Ordering::Relaxed));
-                let window_mbps = mbps(n - last_n, now - last_at);
-                (last_at, last_n) = (now, n);
-                let old = ramp.permits();
-                let new = ramp.on_window(window_mbps);
-                if new > old {
-                    permits.add_permits(new - old);
-                    tracing::info!(service = "lobo-agent", streams = new, mbps = window_mbps, "download streams raised");
-                }
-                let mut streams = streams.lock().unwrap();
-                let active = streams.len();
-                for (&i, s) in streams.iter_mut() {
-                    if !s.droppable || now - s.seen.0 < slow_after {
-                        continue;
-                    }
-                    let bytes = s.bytes.load(Ordering::Relaxed);
-                    let recent = mbps(bytes - s.seen.1, now - s.seen.0);
-                    s.seen = (now, bytes);
-                    if too_slow(now - s.started, recent, window_mbps, active, slow_after) {
-                        s.drop.cancel();
-                        s.droppable = false;
-                        drops += 1;
-                        tracing::info!(
-                            service = "lobo-agent",
-                            chunk = i,
-                            stream_mbps = recent,
-                            mean_mbps = window_mbps / active as f64,
-                            "slow download stream dropped"
-                        );
-                    }
-                }
+            _ = ticker.tick(), if adaptive => {
+                permits.add_permits(monitor.tick(Instant::now(), &streams, slow_after));
             }
         }
     };
     tracing::info!(
         service = "lobo-agent",
         elapsed_s = started.elapsed().as_secs_f64(),
-        avg_mbps = mbps(count.load(Ordering::Relaxed), started.elapsed()),
-        peak_streams = ramp.permits(),
-        drops,
+        avg_mbps = mbps(streams.received.load(Ordering::Relaxed), started.elapsed()),
+        peak_streams = streams.peak.load(Ordering::Relaxed),
+        drops = monitor.drops,
         source = src.summary(),
         "download summary"
     );
@@ -555,7 +601,16 @@ pub async fn download_parallel(
     drop(file);
     let count = AtomicI64::new(0);
     let mut report = Reporter::new(size, on_progress);
-    let work = fetch_ranges(&cancel, src, Some(dst), size, conns, chunk_sha, &count);
+    let work = fetch_ranges(
+        &cancel,
+        src,
+        Some(dst),
+        size,
+        conns,
+        chunk_sha,
+        &count,
+        true,
+    );
     tokio::pin!(work);
     let mut ticker = tokio::time::interval(Duration::from_millis(500));
     ticker.tick().await;
@@ -598,7 +653,7 @@ pub async fn bench(
     let start = Instant::now();
     if let Ok(result) = tokio::time::timeout(
         dur,
-        fetch_ranges(&cancel, src, None, size, conns, &[], &count),
+        fetch_ranges(&cancel, src, None, size, conns, &[], &count, false),
     )
     .await
     {
@@ -946,6 +1001,8 @@ mod tests {
     fn default_tuning() {
         assert_eq!(tuning().stall, Duration::from_secs(30));
         assert_eq!(tuning().chunk, lobo_proto::catalog::CHUNK_SIZE);
+        assert_eq!(tuning().window, Duration::from_secs(5));
+        assert_eq!(tuning().slow_after, Duration::from_secs(10));
     }
     #[test]
     fn ramp_starts_at_four_and_respects_small_caps() {
@@ -975,23 +1032,38 @@ mod tests {
         assert!(too_slow(Duration::from_secs(11), 6.0, 100.0, 4, s)); // 6 < 0.25 * 25
         assert!(!too_slow(Duration::from_secs(11), 7.0, 100.0, 4, s));
     }
+    const CHUNK: usize = 64 << 10;
     fn saturated() -> Tuning {
         Tuning {
             stall: Duration::from_secs(5),
-            chunk: 64 << 10,
+            chunk: CHUNK as i64,
             window: Duration::from_millis(50),
             slow_after: Duration::from_millis(200),
         }
     }
-    async fn chunked_case(
-        chunks: usize,
-        opts: ChunkOpts,
+    fn paced() -> ChunkOpts {
+        ChunkOpts {
+            pace: Duration::from_millis(1),
+            ..Default::default()
+        }
+    }
+    // pace keeps the other streams active while chunk 1 is slow; a drop needs >= 2 active streams.
+    fn slow_chunk_1() -> ChunkOpts {
+        ChunkOpts {
+            slow_first: Some((1, Duration::from_millis(200))),
+            ..paced()
+        }
+    }
+    async fn chunked_server(chunks: usize, opts: ChunkOpts) -> (RangeServer, Arc<Vec<u8>>) {
+        let data = testutil::data(chunks * CHUNK);
+        (RangeServer::chunked(data.clone(), CHUNK, opts).await, data)
+    }
+    async fn fetch_chunked(
+        server: &RangeServer,
+        data: &[u8],
         conns: usize,
         cancel: CancellationToken,
-    ) -> (RangeServer, Result<()>, Vec<u8>, Arc<Vec<u8>>) {
-        let chunk = 64 << 10;
-        let data = testutil::data(chunks * chunk);
-        let server = RangeServer::chunked(data.clone(), chunk, opts).await;
+    ) -> (Result<()>, Vec<u8>) {
         let src = ChunkSource::new(server.prefix.clone(), data.len() as i64);
         let temp = tempfile::tempdir().unwrap();
         let dst = temp.path().join("model");
@@ -1004,51 +1076,142 @@ mod tests {
                     &src,
                     &dst,
                     data.len() as i64,
-                    &sha(&data),
-                    &testutil::chunk_table(&data, chunk as i64),
+                    &sha(data),
+                    &testutil::chunk_table(data, CHUNK as i64),
                     conns,
                     None,
                 ),
             ),
         )
         .await;
-        let got = tokio::fs::read(&dst).await.unwrap_or_default();
-        (server, result, got, data)
+        (result, tokio::fs::read(&dst).await.unwrap_or_default())
     }
     #[tokio::test]
     async fn parallel_drops_a_slow_stream_and_finishes() {
-        // pace keeps the other streams active while chunk 1 is slow; a drop needs >= 2 active streams.
-        let opts = ChunkOpts {
-            pace: Duration::from_millis(1),
-            slow_first: Some((1, Duration::from_millis(200))),
-            ..Default::default()
-        };
-        let (server, result, got, data) = chunked_case(32, opts, 4, CancellationToken::new()).await;
+        let (server, data) = chunked_server(32, slow_chunk_1()).await;
+        let (result, got) = fetch_chunked(&server, &data, 4, CancellationToken::new()).await;
         result.unwrap();
         assert_eq!(got, *data);
         assert_eq!(server.calls_for(1), 2); // dropped once, never twice
     }
     #[tokio::test]
     async fn parallel_never_exceeds_stream_cap() {
-        let opts = ChunkOpts {
-            pace: Duration::from_millis(1),
-            ..Default::default()
-        };
-        let (server, result, got, data) = chunked_case(8, opts, 2, CancellationToken::new()).await;
+        let (server, data) = chunked_server(8, paced()).await;
+        let (result, got) = fetch_chunked(&server, &data, 2, CancellationToken::new()).await;
         result.unwrap();
         assert_eq!(got, *data);
         assert_eq!(server.max_inflight(), 2);
     }
     #[tokio::test]
     async fn parallel_ramps_streams_up_to_cap() {
-        let opts = ChunkOpts {
-            pace: Duration::from_millis(1),
-            ..Default::default()
-        };
-        let (server, result, got, data) = chunked_case(32, opts, 8, CancellationToken::new()).await;
+        let (server, data) = chunked_server(32, paced()).await;
+        let (result, got) = fetch_chunked(&server, &data, 8, CancellationToken::new()).await;
         result.unwrap();
         assert_eq!(got, *data);
         assert_eq!(server.max_inflight(), 8); // starts at 4; the first window adds 4
+    }
+    #[tokio::test]
+    async fn restart_bytes_still_count_toward_the_ramp() {
+        // Chunk 0 is slow on its first request; the test drops it after 16 KiB, as the monitor does.
+        let opts = ChunkOpts {
+            slow_first: Some((0, Duration::from_millis(2))),
+            ..Default::default()
+        };
+        let (server, data) = chunked_server(1, opts).await;
+        let src = ChunkSource::new(server.prefix.clone(), data.len() as i64);
+        let table = testutil::chunk_table(&data, CHUNK as i64);
+        let (cancel, count, streams) = (
+            CancellationToken::new(),
+            AtomicI64::new(0),
+            Streams::default(),
+        );
+        let slow_after = Duration::from_secs(10);
+        let t0 = Instant::now();
+        let mut monitor = Monitor::new(32, t0);
+        // Window 1 receives one chunk: the baseline, and the ramp goes 4 -> 8.
+        streams.received.fetch_add(CHUNK as i64, Ordering::Relaxed);
+        assert_eq!(
+            monitor.tick(t0 + Duration::from_secs(1), &streams, slow_after),
+            4
+        );
+        // Window 2 receives the whole chunk after a drop threw 16+ KiB of it away.
+        let drop_after_16k = async {
+            loop {
+                if let Some(s) = streams.open.lock().unwrap().get(&0)
+                    && s.bytes.load(Ordering::Relaxed) >= 16 << 10
+                {
+                    s.drop.cancel();
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        };
+        let fetch = fetch_chunk(
+            &cancel,
+            &src,
+            None,
+            0,
+            0,
+            CHUNK as i64,
+            Some(&table[0]),
+            &count,
+            &streams,
+        );
+        let (result, ()) = within(
+            Duration::from_secs(10),
+            with_tuning(saturated(), async { tokio::join!(fetch, drop_after_16k) }),
+        )
+        .await;
+        result.unwrap();
+        assert_eq!(server.calls_for(0), 2);
+        assert_eq!(count.load(Ordering::Relaxed), CHUNK as i64);
+        assert_eq!(streams.peak.load(Ordering::Relaxed), 1);
+        // Net bytes equal window 1, which would hold the ramp; received bytes beat it by > 10 %.
+        assert_eq!(
+            monitor.tick(t0 + Duration::from_secs(2), &streams, slow_after),
+            4
+        );
+    }
+    #[tokio::test]
+    async fn bench_runs_fixed_streams_without_drops() {
+        // A 10 s window never ticks here, so 8 streams can only come from a fixed start.
+        let (server, data) = chunked_server(32, paced()).await;
+        let src = ChunkSource::new(server.prefix.clone(), data.len() as i64);
+        let fixed = Tuning {
+            window: Duration::from_secs(10),
+            ..saturated()
+        };
+        let size = data.len() as i64;
+        let (n, _) = with_tuning(
+            fixed,
+            super::bench(
+                CancellationToken::new(),
+                &src,
+                size,
+                8,
+                Duration::from_secs(10),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, size);
+        assert_eq!(server.max_inflight(), 8);
+        // The 50 ms window ticks while chunk 1 crawls, yet bench drops nothing.
+        let (server, data) = chunked_server(32, slow_chunk_1()).await;
+        let src = ChunkSource::new(server.prefix.clone(), data.len() as i64);
+        with_tuning(
+            saturated(),
+            super::bench(
+                CancellationToken::new(),
+                &src,
+                size,
+                8,
+                Duration::from_secs(1),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(server.calls_for(1), 1);
     }
     #[tokio::test]
     async fn cancel_while_streams_are_slow_returns_cancelled() {
@@ -1057,6 +1220,7 @@ mod tests {
             slow_first: Some((0, Duration::from_secs(1))),
             ..Default::default()
         };
+        let (server, data) = chunked_server(1, opts).await;
         let cancel = CancellationToken::new();
         let timer = cancel.clone();
         tokio::spawn(async move {
@@ -1064,8 +1228,27 @@ mod tests {
             timer.cancel();
         });
         let started = Instant::now();
-        let (_server, result, _, _) = chunked_case(1, opts, 4, cancel).await;
+        let (result, _) = fetch_chunked(&server, &data, 4, cancel).await;
         assert!(matches!(result, Err(Error::Cancelled)));
         assert!(started.elapsed() < Duration::from_secs(2));
+    }
+    #[tokio::test]
+    async fn cancel_after_a_drop_returns_cancelled() {
+        let (server, data) = chunked_server(32, slow_chunk_1()).await;
+        let cancel = CancellationToken::new();
+        let stop = async {
+            while server.calls_for(1) < 2 {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            cancel.cancel();
+            Instant::now()
+        };
+        let ((result, _), stopped) = within(Duration::from_secs(20), async {
+            tokio::join!(fetch_chunked(&server, &data, 4, cancel.clone()), stop)
+        })
+        .await;
+        assert!(matches!(result, Err(Error::Cancelled)));
+        assert!(stopped.elapsed() < Duration::from_secs(2));
+        assert_eq!(server.calls_for(1), 2); // no restart after the user's cancel
     }
 }
