@@ -63,7 +63,7 @@ async fn client_sends_user_agent() {
     let reqs = _s.received_requests().await.unwrap();
     let r = &reqs[0];
     assert_eq!(r.method, "POST");
-    assert_eq!(r.url.path(), "/bundles");
+    assert_eq!(r.url.path(), "/api/v0/bundles");
     assert_eq!(r.headers["user-agent"], http::USER_AGENT);
     assert_eq!(r.headers["Authorization"], "Bearer key");
     assert_eq!(r.headers["Content-Type"], "application/json");
@@ -220,12 +220,12 @@ impl FakeVast {
         }
         let path = r.url.path();
         match (r.method.as_str(), path) {
-            ("POST", "/bundles") => {
+            ("POST", "/api/v0/bundles") => {
                 ResponseTemplate::new(200).set_body_json(json!({"offers":self.offers}))
             }
-            ("PUT", p) if p.starts_with("/asks/") => {
+            ("PUT", p) if p.starts_with("/api/v0/asks/") => {
                 let id = p
-                    .trim_start_matches("/asks/")
+                    .trim_start_matches("/api/v0/asks/")
                     .trim_end_matches('/')
                     .parse()
                     .unwrap();
@@ -265,7 +265,7 @@ impl FakeVast {
                     json!({"success":true,"new_contract":self.next_id,"instance_api_key":"x"}),
                 )
             }
-            ("GET", "/instances/") => {
+            ("GET", "/api/v1/instances/") => {
                 self.list_count += 1;
                 let mut instances: Vec<_> = if self.list_count >= self.hide_until_list {
                     self.instances.values().cloned().collect()
@@ -279,9 +279,9 @@ impl FakeVast {
                 });
                 ResponseTemplate::new(200).set_body_json(json!({"instances":instances}))
             }
-            ("GET", p) if p.starts_with("/instances/") => {
+            ("GET", p) if p.starts_with("/api/v0/instances/") => {
                 let id = p
-                    .trim_start_matches("/instances/")
+                    .trim_start_matches("/api/v0/instances/")
                     .trim_end_matches('/')
                     .parse::<i64>()
                     .unwrap();
@@ -290,7 +290,7 @@ impl FakeVast {
             }
             ("DELETE", p) => {
                 let id = p
-                    .trim_start_matches("/instances/")
+                    .trim_start_matches("/api/v0/instances/")
                     .trim_end_matches('/')
                     .parse::<i64>()
                     .unwrap();
@@ -486,7 +486,7 @@ async fn cancel_between_offers_prevents_next_put() {
 async fn cancel_during_search_does_not_create() {
     let s = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/bundles"))
+        .and(path("/api/v0/bundles"))
         .respond_with(
             ResponseTemplate::new(200)
                 .set_delay(Duration::from_secs(30))
@@ -531,4 +531,41 @@ fn private_connection_exposes_only_ssh_and_retains_mapping() {
             to_instance(serde_json::from_value(serde_json::json!({"ports":ports})).unwrap());
         assert_eq!(waiting.ssh_port, 0);
     }
+}
+
+#[tokio::test]
+async fn list_uses_v1_and_follows_next_token() {
+    use wiremock::matchers::query_param;
+    let s = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/instances/"))
+        .and(query_param("after_token", "page 2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "success":true,
+            "instances":[{"id":2,"label":"lobo","actual_status":"running"}],
+            "next_token":null
+        })))
+        .mount(&s)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/instances/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "success":true,
+            "instances":[{"id":1,"label":"someone-else"}],
+            "next_token":"page 2"
+        })))
+        .mount(&s)
+        .await;
+    let p = VastProvider::new(Client::with_base("key", &s.uri()), 1.2, "lobo.test");
+    let list = p.list().await.unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].id, "2");
+    let queries: Vec<String> = s
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| r.url.query().unwrap_or_default().to_owned())
+        .collect();
+    assert_eq!(queries, ["", "after_token=page+2"]);
 }
