@@ -5,6 +5,7 @@ pub use lobo_proto::release::{
 };
 use std::time::Duration;
 
+pub mod models;
 pub mod store;
 pub mod zip;
 pub use store::Store;

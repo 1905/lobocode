@@ -41,6 +41,11 @@ pub enum Cmd {
         about = "Build lobo-agent, zip it with release.json, scan for secrets, upload to bucket lobo"
     )]
     Release(ReleaseArgs),
+    #[command(
+        hide = true,
+        about = "Verify a model GGUF and upload it as content-addressed chunks to bucket lobocode-models"
+    )]
+    PublishModel(PublishModelArgs),
     #[command(about = "Rent a 5090 and boot lobo; shows progress until the API is ready")]
     Up(UpArgs),
     #[command(about = "Delete every lobo pod on every provider")]
@@ -127,6 +132,13 @@ pub struct ReleaseArgs {
     pub no_promote: bool,
     #[command(flatten)]
     pub ignored: IgnoredArgs,
+}
+
+#[derive(Debug, Args)]
+pub struct PublishModelArgs {
+    pub id: String,
+    #[arg(long)]
+    pub file: PathBuf,
 }
 
 #[derive(Debug, Args)]
