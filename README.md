@@ -139,9 +139,9 @@ The optional CLI retains its separate export command: `lobo gen-api-key` writes 
 
 ## Pod image
 
-The Rust candidate uses separate complete images for Q6 and Q8. Each image includes the agent, inference runtime, SSH server and model weights. The Q6 tag, `ghcr.io/1905/lobocode:latest-q6`, is public and passed anonymous manifest verification on October 1, 2026. Q8 publication remains pending. Direct RunPod TUI inference and the native Mac cloud lifecycle passed. Broader telemetry acceptance and the Rust CLI release remain pending.
+The Rust candidate uses a separate complete image per catalog model. Each image includes the agent, inference runtime, SSH server and model weights. The Q6 tag, `ghcr.io/1905/lobocode:latest-q6`, is public and passed anonymous manifest verification on October 1, 2026. Q8 publication remains pending. Direct RunPod TUI inference and the native Mac cloud lifecycle passed. Broader telemetry acceptance and the Rust CLI release remain pending.
 
-The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The fork registry `ghcr.io/sandquattro/lobocode` carries `latest-qwen38-q6` (digest `<digest pending Task 9>`) and `latest-q6` (digest `<digest pending Task 9>`).
+The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The fork registry `ghcr.io/sandquattro/lobocode` is to carry `latest-qwen38-q6` and `latest-q6`; publication and digests are pending.
 
 The app resolves the selected tag again before each new start. The provider receives `ghcr.io/1905/lobocode@sha256:<digest>`. It may reuse identical layers, but cannot substitute an older image digest.
 
@@ -163,7 +163,7 @@ A new host may need to download the full image. The complete image removes separ
 
 ## Config reference
 
-The table describes shared CLI configuration. App settings exclude local weights and local ports. The app permits only RunPod or Vast and defaults to Q6 when no cloud model is selected.
+The table describes shared CLI configuration. App settings exclude local weights and local ports. The app permits only RunPod or Vast and defaults to `qwen38-q6` when no cloud model is selected.
 
 `~/.config/lobo/config.env`, plain `KEY=value`, mode 600. Only this file is read. The shell environment is never used. A flag beats the file, and the file beats the built-in default.
 
