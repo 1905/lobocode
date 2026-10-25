@@ -48,6 +48,7 @@ pub struct Resolved {
 
 pub const DEFAULT_LLAMA_IMAGE: &str = "ghcr.io/ggml-org/llama.cpp:server-cuda-b11118";
 pub const DEFAULT_MODEL: &str = "q8";
+pub const DEFAULT_CLOUD_MODEL: &str = "qwen38-q6";
 pub const DEFAULT_DEFAULTS: Defaults = Defaults {
     ctx: 65536,
     idle_min: 30,

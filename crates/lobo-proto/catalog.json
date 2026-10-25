@@ -89,7 +89,11 @@
       "c2db71e095856bfc7b0f92d221ac236d044a582ba29b0566f3ff980e29951c2b",
       "e8d2d09bf74af89172ee4f0ae303d91bf229eb3a9a67acb0b31bc4a9e593bceb",
       "64e5d056d2593bc178ad76fbe17d3709ce3b422de21fe853d213be18d9dbd515"
-    ]
+    ],
+    "repo": "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive",
+    "name": "qwen3.5-27b uncensored",
+    "quant": "Q6_K",
+    "local": true
   },
   {
     "id": "q8",
@@ -205,6 +209,22 @@
       "4bf15f8ab0e355f70574ceca40497d7ab5734981ffd206088c133b5f43c4cde0",
       "378c20378e1a68416206058a03a0e9cfc24fd00e6ad41461c99146e6d0e8d113",
       "78f712ff1b73bc54f6eb5c03384c2ebe3afb5479e660c0d75b385fe99ef8ddfe"
-    ]
+    ],
+    "repo": "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive",
+    "name": "qwen3.5-27b uncensored",
+    "quant": "Q8_0",
+    "local": true
+  },
+  {
+    "id": "qwen38-q6",
+    "file": "Huihui-Qwen3.8-27B-abliterated-Q6_K.gguf",
+    "sha256": "a5c159519d7bdba523578977d649dbfc48f2e47277ec77edd77670003b5b2492",
+    "alias": "qwen3.8-27b-abliterated-q6",
+    "size": 22430999840,
+    "chunk_sha": [],
+    "repo": "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF",
+    "name": "qwen3.8-27b abliterated",
+    "quant": "Q6_K",
+    "local": false
   }
 ]

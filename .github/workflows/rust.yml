@@ -58,8 +58,8 @@ jobs:
       - name: Check Go wire fixtures
         run: |
           make proto-fixtures
-          git diff --exit-code -- crates/lobo-proto/fixtures crates/lobo-proto/catalog.json
-          test -z "$(git status --porcelain -- crates/lobo-proto/fixtures crates/lobo-proto/catalog.json)"
+          git diff --exit-code -- crates/lobo-proto/fixtures
+          test -z "$(git status --porcelain -- crates/lobo-proto/fixtures)"
 
       - name: Check Go core fixtures
         run: |

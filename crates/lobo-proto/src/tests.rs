@@ -167,16 +167,55 @@ fn catalog_go_parity() {
     }
     assert_eq!(
         catalog::get("x").unwrap_err().to_string(),
-        "unknown model \"x\", valid: q6, q8"
+        "unknown model \"x\", valid: q6, q8, qwen38-q6"
     );
     assert_eq!(
         catalog::all()
             .iter()
             .map(|m| m.id.as_str())
             .collect::<Vec<_>>(),
-        ["q6", "q8"]
+        ["q6", "q8", "qwen38-q6"]
     );
     assert!((29275..31602).contains(&catalog::min_free_mib(28595762272)));
+}
+
+#[test]
+fn catalog_cloud_entry_qwen38() {
+    let m = catalog::get("qwen38-q6").unwrap();
+    assert_eq!(m.alias, "qwen3.8-27b-abliterated-q6");
+    assert_eq!(m.repo, "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF");
+    assert_eq!(m.file, "Huihui-Qwen3.8-27B-abliterated-Q6_K.gguf");
+    assert_eq!(m.size, 22430999840);
+    assert_eq!(
+        m.sha256,
+        "a5c159519d7bdba523578977d649dbfc48f2e47277ec77edd77670003b5b2492"
+    );
+    assert_eq!(
+        (m.name.as_str(), m.quant.as_str(), m.local),
+        ("qwen3.8-27b abliterated", "Q6_K", false)
+    );
+    assert!(m.chunk_sha.is_empty());
+    assert_eq!(catalog::ids(), ["q6", "q8", "qwen38-q6"]);
+    assert_eq!(catalog::get(DEFAULT_CLOUD_MODEL).unwrap().id, "qwen38-q6");
+    assert!(
+        catalog::get("x")
+            .unwrap_err()
+            .to_string()
+            .ends_with("valid: q6, q8, qwen38-q6")
+    );
+    for (id, quant) in [("q6", "Q6_K"), ("q8", "Q8_0")] {
+        let m = catalog::get(id).unwrap();
+        assert_eq!(
+            (m.repo.as_str(), m.name.as_str(), m.quant.as_str(), m.local),
+            (
+                "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive",
+                "qwen3.5-27b uncensored",
+                quant,
+                true
+            )
+        );
+        assert!(!m.chunk_sha.is_empty());
+    }
 }
 
 #[test]

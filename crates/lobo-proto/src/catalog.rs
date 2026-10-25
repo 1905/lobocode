@@ -15,6 +15,10 @@ pub struct Model {
     #[ts(type = "number")]
     pub size: i64,
     pub chunk_sha: Vec<String>,
+    pub repo: String,
+    pub name: String,
+    pub quant: String,
+    pub local: bool,
 }
 
 static CATALOG: LazyLock<Vec<Model>> = LazyLock::new(|| {
@@ -32,17 +36,17 @@ pub fn all() -> &'static [Model] {
     &CATALOG
 }
 
+pub fn ids() -> Vec<&'static str> {
+    all().iter().map(|m| m.id.as_str()).collect()
+}
+
 pub fn get(id: &str) -> Result<&'static Model, UnknownModel> {
     all()
         .iter()
         .find(|m| m.id == id)
         .ok_or_else(|| UnknownModel {
             id: id.to_owned(),
-            valid: all()
-                .iter()
-                .map(|m| m.id.as_str())
-                .collect::<Vec<_>>()
-                .join(", "),
+            valid: ids().join(", "),
         })
 }
 
