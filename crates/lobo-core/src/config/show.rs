@@ -14,6 +14,7 @@ pub const PLAIN_KEYS: &[&str] = &[
     "LOBO_CLOUD",
     "LOBO_VAST_MAX_DPH",
     "LOBO_POD_IMAGE",
+    "LOBO_IMAGE_REPO",
     "LOBO_MODEL_SOURCE",
     "LOBO_MODEL_SSH_KEY_FILE",
     "LOBO_MODEL_SSH_HOSTKEY",
@@ -78,6 +79,10 @@ mod tests {
         assert_eq!(masked("LOBO_DOMAIN", "example.com"), "example.com");
         assert_eq!(mask("short"), "••••");
         assert_eq!(mask(""), "(not set)");
+    }
+    #[test]
+    fn plain_keys_show_image_repo() {
+        assert_eq!(masked("LOBO_IMAGE_REPO", "1905/lobocode"), "1905/lobocode");
     }
     #[test]
     fn show_masks_secrets() {

@@ -330,6 +330,19 @@ pub fn defaults_partial(l: &Laptop) -> (Defaults, BTreeMap<String, String>) {
         cloud: one_of("LOBO_CLOUD", &l.cloud, &["secure", "community"]),
         ..Default::default()
     };
+    let repo = l.image_repo();
+    let parts: Vec<&str> = repo.split('/').collect();
+    let name_ok = |p: &&str| {
+        !p.is_empty()
+            && p.bytes()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"._-".contains(&c))
+    };
+    if parts.len() < 2 || !parts.iter().all(name_ok) {
+        bad.insert(
+            "LOBO_IMAGE_REPO".into(),
+            format!("want <owner>/<name>, got {:?}", l.image_repo.trim()),
+        );
+    }
     let mut num = |key: &str, v: &str, min: i64| {
         if v.is_empty() || v == "0" {
             return 0;

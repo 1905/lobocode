@@ -307,3 +307,32 @@ fn loose_mode_bits() {
         assert_eq!(loose_mode(&p), want);
     }
 }
+#[test]
+fn image_repo_rejects_malformed_values() {
+    for v in [
+        "https://ghcr.io/sandquattro/lobocode",
+        "sandquattro/lobocode:latest-q6",
+        "ghcr.io/",
+        "lobocode",
+    ] {
+        let l = Laptop {
+            image_repo: v.into(),
+            ..Default::default()
+        };
+        let (_, bad) = defaults_partial(&l);
+        let msg = bad
+            .get("LOBO_IMAGE_REPO")
+            .unwrap_or_else(|| panic!("{v}: accepted"));
+        assert!(msg.starts_with("want <owner>/<name>"), "{v}: {msg}");
+    }
+    for v in ["ghcr.io/SandQuattro/lobocode/", ""] {
+        let l = Laptop {
+            image_repo: v.into(),
+            ..Default::default()
+        };
+        assert!(
+            !defaults_partial(&l).1.contains_key("LOBO_IMAGE_REPO"),
+            "{v}"
+        );
+    }
+}
