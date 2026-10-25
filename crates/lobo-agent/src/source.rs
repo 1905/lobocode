@@ -132,7 +132,7 @@ impl ChunkSource {
         Self {
             prefix: prefix.into(),
             size,
-            http: crate::http::client(),
+            http: crate::http::client_http1(),
             hit: AtomicU64::new(0),
             miss: AtomicU64::new(0),
             other: AtomicU64::new(0),
