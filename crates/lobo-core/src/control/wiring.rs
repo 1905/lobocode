@@ -62,7 +62,7 @@ pub fn providers_from_config(cfg: &Laptop, w: &Wiring) -> BTreeMap<String, Arc<d
 pub fn deps_from_config(cfg: Laptop, w: &Wiring) -> Result<Deps> {
     let key = cfg.lobo_api_key.clone();
     Ok(Deps {
-        images: Arc::new(crate::images::PublicImages::new()),
+        images: Arc::new(crate::images::PublicImages::new(&cfg.image_repo())),
         connection: if cfg.uses_ssh() {
             Some(Arc::new(crate::connection::Manager::new(
                 w.config_path.clone(),
