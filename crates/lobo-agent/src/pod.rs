@@ -2,7 +2,7 @@ use crate::{
     Error, LogSource, Result,
     process::{self, LlamaArgs},
     runner::*,
-    source::{Source, redact_url},
+    source::{ChunkSource, Source, redact_url},
 };
 use async_trait::async_trait;
 use lobo_proto::{DownloadProgress, GoTime, Timings, catalog};
@@ -19,9 +19,9 @@ pub const LLAMA_BIN: &str = "/app/llama-server";
 pub const CUDA_LD_PATH: &str = "/app:/usr/local/cuda/lib64";
 pub const MODEL_DIR: &str = "/models";
 pub const SLOW_CHECK_AFTER: Duration = Duration::from_secs(20);
+/// The slow check judges the rate over this window, so a link still ramping up is not penalised.
+const SLOW_WINDOW: Duration = Duration::from_secs(5);
 pub const SSH_MAX_CONNS: usize = 8;
-pub const CLOUDFLARED_URL: &str =
-    "https://github.com/cloudflare/cloudflared/releases/download/2026.9.1/cloudflared-linux-amd64";
 pub const BIN_DIR: &str = "/lobo/bin";
 pub const RELEASE_JSON: &str = "/lobo/release.json";
 
@@ -113,6 +113,7 @@ pub struct SlowGate {
     after: Duration,
     floor: f64,
     source: String,
+    sample: Option<(Duration, i64)>,
     checked: bool,
 }
 impl SlowGate {
@@ -121,14 +122,23 @@ impl SlowGate {
             after,
             floor: floor_mbps,
             source: redacted_src,
+            sample: None,
             checked: false,
         }
     }
-    pub fn observe(&mut self, elapsed: Duration, mbps: f64) -> Option<String> {
-        if self.checked || elapsed <= self.after {
+    pub fn observe(&mut self, elapsed: Duration, bytes: i64) -> Option<String> {
+        if self.checked {
+            return None;
+        }
+        if elapsed <= self.after {
+            if self.sample.is_none() && elapsed >= self.after.saturating_sub(SLOW_WINDOW) {
+                self.sample = Some((elapsed, bytes));
+            }
             return None;
         }
         self.checked = true;
+        let (from, base) = self.sample.unwrap_or_default();
+        let mbps = (bytes - base) as f64 / (elapsed - from).as_secs_f64().max(1e-9) / 1e6;
         (mbps < self.floor).then(|| {
             format!(
                 "host: download too slow: {mbps:.1} MB/s after {:.0}s from {} (min {:.0})",
@@ -216,9 +226,9 @@ impl Download for ModelDownload {
                     let cause = Mutex::new(None);
                     let progress = |mut dp: DownloadProgress| {
                         if i > 0 { dp.source = redact_url(&url); }
-                        let mbps = dp.mbps;
+                        let bytes = dp.bytes;
                         on_progress(dp);
-                        if let Some(error) = gate.lock().unwrap().observe(start.elapsed(), mbps) {
+                        if let Some(error) = gate.lock().unwrap().observe(start.elapsed(), bytes) {
                             *cause.lock().unwrap() = Some(error);
                             child.cancel();
                         }
@@ -378,16 +388,8 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
     let clean = process::clean_env();
     let life = CancellationToken::new();
     let _guard = life.clone().drop_guard();
-    let mut urls = vec![cfg.model_url.clone()];
-    if !cfg.model_fallback.is_empty() {
-        urls.push(cfg.model_fallback.clone());
-    }
-    let (ssh, host, file, size) = (
-        cfg.model_ssh_key.clone(),
-        cfg.model_host_key.clone(),
-        model.file.clone(),
-        model.size,
-    );
+    let urls = vec![model.url(&cfg.model_base_url)];
+    let size = model.size;
     let api = self_api(
         &cfg.provider,
         &cfg.runpod_pod_id,
@@ -416,8 +418,8 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
                 conns: cfg.dl_conns,
                 min_mbps: cfg.min_mbps as f64,
                 slow_check_after: SLOW_CHECK_AFTER,
-                make_source: Arc::new(move |url| {
-                    crate::source::model_source(url, &ssh, &host, &file, size)
+                make_source: Arc::new(move |prefix| {
+                    Ok(Arc::new(ChunkSource::new(prefix, size)) as Arc<dyn Source>)
                 }),
             }),
             PathBuf::from(MODEL_DIR).join(&model.file),
@@ -429,11 +431,7 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
         } else {
             Arc::new(PodTunnel {
                 bin: PathBuf::from(BIN_DIR).join("cloudflared"),
-                url: if cfg.image_model {
-                    String::new()
-                } else {
-                    CLOUDFLARED_URL.into()
-                },
+                url: String::new(),
                 token: cfg.cf_tunnel_token,
                 env: clean.clone(),
                 logs: logs.clone(),
@@ -479,7 +477,7 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
     timings.download_source = if cfg.image_model {
         "Docker image".into()
     } else {
-        redact_url(&cfg.model_url)
+        redact_url(&cfg.model_base_url)
     };
     let idle = Duration::from_secs(
         (cfg.idle_min as u64)
@@ -753,16 +751,34 @@ mod tests {
     }
     #[test]
     fn slow_gate_decides_once_after_20s() {
+        let secs = Duration::from_secs;
         let mut s = SlowGate::new(SLOW_CHECK_AFTER, 100.0, "https://h".into());
-        assert!(s.observe(Duration::from_secs(19), 10.0).is_none());
+        assert!(s.observe(secs(19), 10_000_000).is_none());
+        // sample kept at 19 s (>= 15 s): 199.8 MB over 2 s
         assert_eq!(
-            s.observe(Duration::from_secs(21), 99.9).unwrap(),
+            s.observe(secs(21), 10_000_000 + 199_800_000).unwrap(),
             "host: download too slow: 99.9 MB/s after 21s from https://h (min 100)"
         );
-        assert!(s.observe(Duration::from_secs(22), 1.0).is_none());
+        assert!(s.observe(secs(22), 1).is_none());
         let mut s = SlowGate::new(SLOW_CHECK_AFTER, 100.0, "https://h".into());
-        assert!(s.observe(Duration::from_secs(21), 150.0).is_none());
-        assert!(s.observe(Duration::from_secs(22), 1.0).is_none());
+        assert!(s.observe(secs(21), 3_150_000_000).is_none());
+        assert!(s.observe(secs(22), 3_150_000_001).is_none());
+    }
+    #[test]
+    fn slow_gate_judges_trailing_rate_not_cumulative_average() {
+        let secs = Duration::from_secs;
+        let mut s = SlowGate::new(SLOW_CHECK_AFTER, 100.0, "https://h".into());
+        assert!(s.observe(secs(10), 100_000_000).is_none());
+        assert!(s.observe(secs(15), 300_000_000).is_none());
+        // cumulative 1000 MB / 21 s = 47.6 MB/s, trailing 700 MB / 6 s = 116.7 MB/s
+        assert!(s.observe(secs(21), 1_000_000_000).is_none());
+        let mut s = SlowGate::new(SLOW_CHECK_AFTER, 100.0, "https://h".into());
+        assert!(s.observe(secs(15), 3_000_000_000).is_none());
+        // cumulative 3.5 GB / 21 s is above the floor, trailing 500 MB / 6 s = 83.3 MB/s is not
+        assert_eq!(
+            s.observe(secs(21), 3_500_000_000).unwrap(),
+            "host: download too slow: 83.3 MB/s after 21s from https://h (min 100)"
+        );
     }
     #[tokio::test]
     async fn download_any_falls_back_on_any_error() {
