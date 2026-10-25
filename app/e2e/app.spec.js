@@ -195,7 +195,11 @@ describe("cloud-only native app without provider calls", () => {
     await click("Defaults");
     await noLocalControls();
     await $('input[aria-label="context"]').setValue("16384");
-    await $('select[aria-label="model"]').selectByAttribute("value", "q6");
+    await browser.execute(() => {
+      const el = document.querySelector('select[aria-label="model"]');
+      el.value = "q6";
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     await click("SAVE");
     await browser.waitUntil(async () =>
       (await $('[role="status"]').getText()).startsWith("saved "),
