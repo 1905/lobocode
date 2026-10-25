@@ -153,7 +153,7 @@ fn catalog_go_parity() {
         assert_eq!(m.sha256.len(), 64);
         assert_eq!(
             m.url("https://pub-x.r2.dev/"),
-            format!("https://pub-x.r2.dev/models/{}", m.file)
+            format!("https://pub-x.r2.dev/models/{}", m.sha256)
         );
         assert_eq!(
             m.chunk_sha.len() as i64,

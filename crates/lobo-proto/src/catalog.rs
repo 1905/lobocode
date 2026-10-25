@@ -51,8 +51,8 @@ pub fn get(id: &str) -> Result<&'static Model, UnknownModel> {
 }
 
 impl Model {
-    pub fn url(&self, bucket_url: &str) -> String {
-        format!("{}/models/{}", bucket_url.trim_end_matches('/'), self.file)
+    pub fn url(&self, base: &str) -> String {
+        format!("{}/models/{}", base.trim_end_matches('/'), self.sha256)
     }
 }
 
