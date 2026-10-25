@@ -143,7 +143,7 @@ The Rust candidate uses a separate complete image per catalog model. Each image 
 
 The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The fork registry `ghcr.io/sandquattro/lobocode` is to carry `latest-qwen38-q6` and `latest-q6`; publication and digests are pending.
 
-The app resolves the selected tag again before each new start. The provider receives `ghcr.io/1905/lobocode@sha256:<digest>`. It may reuse identical layers, but cannot substitute an older image digest.
+The app resolves the selected tag again before each new start. The provider receives `ghcr.io/<LOBO_IMAGE_REPO>@sha256:<digest>`, by default `ghcr.io/1905/lobocode@sha256:<digest>`. It may reuse identical layers, but cannot substitute an older image digest.
 
 A controlled Q6 check used a 65,536-token context and exactly 47,000 uncached synthetic input tokens. It returned the expected `4` in two output tokens. First content arrived after 24.040 seconds; the server reported 2,186.677 prompt tok/s. Its reported 45.271 output tok/s covers only two tokens and is not a sustained benchmark. Exact test-pod and tunnel cleanup passed. This does not validate local Metal inference or OpenCode.
 
@@ -163,7 +163,7 @@ A new host may need to download the full image. The complete image removes separ
 
 ## Config reference
 
-The table describes shared CLI configuration. App settings exclude local weights and local ports. The app permits only RunPod or Vast and defaults to `qwen38-q6` when no cloud model is selected.
+The table describes shared CLI configuration. App settings exclude local weights and local ports. The app permits only RunPod or Vast and defaults to `qwen38-q6` when no cloud model is selected. The Homebrew CLI is the Go build and accepts only `q6` and `q8` for `LOBO_MODEL`; a config saved with `qwen38-q6` from the app must be changed back before running that CLI.
 
 `~/.config/lobo/config.env`, plain `KEY=value`, mode 600. Only this file is read. The shell environment is never used. A flag beats the file, and the file beats the built-in default.
 

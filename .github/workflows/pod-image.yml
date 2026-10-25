@@ -108,7 +108,7 @@ jobs:
             LLAMA_IMAGE=${{ steps.meta.outputs.llama }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.source=https://github.com/${{ steps.meta.outputs.repo_path }}
       - name: Verify anonymous manifest access
         if: inputs.publish
         env:
@@ -149,7 +149,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/setup-buildx-action@v3
-      - name: Promote both accepted model images
+      - name: Promote all accepted model images
         run: |
           for model in q6 q8 qwen38-q6; do
             digest=$(cat "digest/$model.txt")
