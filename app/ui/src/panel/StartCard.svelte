@@ -41,7 +41,7 @@
         >
       </div>{/if}<BracketPicker
       label="model"
-      options={panel.catalog_ids}
+      options={panel.catalog.map((m) => m.id)}
       value={panel.model}
       onpick={(v) => pick('model', v)}
     />

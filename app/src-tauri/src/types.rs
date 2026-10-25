@@ -106,7 +106,7 @@ pub struct PanelState {
     pub snap: Option<Snap>,
     pub config: Option<ConfigShow>,
     pub readiness: Option<Readiness>,
-    pub catalog_ids: Vec<String>,
+    pub catalog: Vec<lobo_proto::catalog::Model>,
     pub download: Option<DownloadProgress>,
     pub steps: Vec<StepMark>,
     #[ts(type = "number | null")]

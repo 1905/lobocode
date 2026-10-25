@@ -162,7 +162,7 @@ fn cloud_config(mut cfg: config::Laptop) -> config::Laptop {
             .unwrap_or_else(|| "runpod".into());
     }
     if cfg.model.is_empty() {
-        cfg.model = "q6".into();
+        cfg.model = lobo_proto::DEFAULT_CLOUD_MODEL.into();
     }
     // Legacy CLI settings stay on disk and do not participate in app admission.
     cfg.local_port.clear();
@@ -516,7 +516,7 @@ mod tests {
         let original = std::fs::read(&backend.path).unwrap();
         let (shown, readiness) = backend.config().await.unwrap();
         assert_eq!(readiness.default_provider, "runpod");
-        assert_eq!(readiness.default_model, "q6");
+        assert_eq!(readiness.default_model, lobo_proto::DEFAULT_CLOUD_MODEL);
         assert!(readiness.cloud_ready);
         assert!(!readiness.local_supported);
         assert!(!shown.values.contains_key("LOBO_WEIGHTS_DIR"));
@@ -536,7 +536,7 @@ mod tests {
         assert!(saved.starts_with("# keep\n"));
         let prepared = backend.prepare_up(UpRequest::default()).unwrap();
         assert_eq!(prepared.options.provider, "runpod");
-        assert_eq!(prepared.options.model, "q6");
+        assert_eq!(prepared.options.model, lobo_proto::DEFAULT_CLOUD_MODEL);
         backend
             .save(BTreeMap::from([
                 ("LOBO_MODEL".into(), "q8".into()),

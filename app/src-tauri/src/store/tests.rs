@@ -154,7 +154,7 @@ fn up_explicit_requests_and_menu_progress() {
     let mut s = Store::new();
     s.set_provider("vast".into());
     let req = s.begin_up(now());
-    assert_eq!(req.model.as_deref(), Some("q6"));
+    assert_eq!(req.model.as_deref(), Some(lobo_proto::DEFAULT_CLOUD_MODEL));
     assert_eq!(req.provider.as_deref(), Some("vast"));
     s.handle_event(
         &UpEvent {
@@ -402,9 +402,9 @@ fn immutable_runtime_is_private_and_controls_running_identity() {
 }
 
 #[test]
-fn cloud_selection_rejects_local_and_has_q6_default() {
+fn cloud_selection_rejects_local_and_has_cloud_default() {
     let mut store = Store::new();
-    assert_eq!(store.view(now()).model, "q6");
+    assert_eq!(store.view(now()).model, lobo_proto::DEFAULT_CLOUD_MODEL);
     store.set_provider("local".into());
     assert_eq!(store.view(now()).provider, "runpod");
     store.set_provider("vast".into());
@@ -501,4 +501,20 @@ fn restored_observation_resets_on_identity_change_without_resetting_active_start
         store.view(later).boot_start_ms,
         Some(later.timestamp_millis())
     );
+}
+
+#[test]
+fn new_store_defaults_to_cloud_model_first() {
+    let mut s = Store::new();
+    let view = s.view(now());
+    assert_eq!(view.model, lobo_proto::DEFAULT_CLOUD_MODEL);
+    let ids: Vec<_> = view.catalog.iter().map(|m| m.id.as_str()).collect();
+    assert_eq!(ids, ["qwen38-q6", "q6", "q8"]);
+    s.set_model("q4".into());
+    assert_eq!(s.view(now()).model, "qwen38-q6");
+    s.set_model("q8".into());
+    assert_eq!(s.view(now()).model, "q8");
+    s.up_running = true;
+    s.set_model("q6".into());
+    assert_eq!(s.view(now()).model, "q8");
 }
