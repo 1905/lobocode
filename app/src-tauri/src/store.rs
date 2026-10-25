@@ -23,7 +23,10 @@ pub struct Store {
 }
 impl Store {
     pub fn new() -> Self {
-        let mut catalog = catalog::all().to_vec();
+        let mut catalog = catalog::all()
+            .iter()
+            .map(CatalogEntry::from)
+            .collect::<Vec<_>>();
         catalog.sort_by_key(|m| m.id != DEFAULT_CLOUD_MODEL);
         Self {
             state: PanelState {

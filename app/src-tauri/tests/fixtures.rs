@@ -188,7 +188,7 @@ fn fixtures() -> Vec<(&'static str, Store)> {
         },
         Readiness {
             default_provider: "runpod".into(),
-            default_model: "q6".into(),
+            default_model: lobo_proto::DEFAULT_CLOUD_MODEL.into(),
             ..Default::default()
         },
     );
