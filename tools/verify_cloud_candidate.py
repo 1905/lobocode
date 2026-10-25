@@ -50,7 +50,7 @@ def json_file(path):
     return value
 
 
-def verify(layout, metadata_path, source_sha, image_digest):
+def verify(layout, metadata_path, source_sha, image_digest, model="q6", source=SOURCE):
     require(SHA.fullmatch(source_sha), "source_sha must be a full lowercase Git SHA")
     require(DIGEST.fullmatch(image_digest), "image_digest must be a SHA256 digest")
     for directory in (layout, layout / "blobs", layout / "blobs" / "sha256"):
@@ -147,13 +147,13 @@ def verify(layout, metadata_path, source_sha, image_digest):
     labels = image_config.get("Labels", {})
     require(isinstance(labels, dict), "Invalid image labels")
     require(labels.get("org.opencontainers.image.revision") == source_sha, "Baked source revision differs from requested SHA")
-    require(labels.get("org.opencontainers.image.source") == SOURCE, "Baked source repository differs")
-    require(labels.get("io.lobocode.model") == "q6", "Baked model identity is not Q6")
+    require(labels.get("org.opencontainers.image.source") == source, "Baked source repository differs")
+    require(labels.get("io.lobocode.model") == model, f"Baked model identity is not {model}")
     if "containerimage.config.digest" in metadata:
         require(metadata["containerimage.config.digest"] == config_descriptor["digest"], "BuildKit config digest differs from image config")
-    return {"source_sha": source_sha, "image_digest": image_digest, "model": "q6",
+    return {"source_sha": source_sha, "image_digest": image_digest, "model": model,
             "platform": "linux/amd64", "blob_count": len(sizes), "graph_blob_count": len(visited),
-            "verified_bytes": total_bytes, "immutable_tag": "sha-" + source_sha[:12] + "-q6"}
+            "verified_bytes": total_bytes, "immutable_tag": "sha-" + source_sha[:12] + "-" + model}
 
 
 def self_test():
@@ -219,6 +219,13 @@ def self_test():
         metadata, digest = prepare(config, nested=True, attestation=True)
         assert verify(layout, metadata, source_sha, digest)["model"] == "q6"
         checks += 1
+        forked = "https://github.com/sandquattro/lobocode"
+        other = json.loads(json.dumps(config))
+        other["config"]["Labels"].update({"io.lobocode.model": "qwen38-q6", "org.opencontainers.image.source": forked})
+        metadata, digest = prepare(other)
+        assert verify(layout, metadata, source_sha, digest, model="qwen38-q6", source=forked)["immutable_tag"] == "sha-" + "a" * 12 + "-qwen38-q6"
+        checks += 1
+        rejected(lambda: verify(layout, metadata, source_sha, digest))
         for nested in (False, True):
             metadata, digest = prepare(config, nested=nested, platform={"os": "linux", "architecture": "amd64"})
             assert verify(layout, metadata, source_sha, digest)["platform"] == "linux/amd64"
@@ -272,6 +279,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--layout", type=Path, default=Path("/candidate/q6-oci"))
     parser.add_argument("--metadata", type=Path, default=Path("/candidate/q6-metadata.json"))
+    parser.add_argument("--model", default="q6")
+    parser.add_argument("--source", default=SOURCE)
     parser.add_argument("--source-sha")
     parser.add_argument("--image-digest")
     parser.add_argument("--self-test", action="store_true")
@@ -280,7 +289,7 @@ def main():
         self_test()
     else:
         require(args.source_sha and args.image_digest, "source SHA and image digest are required")
-        print(json.dumps(verify(args.layout, args.metadata, args.source_sha, args.image_digest), sort_keys=True))
+        print(json.dumps(verify(args.layout, args.metadata, args.source_sha, args.image_digest, args.model, args.source), sort_keys=True))
 
 
 if __name__ == "__main__":

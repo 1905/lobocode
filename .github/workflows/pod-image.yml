@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [q6, q8]
+        model: [q6, q8, qwen38-q6]
     steps:
       - uses: actions/checkout@v4
       - name: Check build capacity
@@ -69,10 +69,14 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = tag ]; then version=$GITHUB_REF_NAME; else version=sha-$sha; fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          repo_path=${GITHUB_REPOSITORY,,}
+          repo=ghcr.io/$repo_path
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+          echo "repo_path=$repo_path" >> "$GITHUB_OUTPUT"
           {
             echo 'tags<<EOF'
-            echo "ghcr.io/1905/lobocode:sha-$sha-$MODEL"
-            if [ "$GITHUB_REF_TYPE" = tag ]; then echo "ghcr.io/1905/lobocode:$version-$MODEL"; fi
+            echo "$repo:sha-$sha-$MODEL"
+            if [ "$GITHUB_REF_TYPE" = tag ]; then echo "$repo:$version-$MODEL"; fi
             echo EOF
           } >> "$GITHUB_OUTPUT"
           llama=$(sed -n 's/.*DEFAULT_LLAMA_IMAGE: &str = "\(.*\)";/\1/p' crates/lobo-proto/src/release.rs)
@@ -104,7 +108,7 @@ jobs:
             LLAMA_IMAGE=${{ steps.meta.outputs.llama }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
-            org.opencontainers.image.source=https://github.com/1905/lobocode
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
       - name: Verify anonymous manifest access
         if: inputs.publish
         env:
@@ -112,15 +116,15 @@ jobs:
           MODEL: ${{ matrix.model }}
         run: |
           # An authenticated push alone does not prove this is a public package.
-          token=$(curl --fail --silent --show-error 'https://ghcr.io/token?service=ghcr.io&scope=repository:1905/lobocode:pull' | jq -er .token)
+          token=$(curl --fail --silent --show-error 'https://ghcr.io/token?service=ghcr.io&scope=repository:${{ steps.meta.outputs.repo_path }}:pull' | jq -er .token)
           curl --fail --silent --show-error -H "Authorization: Bearer $token" \
             -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
-            "https://ghcr.io/v2/1905/lobocode/manifests/$DIGEST" -o manifest.json
+            "https://ghcr.io/v2/${{ steps.meta.outputs.repo_path }}/manifests/$DIGEST" -o manifest.json
           actual="sha256:$(sha256sum manifest.json | cut -d ' ' -f 1)"
           [ "$actual" = "$DIGEST" ] || { echo 'Anonymous manifest digest mismatch' >&2; exit 1; }
           mkdir -p digest
           printf '%s\n' "$DIGEST" > "digest/$MODEL.txt"
-          echo "ghcr.io/1905/lobocode@$DIGEST ($MODEL)" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.repo }}@$DIGEST ($MODEL)" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: inputs.publish
         with:
@@ -147,14 +151,14 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - name: Promote both accepted model images
         run: |
-          for model in q6 q8; do
+          for model in q6 q8 qwen38-q6; do
             digest=$(cat "digest/$model.txt")
             [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
           done
-          for model in q6 q8; do
+          for model in q6 q8 qwen38-q6; do
             digest=$(cat "digest/$model.txt")
             docker buildx imagetools create --prefer-index=false \
-              --tag "ghcr.io/1905/lobocode:latest-$model" "ghcr.io/1905/lobocode@$digest"
+              --tag "ghcr.io/${GITHUB_REPOSITORY,,}:latest-$model" "ghcr.io/${GITHUB_REPOSITORY,,}@$digest"
             echo "latest-$model -> $digest" >> "$GITHUB_STEP_SUMMARY"
           done
   prebuilt:
