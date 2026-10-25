@@ -155,7 +155,9 @@ pub fn env(o: &CreateOpts, provider: &str) -> BTreeMap<String, String> {
         values.remove("CF_TUNNEL_TOKEN");
     }
     if o.image_model {
-        values.insert("LOBO_IMAGE_MODEL".into(), "1".into());
+        if !o.model_base_url.is_empty() {
+            values.insert("LOBO_MODEL_BASE_URL".into(), o.model_base_url.clone());
+        }
         for key in [
             "LOBO_MODEL_URL",
             "LOBO_MODEL_URL_FALLBACK",
@@ -163,8 +165,6 @@ pub fn env(o: &CreateOpts, provider: &str) -> BTreeMap<String, String> {
             "LOBO_RELEASE_SHA256",
             "LOBO_MODEL_SSH_KEY",
             "LOBO_MODEL_SSH_HOSTKEY",
-            "LOBO_DL_CONNS",
-            "LOBO_MIN_MBPS",
         ] {
             values.remove(key);
         }

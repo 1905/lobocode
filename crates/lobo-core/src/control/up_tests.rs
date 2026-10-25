@@ -668,11 +668,17 @@ async fn up_ignores_private_sources_and_never_forwards_their_secrets() {
     assert!(o.model_url.is_empty() && o.model_fallback.is_empty());
     assert!(o.model_ssh_key.is_empty() && o.model_host_key.is_empty());
     assert!(o.release_url.is_empty() && o.release_sha256.is_empty());
+    assert_eq!(
+        o.model_base_url,
+        lobo_proto::release::DEFAULT_MODEL_BASE_URL
+    );
+    assert_eq!(o.dl_conns, 32);
     for payload in [
         crate::provider::runpod::build_create_payload(o, "COMMUNITY", 0.0).to_string(),
         crate::provider::vast::create_body(o).to_string(),
     ] {
         assert!(payload.contains("exec /lobo/start"));
+        assert!(payload.contains("LOBO_MODEL_BASE_URL"));
         assert!(payload.contains("public-image-q8@sha256:fixture"));
         for forbidden in [
             "secret-runpod",
@@ -701,13 +707,6 @@ async fn up_rejects_obsolete_explicit_source_before_renting() {
         ),
         (
             UpOpts {
-                conns: 16,
-                ..Default::default()
-            },
-            "conns",
-        ),
-        (
-            UpOpts {
                 ssh_key: "debug-key".into(),
                 ..Default::default()
             },
@@ -721,6 +720,26 @@ async fn up_rejects_obsolete_explicit_source_before_renting() {
                 .to_string()
                 .contains(&format!("--{flag} is no longer supported"))
         );
+        assert!(rp.state.lock().unwrap().created.is_empty());
+    }
+}
+#[tokio::test]
+async fn up_accepts_stream_cap_and_rejects_below_two() {
+    let (d, rp) = test_deps(ready());
+    let opts = UpOpts {
+        conns: 16,
+        ..Default::default()
+    };
+    collect(d, opts).await.1.unwrap();
+    assert_eq!(rp.state.lock().unwrap().created[0].opts.dl_conns, 16);
+    for n in [1, -3] {
+        let (d, rp) = test_deps(ready());
+        let opts = UpOpts {
+            conns: n,
+            ..Default::default()
+        };
+        let error = collect(d, opts).await.1.unwrap_err();
+        assert!(error.to_string().contains("--conns"), "{n}: {error}");
         assert!(rp.state.lock().unwrap().created.is_empty());
     }
 }

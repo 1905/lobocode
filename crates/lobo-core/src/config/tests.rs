@@ -177,6 +177,39 @@ fn image_repo_defaults_to_upstream_and_normalizes_input() {
     }
 }
 #[test]
+fn model_base_url_default_override_and_validation() {
+    assert_eq!(
+        Laptop::default().model_base_url(),
+        lobo_proto::release::DEFAULT_MODEL_BASE_URL
+    );
+    let l = Laptop::from_values(
+        &[(
+            "LOBO_MODEL_BASE_URL".into(),
+            " https://cdn.example/ ".into(),
+        )]
+        .into(),
+    );
+    assert_eq!(l.model_base_url(), "https://cdn.example");
+    for v in ["http://cdn.example", "nope"] {
+        let l = Laptop {
+            model_base_url: v.into(),
+            ..Default::default()
+        };
+        let msg = defaults_partial(&l).1["LOBO_MODEL_BASE_URL"].clone();
+        assert!(msg.starts_with("want an https URL"), "{v}: {msg}");
+    }
+    for v in ["https://cdn.example/", ""] {
+        let l = Laptop {
+            model_base_url: v.into(),
+            ..Default::default()
+        };
+        assert!(
+            !defaults_partial(&l).1.contains_key("LOBO_MODEL_BASE_URL"),
+            "{v}"
+        );
+    }
+}
+#[test]
 fn defaults_parse_and_reject() {
     let l = Laptop {
         provider: "vast".into(),

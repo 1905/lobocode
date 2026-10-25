@@ -393,11 +393,11 @@ async fn run(
                     .into(),
             ));
         }
-        if o.conns != 0 {
-            return Err(Error::Config(
-                "cloud models are included in the Docker image; --conns is no longer supported"
-                    .into(),
-            ));
+        if (..2).contains(&o.conns) && o.conns != 0 {
+            return Err(Error::Config(format!(
+                "--conns: want at least 2 parallel streams, got {}",
+                o.conns
+            )));
         }
         if !o.ssh_key.is_empty() {
             return Err(Error::Config(
@@ -501,6 +501,8 @@ async fn cloud_opts(
     Ok(CreateOpts {
         image: rel.manifest.llama_image.clone(),
         image_model: true,
+        model_base_url: d.cfg.model_base_url(),
+        dl_conns: if o.conns > 0 { o.conns } else { 32 },
         lobo_api_key: d.cfg.lobo_api_key.clone(),
         cf_tunnel_token: d.cfg.cf_tunnel_token.clone(),
         model: m.id.clone(),

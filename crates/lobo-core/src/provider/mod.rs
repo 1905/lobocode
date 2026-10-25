@@ -20,6 +20,7 @@ pub struct CreateOpts {
     pub release_url: String,
     pub release_sha256: String,
     pub model_url: String,
+    pub model_base_url: String,
     pub model_fallback: String,
     pub lobo_api_key: String,
     pub cf_tunnel_token: String,
