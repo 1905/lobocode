@@ -1,5 +1,5 @@
 #!/bin/bash
-# All software and model bytes are provided by the image. No boot-time downloads.
+# Software comes from the image. Weights come from the image or, for a thin image, from LOBO_MODEL_BASE_URL.
 set -Eeuo pipefail
 terminate() {
   local out payload code
@@ -32,10 +32,14 @@ die() {
 }
 trap die ERR TERM INT
 export LOBO_T_BOOT0=$(date +%s.%N)
-export LOBO_T_APT=$LOBO_T_BOOT0 LOBO_T_ZIP=$LOBO_T_BOOT0 LOBO_IMAGE_MODEL=1
+export LOBO_T_APT=$LOBO_T_BOOT0 LOBO_T_ZIP=$LOBO_T_BOOT0
+if [ -r /lobo/model.json ]; then
+  export LOBO_IMAGE_MODEL=1
+else
+  test -n "${LOBO_MODEL_BASE_URL:-}"
+fi
 test -x /lobo/lobo-agent
 test -x /app/llama-server
-test -r /lobo/model.json
 if [ "${LOBO_CONNECTION:-ssh}" = ssh ]; then
   test -x /usr/sbin/sshd
   test -n "${LOBO_CONNECTION_HOST_KEY:-}"
