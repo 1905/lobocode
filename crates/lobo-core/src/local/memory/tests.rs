@@ -173,3 +173,22 @@ fn native_snapshot_reads_without_loading_a_model() {
     let a = assess("q6", 65536, &s).unwrap();
     assert_eq!(a.total_bytes, s.total_bytes);
 }
+
+#[test]
+fn assess_rejects_cloud_only_model() {
+    let snapshot = MemorySnapshot {
+        total_bytes: 64 << 30,
+        available_bytes: 48 << 30,
+        metal_limit_bytes: 48 << 30,
+    };
+    let err = assess("qwen38-q6", 65536, &snapshot)
+        .unwrap_err()
+        .to_string();
+    assert_eq!(err, "qwen38-q6 is cloud-only; this Mac can run: q6, q8");
+    assert!(
+        assess("q4", 65536, &snapshot)
+            .unwrap_err()
+            .to_string()
+            .contains("unknown model")
+    );
+}

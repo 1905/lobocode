@@ -338,3 +338,11 @@ async fn supervise_second_instance_refused() {
     let state: LocalState = serde_json::from_slice(&std::fs::read(&s.state.path).unwrap()).unwrap();
     assert_eq!(state.boot_id, "old");
 }
+
+#[test]
+fn validate_values_rejects_cloud_only_model() {
+    let err = validate_values("qwen38-q6", 4096, 5, 8931, 8932)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cloud-only"), "{err}");
+}
