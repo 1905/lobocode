@@ -1,5 +1,7 @@
-# Complete public GPU image: runtime, agent, SSH and selected model weights.
-# Built by pod-image.yml; LLAMA_IMAGE comes from lobo-proto DEFAULT_LLAMA_IMAGE.
+# Public GPU image. Target full (the default): complete image with runtime, agent,
+# SSH and selected model weights, built by pod-image.yml. Target thin: the same
+# runtime without weights, built by thin-image.yml.
+# LLAMA_IMAGE comes from lobo-proto DEFAULT_LLAMA_IMAGE.
 ARG LLAMA_IMAGE
 ARG SPLIT_IMAGE=ghcr.io/ggml-org/llama.cpp:full-cuda-b11118
 

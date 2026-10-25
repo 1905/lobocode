@@ -141,7 +141,7 @@ The optional CLI retains its separate export command: `lobo gen-api-key` writes 
 
 The Rust candidate uses a separate complete image per catalog model, except `qwen38-q6`, which uses a thin image (see below). Each complete image includes the agent, inference runtime, SSH server and model weights. The Q6 tag, `ghcr.io/1905/lobocode:latest-q6`, is public and passed anonymous manifest verification on October 1, 2026. Q8 publication remains pending. Direct RunPod TUI inference and the native Mac cloud lifecycle passed. Broader telemetry acceptance and the Rust CLI release remain pending.
 
-The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The fork registry `ghcr.io/sandquattro/lobocode` is to carry `latest-qwen38-q6` and `latest-q6`; publication and digests are pending.
+The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The fork registry `ghcr.io/sandquattro/lobocode` is to carry only `latest-qwen38-q6`; publication and its digest are pending. It carries no `latest-q6`: with `LOBO_IMAGE_REPO=sandquattro/lobocode`, choosing `q6` fails with the existing `cannot resolve latest q6 GPU image` error before any rental.
 
 The app resolves the selected tag again before each new start. The provider receives `ghcr.io/<LOBO_IMAGE_REPO>@sha256:<digest>`, by default `ghcr.io/1905/lobocode@sha256:<digest>`. It may reuse identical layers, but cannot substitute an older image digest.
 
