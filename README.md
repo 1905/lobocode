@@ -139,7 +139,7 @@ The optional CLI retains its separate export command: `lobo gen-api-key` writes 
 
 ## Pod image
 
-The Rust candidate uses a separate complete image per catalog model. Each image includes the agent, inference runtime, SSH server and model weights. The Q6 tag, `ghcr.io/1905/lobocode:latest-q6`, is public and passed anonymous manifest verification on October 1, 2026. Q8 publication remains pending. Direct RunPod TUI inference and the native Mac cloud lifecycle passed. Broader telemetry acceptance and the Rust CLI release remain pending.
+The Rust candidate uses a separate complete image per catalog model, except `qwen38-q6`, which uses a thin image (see below). Each complete image includes the agent, inference runtime, SSH server and model weights. The Q6 tag, `ghcr.io/1905/lobocode:latest-q6`, is public and passed anonymous manifest verification on October 1, 2026. Q8 publication remains pending. Direct RunPod TUI inference and the native Mac cloud lifecycle passed. Broader telemetry acceptance and the Rust CLI release remain pending.
 
 The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The fork registry `ghcr.io/sandquattro/lobocode` is to carry `latest-qwen38-q6` and `latest-q6`; publication and digests are pending.
 
@@ -147,7 +147,7 @@ The app resolves the selected tag again before each new start. The provider rece
 
 A controlled Q6 check used a 65,536-token context and exactly 47,000 uncached synthetic input tokens. It returned the expected `4` in two output tokens. First content arrived after 24.040 seconds; the server reported 2,186.677 prompt tok/s. Its reported 45.271 output tok/s covers only two tokens and is not a sustained benchmark. Exact test-pod and tunnel cleanup passed. This does not validate local Metal inference or OpenCode.
 
-Model weights use native GGUF shards in separate image layers. Startup verifies each shard before loading. Missing or corrupt files fail startup and trigger instance cleanup. Boot never downloads replacement weights, an agent archive or OS packages.
+Model weights use native GGUF shards in separate image layers. Startup verifies each shard before loading. Missing or corrupt files fail startup and trigger instance cleanup. Boot of a complete image never downloads replacement weights, an agent archive or OS packages.
 
 `qwen38-q6` is the exception. It runs from a thin image (Dockerfile target `thin`) without weights and downloads its 22,430,999,840-byte GGUF as 84 content-addressed 256 MiB chunks from `{LOBO_MODEL_BASE_URL}/models/{sha256}/{nnn}`, by default `https://models.stealthcopilot.io`. The agent verifies the sha256 of every chunk. It starts 4 parallel streams, adds 4 per 5 s window while aggregate throughput rises by at least 10 %, and stops at the cap from the control plane (default 32). A stream that is far slower than the rest restarts once per chunk. The hidden `--conns` option overrides the cap; values below 2 are rejected. The slow-host check (`LOBO_MIN_MBPS`) uses the rate over the last 5 s before the 20 s check. No user needs a token to download. `q6` and `q8` keep their complete images (Dockerfile target `full`, the default build).
 
@@ -161,9 +161,9 @@ lobo up --image ghcr.io/1905/lobocode@sha256:<digest>
 
 Normal starts ignore old `LOBO_POD_IMAGE`, bucket and model-source settings. The obsolete `--release`, `--source` and debug `--ssh` options return an error before rental.
 
-Image pulls can transfer roughly 22–29 GB of weights plus the runtime. The default startup limit is 40 minutes. A host that cannot start the container within 30 minutes is removed. Cancellation also removes the owned instance.
+A complete-image pull transfers roughly 22–29 GB of weights plus the runtime. The thin image pulls only the runtime, and the agent then downloads the chunks. The default startup limit is 40 minutes. A host that cannot start the container within 30 minutes is removed; this covers the image pull. The chunk download runs after the container starts and falls under the 40-minute limit. Cancellation also removes the owned instance.
 
-A new host may need to download the full image. The complete image removes separate boot-time software and model downloads. It does not guarantee that a RunPod host already has the image cached.
+A new host may need to download the full image. A complete image (`q6`, `q8`) removes separate boot-time software and model downloads; `qwen38-q6` downloads its weights at boot, as described above. It does not guarantee that a RunPod host already has the image cached.
 
 ## Config reference
 
@@ -178,12 +178,12 @@ The table describes shared CLI configuration. App settings exclude local weights
 | `LOBO_CLOUD_PORT` (control API on port + 1) | | 8933 |
 | `LOBO_MODEL` (catalog id: qwen38-q6, q6, q8) | `--q6` | q8 |
 | `LOBO_MODEL_BASE_URL` (base URL of the model chunks; https only, trailing slash ignored; shown unmasked by `lobo config show`) | | `https://models.stealthcopilot.io` |
-| `LOBO_IMAGE_REPO` (GHCR repository of the complete model images) | | 1905/lobocode |
+| `LOBO_IMAGE_REPO` (GHCR repository of the pod images, complete and thin, tagged `latest-<id>`) | | 1905/lobocode |
 | `LOBO_CTX` | `--ctx` | 65536 |
 | `LOBO_IDLE_MIN` | `--idle-min` | 30 |
 | `LOBO_MAX_HOURS` | `--max-life` | 12 |
 | `LOBO_CLOUD` (community, secure) | `--cloud` | community |
-| `LOBO_MIN_MBPS` (minimum advertised Vast host speed, MB/s) | `--min-mbps` | 100 |
+| `LOBO_MIN_MBPS` (minimum advertised Vast host speed, MB/s; also the agent's measured-rate gate during the chunk download: rate over the last ~5 s before the 20 s check, a slower host is replaced) | `--min-mbps` | 100 |
 | `LOBO_VAST_MAX_DPH` | | 1.20 |
 | `LOBO_WEIGHTS_DIR` | | `~/Library/Application Support/lobo/weights` |
 | `LOBO_LOCAL_PORT` (API on port + 1) | | 8931 |
