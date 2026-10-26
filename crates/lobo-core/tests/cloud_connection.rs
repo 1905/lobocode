@@ -112,7 +112,11 @@ async fn master(root: &Path) -> String {
         .output()
         .await
         .unwrap();
-    assert!(output.status.success());
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     String::from_utf8_lossy(&output.stderr).into()
 }
 struct Cleanup(std::path::PathBuf);
@@ -262,6 +266,22 @@ async fn detached_ssh_streaming_reconnect_and_failures() {
     tokio::time::sleep(Duration::from_secs(2)).await;
     wait_http(&base).await;
     assert_ne!(orphan_master, master(&manager.root).await);
+    // A master killed without `-O exit` leaves its socket; the next master must replace it.
+    let killed = master(&manager.root).await;
+    let pid = killed
+        .split("pid=")
+        .nth(1)
+        .unwrap()
+        .trim()
+        .trim_end_matches(')');
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(pid.parse().unwrap()),
+        nix::sys::signal::Signal::SIGKILL,
+    )
+    .unwrap();
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    wait_http(&base).await;
+    assert_ne!(killed, master(&manager.root).await);
     eprintln!(
         "SSH authentication, progressive SSE, tool calls, detached reopen and reconnect passed"
     );
