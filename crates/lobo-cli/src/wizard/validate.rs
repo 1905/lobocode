@@ -67,7 +67,12 @@ pub fn model_options(local: bool) -> Vec<(String, &'static str)> {
         if !matches!(m.id.as_str(), "q8" | "q6") && (m.local || !local) {
             let only = if m.local { "" } else { ", cloud only" };
             out.push((
-                format!("{} {} ({:.1} GB{only})", m.name, m.quant, m.size as f64 / 1e9),
+                format!(
+                    "{} {} ({:.1} GB{only})",
+                    m.name,
+                    m.quant,
+                    m.size as f64 / 1e9
+                ),
                 m.id.as_str(),
             ));
         }
@@ -110,7 +115,12 @@ mod tests {
     use super::*;
     #[test]
     fn model_options_follow_the_catalog() {
-        let ids = |local| model_options(local).into_iter().map(|(_, v)| v).collect::<Vec<_>>();
+        let ids = |local| {
+            model_options(local)
+                .into_iter()
+                .map(|(_, v)| v)
+                .collect::<Vec<_>>()
+        };
         assert_eq!(ids(false), ["q8", "q6", "qwen38-q6"]);
         assert_eq!(ids(true), ["q8", "q6"]);
         assert_eq!(

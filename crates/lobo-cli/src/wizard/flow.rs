@@ -98,12 +98,7 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
     }
     let models = model_options(s.is_local());
     let models: Vec<_> = models.iter().map(|(l, v)| (l.as_str(), *v)).collect();
-    s.model = p.select(
-        "3/4 · Defaults for lobo up · Model",
-        "",
-        &models,
-        &s.model,
-    )?;
+    s.model = p.select("3/4 · Defaults for lobo up · Model", "", &models, &s.model)?;
     s.ctx = p.text(
         "3/4 · Defaults for lobo up · Context size",
         "Tokens. Empty = release default (65536).",
