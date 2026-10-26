@@ -84,6 +84,8 @@ Every new cloud start looks up the current `latest-q8` or `latest-q6` tag and se
 
 Useful flags for `lobo up`: `--provider vast`, `--q6`, `--ctx 16384`, `--idle-min 10`, `--max-life 4h`.
 
+Vast retired its v0 instance list (`GET /api/v0/instances/` returns HTTP 410). The Mac app and the Rust CLI (`bin/lobo-rs`) list through `/api/v1/instances/`. The published Homebrew CLI still uses the v0 list, so its Vast `up`, `status` and `down` commands fail until a new CLI release. RunPod is not affected.
+
 The terminal dashboard updates in place. Press `q` to leave status; press `q` or Ctrl-C during startup to cancel and wait for cleanup. Short terminals use a compact layout that retains metrics, shutdown timers and the quit hint. The real RunPod check confirmed Ready and status fit 80 columns. Some startup detail lines still clip at that width.
 
 ## Local inference through the optional CLI

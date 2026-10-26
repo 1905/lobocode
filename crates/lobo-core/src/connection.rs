@@ -131,11 +131,6 @@ impl Manager {
         })
     }
     pub fn preflight(&self) -> Result<()> {
-        if self.root.join("ssh.sock").as_os_str().len() >= 100 {
-            return Err(Error::Config(
-                "cloud configuration path is too long for an SSH control socket".into(),
-            ));
-        }
         for binary in ["ssh", "ssh-keygen"] {
             if std::process::Command::new(binary)
                 .arg(if binary == "ssh" { "-V" } else { "-?" })
@@ -369,12 +364,15 @@ fn endpoint(i: &mut Instance, port: u16) {
     i.api_url = format!("http://127.0.0.1:{port}/v1");
     i.agent_url = format!("http://127.0.0.1:{}", port + 1);
 }
+// Relative to the cloud directory: Unix socket paths are limited to about
+// 104 bytes, and the config may live in a deep directory.
+const SOCKET: &str = "ssh.sock";
 async fn close_master(root: &Path) {
     let _ = tokio::time::timeout(
         Duration::from_secs(2),
         tokio::process::Command::new("ssh")
-            .args(["-F", "/dev/null", "-S"])
-            .arg(root.join("ssh.sock"))
+            .current_dir(root)
+            .args(["-F", "/dev/null", "-S", SOCKET])
             .args(["-O", "exit", "lobo-owned"])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -399,8 +397,8 @@ fn ssh_command(root: &Path, s: &Desired, i: &Instance) -> Result<tokio::process:
         ));
     }
     let mut c = tokio::process::Command::new("ssh");
-    c.args(["-F", "/dev/null", "-N", "-T", "-M", "-S"])
-        .arg(root.join("ssh.sock"))
+    c.current_dir(root)
+        .args(["-F", "/dev/null", "-N", "-T", "-M", "-S", SOCKET])
         .args([
             "-o",
             "BatchMode=yes",
