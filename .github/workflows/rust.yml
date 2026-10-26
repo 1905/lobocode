@@ -95,6 +95,20 @@ jobs:
           file target/x86_64-unknown-linux-musl/release/lobo-agent | tee /dev/stderr | grep -Eq 'statically linked|static-pie linked'
           ls -l target/x86_64-unknown-linux-musl/release/lobo-agent >> "$GITHUB_STEP_SUMMARY"
 
+  ssh-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.1"
+      - uses: Swatinem/rust-cache@v2
+      - name: Real OpenSSH tunnel, reconnect and cleanup
+        run: |
+          bin=$(cargo test --locked -p lobo-core --test cloud_connection --no-run --message-format=json \
+            | jq -r 'select(.profile.test == true and .target.name == "cloud_connection") | .executable')
+          sudo "$bin" --ignored --exact detached_ssh_streaming_reconnect_and_failures --nocapture
+
   core-macos:
     runs-on: macos-14
     steps:
