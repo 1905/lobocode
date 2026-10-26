@@ -1,4 +1,4 @@
-//! Run explicitly in the task-owned Dell container. No model or GPU is used.
+//! The ignored test runs as root in the `ssh-integration` CI job. No model or GPU is used.
 use axum::{
     Router,
     body::{Body, Bytes},
@@ -92,8 +92,8 @@ fn address(root: &Path, port: u16) {
 }
 async fn close_ssh(root: &Path) {
     let output = tokio::process::Command::new("ssh")
-        .args(["-F", "/dev/null", "-S"])
-        .arg(root.join("ssh.sock"))
+        .current_dir(root)
+        .args(["-F", "/dev/null", "-S", "ssh.sock"])
         .args(["-O", "exit", "owned"])
         .output()
         .await
@@ -106,8 +106,8 @@ async fn close_ssh(root: &Path) {
 }
 async fn master(root: &Path) -> String {
     let output = tokio::process::Command::new("ssh")
-        .args(["-F", "/dev/null", "-S"])
-        .arg(root.join("ssh.sock"))
+        .current_dir(root)
+        .args(["-F", "/dev/null", "-S", "ssh.sock"])
         .args(["-O", "check", "owned"])
         .output()
         .await
@@ -123,7 +123,7 @@ impl Drop for Cleanup {
     }
 }
 #[tokio::test]
-#[ignore = "Dell Docker only: needs root and OpenSSH server; takes about two minutes"]
+#[ignore = "needs root and an OpenSSH server on a fresh Linux host; takes about two minutes"]
 async fn detached_ssh_streaming_reconnect_and_failures() {
     assert_eq!(std::env::consts::OS, "linux", "never run this on the Mac");
     assert!(
@@ -134,8 +134,8 @@ async fn detached_ssh_streaming_reconnect_and_failures() {
         .prefix("lobo-cloud-")
         .tempdir()
         .unwrap();
-    // A space in the configuration path must work in native app installations.
-    let cfg = tmp.path().join("config file.env");
+    // A space and a path longer than a Unix socket path must work in native app installations.
+    let cfg = tmp.path().join("d".repeat(120)).join("config file.env");
     let manager = Manager::new(
         cfg.clone(),
         env!("CARGO_BIN_EXE_lobo-core-testchild").into(),
@@ -341,6 +341,14 @@ async fn detached_ssh_streaming_reconnect_and_failures() {
     sshd_stop();
     fs::remove_dir_all("/lobo/cloud-ssh").unwrap();
     eprintln!("host-key rejection, port conflict and owned cleanup passed");
+}
+
+#[test]
+fn preflight_accepts_a_config_path_longer_than_a_socket_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = tmp.path().join("d".repeat(120)).join("lobo.env");
+    let manager = Manager::new(cfg, "/missing-helper".into(), port_pair()).unwrap();
+    manager.preflight().unwrap();
 }
 
 #[tokio::test]
