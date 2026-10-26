@@ -315,7 +315,7 @@ struct Stream {
 struct Streams {
     open: Mutex<HashMap<usize, Stream>>,
     /// Every byte read, including bytes a restart throws away; it never goes down.
-    received: AtomicI64,
+    received: Arc<AtomicI64>,
     /// Most attempts open at once.
     peak: AtomicUsize,
 }
@@ -504,6 +504,7 @@ async fn fetch_ranges(
     conns: usize,
     chunk_sha: &[String],
     count: &AtomicI64,
+    received: Arc<AtomicI64>,
     adaptive: bool,
 ) -> Result<()> {
     let Tuning {
@@ -522,7 +523,10 @@ async fn fetch_ranges(
     } else {
         conns.max(1)
     });
-    let streams = Streams::default();
+    let streams = Streams {
+        received,
+        ..Default::default()
+    };
     let ranges = (0..size).step_by(chunk as usize).enumerate();
     let work = stream::iter(ranges)
         .map(|(i, start)| {
@@ -581,6 +585,33 @@ pub async fn download_parallel(
     conns: usize,
     on_progress: Progress<'_>,
 ) -> Result<()> {
+    download_parallel_counted(
+        cancel,
+        src,
+        dst,
+        size,
+        sha,
+        chunk_sha,
+        conns,
+        Arc::default(),
+        on_progress,
+    )
+    .await
+}
+
+/// As `download_parallel`; `received` also counts bytes that a chunk restart throws away.
+#[allow(clippy::too_many_arguments)]
+pub async fn download_parallel_counted(
+    cancel: CancellationToken,
+    src: &dyn Source,
+    dst: &Path,
+    size: i64,
+    sha: &str,
+    chunk_sha: &[String],
+    conns: usize,
+    received: Arc<AtomicI64>,
+    on_progress: Progress<'_>,
+) -> Result<()> {
     if conns <= 1 {
         return download(cancel, src, dst, sha, on_progress).await;
     }
@@ -609,6 +640,7 @@ pub async fn download_parallel(
         conns,
         chunk_sha,
         &count,
+        received,
         true,
     );
     tokio::pin!(work);
@@ -653,7 +685,17 @@ pub async fn bench(
     let start = Instant::now();
     if let Ok(result) = tokio::time::timeout(
         dur,
-        fetch_ranges(&cancel, src, None, size, conns, &[], &count, false),
+        fetch_ranges(
+            &cancel,
+            src,
+            None,
+            size,
+            conns,
+            &[],
+            &count,
+            Arc::default(),
+            false,
+        ),
     )
     .await
     {
@@ -1093,6 +1135,35 @@ mod tests {
         result.unwrap();
         assert_eq!(got, *data);
         assert_eq!(server.calls_for(1), 2); // dropped once, never twice
+    }
+    #[tokio::test]
+    async fn received_keeps_bytes_a_restart_throws_away() {
+        let data = testutil::data(2 * CHUNK);
+        let server = RangeServer::new(data.clone(), Fault::HalfThenClose).await;
+        let temp = tempfile::tempdir().unwrap();
+        let dst = temp.path().join("model");
+        let received = Arc::new(AtomicI64::new(0));
+        within(
+            Duration::from_secs(20),
+            with_tuning(
+                saturated(),
+                download_parallel_counted(
+                    CancellationToken::new(),
+                    &HttpSource::new(server.url.clone()),
+                    &dst,
+                    data.len() as i64,
+                    &sha(&data),
+                    &testutil::chunk_table(&data, CHUNK as i64),
+                    2,
+                    received.clone(),
+                    None,
+                ),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(tokio::fs::read(&dst).await.unwrap(), *data);
+        assert!(received.load(Ordering::Relaxed) > data.len() as i64);
     }
     #[tokio::test]
     async fn parallel_never_exceeds_stream_cap() {

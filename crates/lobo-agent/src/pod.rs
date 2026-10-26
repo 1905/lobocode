@@ -9,7 +9,10 @@ use lobo_proto::{DownloadProgress, GoTime, Timings, catalog};
 use std::{
     future::Future,
     path::PathBuf,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{
+        Arc, LazyLock, Mutex,
+        atomic::{AtomicI64, Ordering},
+    },
     time::Duration,
 };
 use tokio::time::Instant;
@@ -234,18 +237,20 @@ impl Download for ModelDownload {
                     let start = Instant::now();
                     let gate = Mutex::new(SlowGate::new(self.slow_check_after, self.min_mbps, redact_url(&url)));
                     let cause = Mutex::new(None);
+                    // Restarted chunks lower the net count; the gate judges bytes actually received.
+                    let received = Arc::new(AtomicI64::new(0));
                     let progress = |mut dp: DownloadProgress| {
                         if i > 0 { dp.source = redact_url(&url); }
-                        let bytes = dp.bytes;
+                        let bytes = dp.bytes.max(received.load(Ordering::Relaxed));
                         on_progress(dp);
                         if let Some(error) = gate.lock().unwrap().observe(start.elapsed(), bytes) {
                             *cause.lock().unwrap() = Some(error);
                             child.cancel();
                         }
                     };
-                    let result = crate::download::download_parallel(
+                    let result = crate::download::download_parallel_counted(
                         child.clone(), source.as_ref(), &self.dst, self.size, &self.sha,
-                        &self.chunk_sha, self.conns_for(&url), Some(&progress),
+                        &self.chunk_sha, self.conns_for(&url), received.clone(), Some(&progress),
                     ).await;
                     if cancel.is_cancelled() { return Err(Error::Cancelled); }
                     if let Some(error) = cause.into_inner().unwrap() { return Err(Error::msg(error)); }
