@@ -28,22 +28,30 @@ pub struct Offer {
     #[serde(rename = "reliability2")]
     pub reliability: f64,
 }
+// Vast sends null in these fields while an instance is provisioning.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
 #[serde(default)]
 pub struct Inst {
     pub public_ipaddr: Option<String>,
     pub ports: Value,
     pub id: i64,
+    #[serde(deserialize_with = "null_default")]
     pub label: String,
-    #[serde(rename = "actual_status")]
+    #[serde(rename = "actual_status", deserialize_with = "null_default")]
     pub status: String,
-    #[serde(rename = "dph_total")]
+    #[serde(rename = "dph_total", deserialize_with = "null_default")]
     pub dph: f64,
+    #[serde(deserialize_with = "null_default")]
     pub inet_down: f64,
-    #[serde(rename = "geolocation")]
+    #[serde(rename = "geolocation", deserialize_with = "null_default")]
     pub geo: String,
-    #[serde(rename = "start_date")]
+    #[serde(rename = "start_date", deserialize_with = "null_default")]
     pub start: f64,
+}
+fn null_default<'de, D: serde::Deserializer<'de>, T: Default + Deserialize<'de>>(
+    d: D,
+) -> std::result::Result<T, D::Error> {
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
 }
 
 pub struct Client {
