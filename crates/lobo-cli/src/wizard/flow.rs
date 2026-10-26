@@ -96,13 +96,12 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
             &s.provider,
         )?;
     }
+    let models = model_options(s.is_local());
+    let models: Vec<_> = models.iter().map(|(l, v)| (l.as_str(), *v)).collect();
     s.model = p.select(
         "3/4 · Defaults for lobo up · Model",
         "",
-        &[
-            ("Q8_0 (28.6 GB, best quality)", "q8"),
-            ("Q6_K (22 GB, faster boot)", "q6"),
-        ],
+        &models,
         &s.model,
     )?;
     s.ctx = p.text(

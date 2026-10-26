@@ -113,6 +113,13 @@ async fn put_chunk(store: &Store, key: &str, data: Vec<u8>) -> Result<()> {
             Err(e) => e,
         };
         let conflict = matches!(&err, Error::Release(m) if m.ends_with("already exists"));
+        // A lost response can hide an accepted PUT; the retry then sees the same bytes.
+        if conflict
+            && attempt > 1
+            && store.object_sha256(key).await? == Some(hex::encode(Sha256::digest(&data)))
+        {
+            return Ok(());
+        }
         if conflict || attempt == ATTEMPTS {
             return Err(err);
         }

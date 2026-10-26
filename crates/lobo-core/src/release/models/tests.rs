@@ -150,6 +150,30 @@ async fn publish_reports_conflict() {
         "{err}"
     );
 }
+#[tokio::test]
+async fn retry_conflict_accepts_only_the_same_bytes() {
+    let m = model(DATA);
+    for (stored, ok) in [(&DATA[8..10], true), (&b"XX"[..], false)] {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path(key(&m, "002")))
+            .respond_with(ResponseTemplate::new(500))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        mount(&server, "PUT", key(&m, "002"), ResponseTemplate::new(412)).await;
+        mount(
+            &server,
+            "GET",
+            key(&m, "002"),
+            ResponseTemplate::new(200).set_body_bytes(stored),
+        )
+        .await;
+        mount_missing(&server).await;
+        let result = run(&server, &m, DATA).await;
+        assert_eq!(result.is_ok(), ok, "{result:?}");
+    }
+}
 #[test]
 fn model_txt_names_repo_sha_and_packaging() {
     let m = model(DATA);

@@ -163,6 +163,23 @@ impl Store {
             status => Err(Error::Release(format!("check {key}: HTTP {status}"))),
         }
     }
+    pub async fn object_sha256(&self, key: &str) -> Result<Option<String>> {
+        use futures_util::StreamExt;
+        use sha2::{Digest, Sha256};
+        let url = self.presign_get(key, SIGN_TTL);
+        let res = self.hc.get(url).send().await.map_err(no_url)?;
+        match res.status().as_u16() {
+            200 => {}
+            404 => return Ok(None),
+            status => return Err(Error::Release(format!("read {key}: HTTP {status}"))),
+        }
+        let mut hash = Sha256::new();
+        let mut body = res.bytes_stream();
+        while let Some(part) = body.next().await {
+            hash.update(part.map_err(no_url)?);
+        }
+        Ok(Some(hex::encode(hash.finalize())))
+    }
     async fn send_put(
         &self,
         key: &str,
