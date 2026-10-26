@@ -54,6 +54,13 @@ impl Model {
     pub fn url(&self, base: &str) -> String {
         format!("{}/models/{}", base.trim_end_matches('/'), self.sha256)
     }
+    /// The original GGUF on Hugging Face; it serves byte ranges.
+    pub fn hf_url(&self) -> String {
+        format!(
+            "https://huggingface.co/{}/resolve/main/{}",
+            self.repo, self.file
+        )
+    }
 }
 
 pub fn min_free_mib(model_bytes: i64) -> i64 {

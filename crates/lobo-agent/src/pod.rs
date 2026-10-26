@@ -2,7 +2,7 @@ use crate::{
     Error, LogSource, Result,
     process::{self, LlamaArgs},
     runner::*,
-    source::{ChunkSource, Source, redact_url},
+    source::{ChunkSource, HttpSource, Source, redact_url},
 };
 use async_trait::async_trait;
 use lobo_proto::{DownloadProgress, GoTime, Timings, catalog};
@@ -179,6 +179,16 @@ where
     Ok(())
 }
 pub type MakeSource = Arc<dyn Fn(&str) -> Result<Arc<dyn Source>> + Send + Sync>;
+/// `ranges` is read with HTTP range requests; any other URL is a chunk-object prefix.
+pub fn chunks_or_ranges(ranges: String, size: i64) -> MakeSource {
+    Arc::new(move |url| {
+        Ok(if url == ranges {
+            Arc::new(HttpSource::http1(url)) as Arc<dyn Source>
+        } else {
+            Arc::new(ChunkSource::new(url, size))
+        })
+    })
+}
 pub struct ModelDownload {
     pub urls: Vec<String>,
     pub dst: PathBuf,
@@ -388,8 +398,8 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
     let clean = process::clean_env();
     let life = CancellationToken::new();
     let _guard = life.clone().drop_guard();
-    let urls = vec![model.url(&cfg.model_base_url)];
-    let size = model.size;
+    // The CDN serves chunk objects; Hugging Face serves byte ranges of the same file.
+    let (cdn, hf) = (model.url(&cfg.model_base_url), model.hf_url());
     let api = self_api(
         &cfg.provider,
         &cfg.runpod_pod_id,
@@ -410,7 +420,7 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
     } else {
         (
             Arc::new(ModelDownload {
-                urls,
+                urls: vec![cdn, hf.clone()],
                 dst: PathBuf::from(MODEL_DIR).join(&model.file),
                 size: model.size,
                 sha: model.sha256.clone(),
@@ -418,9 +428,7 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
                 conns: cfg.dl_conns,
                 min_mbps: cfg.min_mbps as f64,
                 slow_check_after: SLOW_CHECK_AFTER,
-                make_source: Arc::new(move |prefix| {
-                    Ok(Arc::new(ChunkSource::new(prefix, size)) as Arc<dyn Source>)
-                }),
+                make_source: chunks_or_ranges(hf, model.size),
             }),
             PathBuf::from(MODEL_DIR).join(&model.file),
         )
@@ -911,6 +919,43 @@ mod tests {
         .unwrap();
         assert_eq!(std::fs::read(&d.dst).unwrap(), *bytes);
         assert!(sources.lock().unwrap().contains(&redact_url(&server.url)));
+    }
+    #[tokio::test]
+    async fn missing_chunks_switch_to_hugging_face_ranges() {
+        let chunk = 64 << 10;
+        let bytes = data(3 * chunk + 37);
+        let cdn = RangeServer::chunked(
+            bytes.clone(),
+            chunk,
+            ChunkOpts {
+                missing: Some(1),
+                ..Default::default()
+            },
+        )
+        .await;
+        let hf = RangeServer::new(bytes.clone(), Fault::Normal).await;
+        let dir = tempfile::tempdir().unwrap();
+        let mut d = download(dir.path().join("m"));
+        d.urls = vec![cdn.prefix.clone(), hf.url.clone()];
+        d.size = bytes.len() as i64;
+        d.sha = hex::encode(Sha256::digest(&*bytes));
+        d.chunk_sha = chunk_table(&bytes, chunk as i64);
+        d.conns = 2;
+        d.min_mbps = 0.0;
+        d.make_source = chunks_or_ranges(hf.url.clone(), d.size);
+        let tuning = crate::download::Tuning {
+            chunk: chunk as i64,
+            ..Default::default()
+        };
+        within(
+            Duration::from_secs(10),
+            crate::download::with_tuning(tuning, d.run(CancellationToken::new(), &|_| {})),
+        )
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read(&d.dst).unwrap(), *bytes);
+        assert!(hf.calls() > 0);
+        assert!(hf.ranges().iter().all(|r| r.starts_with("bytes=")));
     }
     #[test]
     fn ssh_source_conns_capped_at_8() {

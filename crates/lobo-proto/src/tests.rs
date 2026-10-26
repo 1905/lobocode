@@ -195,6 +195,10 @@ fn catalog_cloud_entry_qwen38() {
         ("qwen3.8-27b abliterated", "Q6_K", false)
     );
     assert_eq!(m.chunk_sha.len(), 84);
+    assert_eq!(
+        m.hf_url(),
+        "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF/resolve/main/Huihui-Qwen3.8-27B-abliterated-Q6_K.gguf"
+    );
     assert_eq!(catalog::ids(), ["q6", "q8", "qwen38-q6"]);
     assert_eq!(catalog::get(DEFAULT_CLOUD_MODEL).unwrap().id, "qwen38-q6");
     assert!(

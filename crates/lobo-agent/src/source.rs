@@ -30,6 +30,13 @@ impl HttpSource {
             http: crate::http::client(),
         }
     }
+    /// One TCP connection per parallel range stream.
+    pub fn http1(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            http: crate::http::client_http1(),
+        }
+    }
     pub(crate) async fn request(&self, offset: i64, len: i64) -> Result<(reqwest::Response, i64)> {
         let mut req = self.http.get(&self.url);
         let ranged = offset > 0 || len >= 0;
