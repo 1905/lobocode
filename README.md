@@ -1,10 +1,10 @@
 # lobocode
 
-Run **Qwen3.5-27B Uncensored** (HauhauCS Aggressive) on a rented GPU from the standalone Mac app. Get an OpenAI-compatible API through a private SSH connection. The optional CLI also supports local Apple Silicon inference.
+Run **Qwen3.8-27B abliterated** (huihui-ai, Q6_K) or **Qwen3.5-27B Uncensored** (HauhauCS Aggressive, Q6_K or Q8_0) on a rented GPU from the standalone Mac app. Get an OpenAI-compatible API through a private SSH connection. The optional CLI also supports local Apple Silicon inference.
 
 **Mac app 0.2.2:** cloud-only, standalone, Apple Silicon. [Download the DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.2/lobocode.dmg). Homebrew installs the separately published CLI; the Rust CLI rewrite remains unreleased. Screenshots with performance numbers show sample data, not benchmark results.
 
-The Rust cloud path resolves the latest complete public image on each new start. **Select Q6 for cloud use:** its image is public and passed RunPod TUI and native Mac Start → reply → Stop checks. New app cloud selections default to Q6. Q8 remains available as a selection, but its complete image is not published; choosing it fails before rental. Broader telemetry acceptance remains pending.
+The Rust cloud path resolves the latest public image of the selected model on each new start. New app cloud selections default to `qwen38-q6`. Its thin image downloads verified weight chunks at boot and passed CLI and native Mac Start → Ready → Stop checks on Vast. Its image is published in the fork registry; the upstream tag is pending (see [Pod image](#pod-image)). Q6 uses a complete public image and passed RunPod TUI and native Mac Start → reply → Stop checks. Q8 remains available as a selection, but its complete image is not published; choosing it fails before rental. Broader telemetry acceptance remains pending.
 
 <p align="center">
   <img src="assets/panel_boot.png" width="340" alt="booting: rent, image pull, private connection, GPU check and bundled-model verification">
@@ -15,8 +15,8 @@ The Rust cloud path resolves the latest complete public image on each new start.
 
 - **What:** start a 5090 on RunPod or Vast.ai from the standalone Mac app or optional CLI. The app connects through private SSH at `http://127.0.0.1:8933/v1`. No domain or bucket is required.
 - **Measured Q6 cloud check:** 47,000 uncached input tokens at 2,186.7 prompt tok/s; first content after 24.04 seconds. Sustained output speed remains unmeasured.
-- **Startup varies:** the TUI reached Ready in 230.178 seconds. Mac Ready occurred between about 21m11s and 22m30s after the Start capture. The provider still reported downloading at 15 minutes. No transfer-byte progress or cache-hit evidence was captured.
-- **Observed test rates:** $0.69/h and $0.99/h. Available prices vary. Default shutdown limits are 30 minutes idle and 12 hours maximum life.
+- **Startup varies:** `qwen38-q6` on Vast reached Ready in 222–264 seconds (CLI and Mac app); its chunk download ran at about 116 MB/s, the limit of the host network. With the complete Q6 image, the TUI reached Ready in 230.178 seconds. Mac Ready occurred between about 21m11s and 22m30s after the Start capture. The provider still reported downloading at 15 minutes. No transfer-byte progress or cache-hit evidence was captured.
+- **Observed test rates:** $0.58/h to $0.99/h. Available prices vary. Default shutdown limits are 30 minutes idle and 12 hours maximum life.
 - **Safe to forget:** the pod kills itself. Your account keys never leave your laptop.
 
 For the Rust cloud candidate, build from source using the instructions below, then run:
@@ -50,7 +50,7 @@ make install-mac    # optional: the menu bar app → /Applications/lobocode.app
 
 The source retains the legacy Go CLI and `make install` target until the Rust release. Use `bin/lobo-rs` to test the Rust CLI.
 
-Open **Settings → Cloud**, enter a RunPod or Vast API key, save, and start Q6. An unavailable image fails before rental. Updating the app does not install or replace the optional CLI.
+Open **Settings → Cloud**, enter a RunPod or Vast API key, save, and start the default model, `qwen38-q6`. An unavailable image fails before rental. Updating the app does not install or replace the optional CLI.
 
 ## What you need
 
@@ -68,9 +68,9 @@ The connection survives closing the app or finishing `lobo up`. It reconnects af
 
 Existing complete domain/token configurations keep their public connection. Select **use private connection** in Cloud Settings, or set `LOBO_CONNECTION=ssh`, before the next start. The SSH mode needs the matching cloud agent. The public Q6 image includes it and passed direct TUI and native Mac cloud lifecycle checks. The Rust CLI release remains on hold.
 
-The GPU pulls a complete public Docker image. It includes the agent, inference runtime, SSH server and selected model weights. There is no separate agent install, private bucket or developer credential to configure.
+The GPU pulls a public Docker image with the agent, inference runtime and SSH server. A complete image (`q6`, `q8`) also includes the model weights. The thin `qwen38-q6` image downloads them from a public CDN at boot. There is no separate agent install, private bucket or developer credential to configure.
 
-Every new cloud start looks up the current `latest-q8` or `latest-q6` tag and sends its exact digest to the provider. The app version does not select the image version. If the registry lookup fails, startup fails before renting; it does not reuse an older image.
+Every new cloud start looks up the current `latest-<model id>` tag, for example `latest-qwen38-q6`, and sends its exact digest to the provider. The app version does not select the image version. If the registry lookup fails, startup fails before renting; it does not reuse an older image.
 
 ## Use
 
@@ -141,7 +141,7 @@ The optional CLI retains its separate export command: `lobo gen-api-key` writes 
 
 The Rust candidate uses a separate complete image per catalog model, except `qwen38-q6`, which uses a thin image (see below). Each complete image includes the agent, inference runtime, SSH server and model weights. The Q6 tag, `ghcr.io/1905/lobocode:latest-q6`, is public and passed anonymous manifest verification on October 1, 2026. Q8 publication remains pending. Direct RunPod TUI inference and the native Mac cloud lifecycle passed. Broader telemetry acceptance and the Rust CLI release remain pending.
 
-The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The fork registry `ghcr.io/sandquattro/lobocode` is to carry only `latest-qwen38-q6`; publication and its digest are pending. It carries no `latest-q6`: with `LOBO_IMAGE_REPO=sandquattro/lobocode`, choosing `q6` fails with the existing `cannot resolve latest q6 GPU image` error before any rental.
+The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The fork registry `ghcr.io/sandquattro/lobocode` carries only `latest-qwen38-q6` (`sha256:ec608e77e2ed9e1cd12e481989a328c845f41719005f59a832538aeb81f4fcb7`). The upstream registry has no `latest-qwen38-q6` until a maintainer pushes the tag `thin-image/qwen38-q6` in `1905/lobocode`; until then, start `qwen38-q6` with `LOBO_IMAGE_REPO=sandquattro/lobocode`. The fork registry carries no `latest-q6`: with `LOBO_IMAGE_REPO=sandquattro/lobocode`, choosing `q6` fails with the existing `cannot resolve latest q6 GPU image` error before any rental.
 
 The app resolves the selected tag again before each new start. The provider receives `ghcr.io/<LOBO_IMAGE_REPO>@sha256:<digest>`, by default `ghcr.io/1905/lobocode@sha256:<digest>`. It may reuse identical layers, but cannot substitute an older image digest.
 
@@ -151,7 +151,7 @@ Model weights use native GGUF shards in separate image layers. Startup verifies 
 
 `qwen38-q6` is the exception. It runs from a thin image (Dockerfile target `thin`) without weights and downloads its 22,430,999,840-byte GGUF as 84 content-addressed 256 MiB chunks from `{LOBO_MODEL_BASE_URL}/models/{sha256}/{nnn}`, by default `https://models.stealthcopilot.io`. The agent verifies the sha256 of every chunk. It starts 4 parallel streams, adds 4 per 5 s window while aggregate throughput rises by at least 10 %, and stops at the cap from the control plane (default 32). A stream that is far slower than the rest restarts once per chunk. The hidden `--conns` option overrides the cap; values below 2 are rejected. The slow-host check (`LOBO_MIN_MBPS`) uses the rate over the last 5 s before the 20 s check. No user needs a token to download. `q6` and `q8` keep their complete images (Dockerfile target `full`, the default build).
 
-Maintainers publish a chunked model on the fork in two steps. Push the tag `publish-model/<id>`: the workflow `.github/workflows/publish-model.yml` uploads the chunks with a one-time R2 token held in the fork secrets `R2_ACCOUNT_ID`, `R2_ACCESS_KEY` and `R2_SECRET_KEY`, and produces the artifact `chunk-sha-<id>`. Pin the chunk hashes in `crates/lobo-proto/catalog.json`. Then push the tag `thin-image/<id>`: `.github/workflows/thin-image.yml` checks that every chunk answers 200, builds and smoke-tests the thin image and promotes `latest-<id>`. It refuses `q6` and `q8`. The hidden command `lobo publish-model <ID> --file <PATH>` does the upload. The chunk upload, the thin image and live acceptance on a rented GPU are pending.
+Maintainers publish a chunked model on the fork in two steps. Push the tag `publish-model/<id>`: the workflow `.github/workflows/publish-model.yml` uploads the chunks with a one-time R2 token held in the fork secrets `R2_ACCOUNT_ID`, `R2_ACCESS_KEY` and `R2_SECRET_KEY`, and produces the artifact `chunk-sha-<id>`. Pin the chunk hashes in `crates/lobo-proto/catalog.json`. Then push the tag `thin-image/<id>`: `.github/workflows/thin-image.yml` checks that every chunk answers 200, builds and smoke-tests the thin image and promotes `latest-<id>`. It refuses `q6` and `q8`. The hidden command `lobo publish-model <ID> --file <PATH>` does the upload. The chunks and the fork thin image are published. Live acceptance on Vast passed: the CLI reached Ready after 253 s with a cold CDN cache and after 222 s with a warm one, the Mac app after 264 s. The chunk download ran at about 116 MB/s, the limit of the host network; the CDN limit is not measured.
 
 For CLI development only, an explicit complete-image override is available:
 
@@ -208,7 +208,7 @@ Cloud and local port pairs must not overlap. SSH mode selects RunPod hosts with 
 
 The app calls the shared Rust core directly and does not bundle the CLI. Go source and frozen compatibility fixtures remain until cutover.
 
-On the development Mac, run UI checks only. Run model inference and backend/lifecycle suites on an authorized remote host. Live checks can rent GPUs. `make release` publishes an agent; it is not a local build command.
+On the development Mac, run UI checks only. Backend and lifecycle suites run in hosted CI (`.github/workflows/rust.yml`). Model inference checks need a rented GPU. Live checks can rent GPUs. `make release` publishes an agent; it is not a local build command.
 
 Complete-image builds need substantial disk space. The image workflow checks for 200 GiB free Docker storage per concurrent build. Set `POD_IMAGE_RUNNER` to a suitable Linux AMD64 runner. Standard hosted runners do not meet that capacity check. This is a maintainer build requirement, not a user installation requirement.
 
