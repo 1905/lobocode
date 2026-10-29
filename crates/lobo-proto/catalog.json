@@ -93,7 +93,8 @@
     "repo": "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive",
     "name": "qwen3.5-27b uncensored",
     "quant": "Q6_K",
-    "local": true
+    "local": true,
+    "gpu": false
   },
   {
     "id": "q8",
@@ -213,7 +214,8 @@
     "repo": "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive",
     "name": "qwen3.5-27b uncensored",
     "quant": "Q8_0",
-    "local": true
+    "local": true,
+    "gpu": false
   },
   {
     "id": "qwen38-q6",
@@ -310,6 +312,7 @@
     "repo": "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF",
     "name": "qwen3.8-27b abliterated",
     "quant": "Q6_K",
-    "local": false
+    "local": false,
+    "gpu": true
   }
 ]

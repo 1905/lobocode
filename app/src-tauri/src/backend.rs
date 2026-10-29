@@ -161,7 +161,8 @@ fn cloud_config(mut cfg: config::Laptop) -> config::Laptop {
             .cloned()
             .unwrap_or_else(|| "runpod".into());
     }
-    if cfg.model.is_empty() {
+    // Only GPU-supported models start; a legacy q6 or q8 selection maps to the default.
+    if !lobo_proto::catalog::get(&cfg.model).is_ok_and(|m| m.gpu) {
         cfg.model = lobo_proto::DEFAULT_CLOUD_MODEL.into();
     }
     // Legacy CLI settings stay on disk and do not participate in app admission.
@@ -551,7 +552,7 @@ mod tests {
                 readiness.default_provider.as_str(),
                 readiness.default_model.as_str()
             ),
-            ("vast", "q8")
+            ("vast", lobo_proto::DEFAULT_CLOUD_MODEL)
         );
     }
     #[tokio::test]
@@ -665,7 +666,7 @@ mod tests {
                 cfg.provider, expected,
                 "{provider} / runpod={runpod} / vast={vast}"
             );
-            assert_eq!(cfg.model, "q8");
+            assert_eq!(cfg.model, lobo_proto::DEFAULT_CLOUD_MODEL);
             assert!(cfg.local_port.is_empty());
         }
     }

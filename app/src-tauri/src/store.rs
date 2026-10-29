@@ -23,11 +23,11 @@ pub struct Store {
 }
 impl Store {
     pub fn new() -> Self {
-        let mut catalog = catalog::all()
+        let catalog = catalog::all()
             .iter()
+            .filter(|m| m.gpu)
             .map(CatalogEntry::from)
             .collect::<Vec<_>>();
-        catalog.sort_by_key(|m| m.id != DEFAULT_CLOUD_MODEL);
         Self {
             state: PanelState {
                 provider: "runpod".into(),

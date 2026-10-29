@@ -91,7 +91,11 @@ impl WizardState {
             s.provider = "runpod".into();
         }
         if s.model.is_empty() {
-            s.model = "q8".into();
+            s.model = if s.provider == "local" {
+                "q8".into()
+            } else {
+                lobo_proto::DEFAULT_CLOUD_MODEL.into()
+            };
         }
         if s.cloud.is_empty() {
             s.cloud = "community".into();
@@ -262,7 +266,7 @@ mod tests {
         let s = WizardState::new(BTreeMap::new(), false);
         assert_eq!(
             (&*s.api_key, &*s.provider, &*s.model, &*s.cloud),
-            ("new", "runpod", "q8", "community")
+            ("new", "runpod", "qwen38-q6", "community")
         );
         let key = new_api_key();
         assert!(key.starts_with("sk-"));

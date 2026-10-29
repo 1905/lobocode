@@ -114,21 +114,21 @@ fn poll_intervals() {
 fn config_does_not_reset_running_choices() {
     let mut s = Store::new();
     s.set_provider("vast".into());
-    s.set_model("q6".into());
+    s.set_model("qwen38-q6".into());
     s.begin_up(now());
     let (c, r) = config();
     s.apply_config(c, r);
     let v = s.view(now());
     assert_eq!(v.provider, "vast");
-    assert_eq!(v.model, "q6");
+    assert_eq!(v.model, "qwen38-q6");
 }
 #[test]
 fn up_explicit_requests_and_menu_progress() {
     let mut s = Store::new();
-    s.set_model("q6".into());
+    s.set_model("qwen38-q6".into());
     let req = s.begin_up(now());
     assert_eq!(req.provider.as_deref(), Some("runpod"));
-    assert_eq!(req.model.as_deref(), Some("q6"));
+    assert_eq!(req.model.as_deref(), Some("qwen38-q6"));
     assert_eq!(s.view(now()).last_detail, "renting runpod…");
     for p in ["create", "gpu"] {
         s.handle_event(
@@ -504,17 +504,14 @@ fn restored_observation_resets_on_identity_change_without_resetting_active_start
 }
 
 #[test]
-fn new_store_defaults_to_cloud_model_first() {
+fn new_store_offers_only_gpu_models() {
     let mut s = Store::new();
     let view = s.view(now());
     assert_eq!(view.model, lobo_proto::DEFAULT_CLOUD_MODEL);
     let ids: Vec<_> = view.catalog.iter().map(|m| m.id.as_str()).collect();
-    assert_eq!(ids, ["qwen38-q6", "q6", "q8"]);
-    s.set_model("q4".into());
-    assert_eq!(s.view(now()).model, "qwen38-q6");
-    s.set_model("q8".into());
-    assert_eq!(s.view(now()).model, "q8");
-    s.up_running = true;
-    s.set_model("q6".into());
-    assert_eq!(s.view(now()).model, "q8");
+    assert_eq!(ids, ["qwen38-q6"]);
+    for id in ["q4", "q6", "q8"] {
+        s.set_model(id.into());
+        assert_eq!(s.view(now()).model, "qwen38-q6");
+    }
 }

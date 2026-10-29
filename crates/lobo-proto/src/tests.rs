@@ -194,6 +194,8 @@ fn catalog_cloud_entry_qwen38() {
         (m.name.as_str(), m.quant.as_str(), m.local),
         ("qwen3.8-27b abliterated", "Q6_K", false)
     );
+    let gpu: Vec<_> = catalog::all().iter().filter(|m| m.gpu).map(|m| m.id.as_str()).collect();
+    assert_eq!(gpu, [DEFAULT_CLOUD_MODEL]);
     assert_eq!(m.chunk_sha.len(), 84);
     assert_eq!(
         m.hf_url(),

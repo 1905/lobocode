@@ -238,6 +238,7 @@ impl Download for ModelDownload {
                     let gate = Mutex::new(SlowGate::new(self.slow_check_after, self.min_mbps, redact_url(&url)));
                     let cause = Mutex::new(None);
                     // Restarted chunks lower the net count; the gate judges bytes actually received.
+                    // Single-stream downloads leave `received` at zero, so the larger count wins.
                     let received = Arc::new(AtomicI64::new(0));
                     let progress = |mut dp: DownloadProgress| {
                         if i > 0 { dp.source = redact_url(&url); }

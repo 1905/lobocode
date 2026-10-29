@@ -405,9 +405,18 @@ async fn run(
             ));
         }
         if o.model.is_empty() {
-            o.model = release::DEFAULT_MODEL.into();
+            o.model = release::DEFAULT_CLOUD_MODEL.into();
         }
-        catalog::get(&o.model).map_err(|e| Error::Other(e.to_string()))?;
+        if !catalog::get(&o.model)
+            .map_err(|e| Error::Other(e.to_string()))?
+            .gpu
+        {
+            return Err(Error::Config(format!(
+                "model {} is not supported on GPU; use {}",
+                o.model,
+                release::DEFAULT_CLOUD_MODEL
+            )));
+        }
         // Re-resolve on every start. Never fall back to a cached tag or config image.
         let image = if o.image.is_empty() {
             read(cancel, d.images.latest(&o.model)).await?
