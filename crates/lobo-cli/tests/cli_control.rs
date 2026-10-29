@@ -287,9 +287,9 @@ async fn up_command_modes_defaults_and_report() {
         assert!(f.app.boot_log.exists());
     }
     let f = Fixture::new(testkit::boot_script(), false);
-    let (code, _, err) = f.invoke(&["up", "--q6", "--json"]).await;
+    let (code, out, err) = f.invoke(&["up", "--q6", "--json"]).await;
     assert_eq!(code, 1);
-    assert!(err.contains("not supported on GPU"), "{err}");
+    assert!(out.contains("not supported on GPU"), "{out}{err}");
     assert!(f.rp.state.lock().unwrap().created.is_empty());
     let f = Fixture::new(testkit::boot_script(), false);
     let (code, _, err) = f.invoke(&["up", "--ssh", "/does/not/exist"]).await;
