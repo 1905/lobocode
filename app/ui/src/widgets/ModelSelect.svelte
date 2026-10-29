@@ -15,6 +15,11 @@
     onpick: (id: string) => void;
   } = $props();
   const selected = $derived(models.find((m) => m.id === value) ?? models[0]);
+  // With one model there is no choice: report it, so a stale saved value is replaced.
+  $effect(() => {
+    if (models.length === 1 && value !== models[0].id && !disabled)
+      onpick(models[0].id);
+  });
 </script>
 
 <div class="stack model">

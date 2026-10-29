@@ -205,7 +205,8 @@ describe("cloud-only native app without provider calls", () => {
     assert.match(saved, /^LOBO_API_KEY=sk-/m);
     assert.match(saved, /^LOBO_CTX=16384$/m);
     assert.match(saved, /^LOBO_CONNECTION=ssh$/m);
-    assert.doesNotMatch(saved, /^LOBO_MODEL=(q6|q8)$/m);
+    for (const [, model] of saved.matchAll(/^LOBO_MODEL=(.*)$/gm))
+      assert.equal(model, "qwen38-q6");
     assert.equal(fs.statSync(fixture.config).mode & 0o777, 0o600);
     const diagnosticState = (await invoke("get_state")).value;
     const diagnosticLog = fs.readFileSync(diagnosticState.log_path, "utf8");
