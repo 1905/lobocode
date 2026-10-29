@@ -258,8 +258,12 @@ async fn up_command_modes_defaults_and_report() {
         // Rust also reports initial agent reachability. Keep the frozen consumer
         // fixtures unchanged, and assert this intentional producer difference.
         // A fixed clock keeps this command test independent of clock-read counts.
-        let adapt =
-            |text: String| text.replace(", release 2026.09.23-1, q8 ctx 8192", ", qwen38-q6 ctx 65536");
+        let adapt = |text: String| {
+            text.replace(
+                ", release 2026.09.23-1, q8 ctx 8192",
+                ", qwen38-q6 ctx 65536",
+            )
+        };
         if flag == "--json" {
             let mut expected = json_lines(&adapt(fixture("json_up_boot.jsonl")));
             assert_eq!(expected[1]["phase"], "image");

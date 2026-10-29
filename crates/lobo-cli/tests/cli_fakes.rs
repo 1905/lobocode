@@ -56,9 +56,10 @@ fn executable_json_outputs_match_go() {
         assert_eq!(output.status.success(), name == "boot", "{err}");
         let mut expected = events(&fixture(&format!("json_up_{name}.jsonl")));
         for event in &mut expected {
-            event.detail = event
-                .detail
-                .replace(", release 2026.09.23-1, q8 ctx 8192", ", qwen38-q6 ctx 65536");
+            event.detail = event.detail.replace(
+                ", release 2026.09.23-1, q8 ctx 8192",
+                ", qwen38-q6 ctx 65536",
+            );
             if event.phase == "image" {
                 // Keep Go captures intact; Rust adds a safe reachability detail.
                 assert!(event.detail.is_empty());
@@ -110,7 +111,10 @@ fn executable_plain_output_and_unknown_scenario() {
     let err = String::from_utf8(output.stderr).unwrap();
     let (boot, report) = err.split_once("\nboot timings:\n").unwrap();
     let expected = fixture("plain_up_boot.txt")
-        .replace(", release 2026.09.23-1, q8 ctx 8192", ", qwen38-q6 ctx 65536")
+        .replace(
+            ", release 2026.09.23-1, q8 ctx 8192",
+            ", qwen38-q6 ctx 65536",
+        )
         .replace("boot=15000", "boot=0")
         .replace(
             "INF up phase=image",
