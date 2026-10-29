@@ -63,7 +63,12 @@ pub fn model_options(local: bool) -> Vec<(String, &'static str)> {
         .iter()
         .filter(|m| if local { m.local } else { m.gpu })
         .map(|m| {
-            let label = format!("{} {} ({})", m.name, m.quant, crate::tui::styles::gb(m.size));
+            let label = format!(
+                "{} {} ({})",
+                m.name,
+                m.quant,
+                crate::tui::styles::gb(m.size)
+            );
             (label, m.id.as_str())
         })
         .collect()
