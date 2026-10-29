@@ -20,20 +20,6 @@
         "quant": "Q6_K",
         "repo": "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF",
         "size": 22430999840
-      },
-      {
-        "id": "q6",
-        "name": "qwen3.5-27b uncensored",
-        "quant": "Q6_K",
-        "repo": "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive",
-        "size": 22082528352
-      },
-      {
-        "id": "q8",
-        "name": "qwen3.5-27b uncensored",
-        "quant": "Q8_0",
-        "repo": "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive",
-        "size": 28595762272
       }
     ],
     "config": {
@@ -52,7 +38,7 @@
         "LOBO_API_KEY": "sk-9…7e4d",
         "LOBO_CLOUD_PORT": "8933",
         "LOBO_CONNECTION": "ssh",
-        "LOBO_MODEL": "q6",
+        "LOBO_MODEL": "qwen38-q6",
         "LOBO_PROVIDER": "vast",
         "RUNPOD_API_KEY": "rpa_…a1b2",
         "VASTAI_API_KEY": "3f9c…c0de"
@@ -67,14 +53,14 @@
     "log_tail": [],
     "logging_error": null,
     "menu_text": "off",
-    "model": "q6",
+    "model": "qwen38-q6",
     "phase": {
       "kind": "off"
     },
     "provider": "vast",
     "readiness": {
       "cloud_ready": true,
-      "default_model": "q6",
+      "default_model": "qwen38-q6",
       "default_provider": "vast",
       "error": null,
       "exists": true,

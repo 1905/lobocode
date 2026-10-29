@@ -91,11 +91,7 @@ impl WizardState {
             s.provider = "runpod".into();
         }
         if s.model.is_empty() {
-            s.model = if s.provider == "local" {
-                "q8".into()
-            } else {
-                lobo_proto::DEFAULT_CLOUD_MODEL.into()
-            };
+            s.model = lobo_proto::DEFAULT_CLOUD_MODEL.into();
         }
         if s.cloud.is_empty() {
             s.cloud = "community".into();
@@ -170,7 +166,7 @@ impl WizardState {
             ("LOBO_CTX", "0"),
             ("LOBO_IDLE_MIN", "0"),
             ("LOBO_MAX_HOURS", "0"),
-            ("LOBO_MODEL", "q8"),
+            ("LOBO_MODEL", lobo_proto::DEFAULT_CLOUD_MODEL),
             ("LOBO_CLOUD", "community"),
             ("LOBO_PROVIDER", "runpod"),
             ("LOBO_VAST_MAX_DPH", "1.20"),

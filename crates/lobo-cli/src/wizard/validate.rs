@@ -57,11 +57,11 @@ pub fn provider_options(local: bool) -> Vec<(&'static str, &'static str)> {
     ]);
     out
 }
-/// Local mode lists local-capable models; cloud lists GPU-supported models only.
-pub fn model_options(local: bool) -> Vec<(String, &'static str)> {
+/// GPU-supported catalog models; the only ones `lobo up` starts.
+pub fn model_options() -> Vec<(String, &'static str)> {
     lobo_proto::catalog::all()
         .iter()
-        .filter(|m| if local { m.local } else { m.gpu })
+        .filter(|m| m.gpu)
         .map(|m| {
             let label = format!(
                 "{} {} ({})",
@@ -108,17 +108,11 @@ impl WizardState {
 mod tests {
     use super::*;
     #[test]
-    fn model_options_follow_the_catalog() {
-        let ids = |local| {
-            model_options(local)
-                .into_iter()
-                .map(|(_, v)| v)
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(ids(false), ["qwen38-q6"]);
-        assert_eq!(ids(true), ["q6", "q8"]);
+    fn model_options_list_gpu_models_only() {
+        let ids: Vec<_> = model_options().into_iter().map(|(_, v)| v).collect();
+        assert_eq!(ids, ["qwen38-q6"]);
         assert_eq!(
-            model_options(false)[0].0,
+            model_options()[0].0,
             "qwen3.8-27b abliterated Q6_K (22.4 GB)"
         );
     }

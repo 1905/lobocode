@@ -195,7 +195,10 @@ async fn up_baked_image_uses_builtin_defaults() {
         collect(d, o).await.1.unwrap();
         let s = rp.state.lock().unwrap();
         let o = &s.created[0].opts;
-        assert_eq!((o.model.as_str(), o.ctx, o.idle_min), ("q8", 65536, 30));
+        assert_eq!(
+            (o.model.as_str(), o.ctx, o.idle_min),
+            ("qwen38-q6", 65536, 30)
+        );
         assert_eq!(
             o.expires_at,
             "2026-09-23T22:00:01Z"
@@ -205,7 +208,7 @@ async fn up_baked_image_uses_builtin_defaults() {
         assert_eq!(
             o.image,
             if from_config {
-                "public-image-q8@sha256:fixture"
+                "public-image-qwen38-q6@sha256:fixture"
             } else {
                 "baked"
             }
@@ -221,7 +224,7 @@ async fn up_overrides() {
     collect(
         d,
         UpOpts {
-            model: "q6".into(),
+            model: "qwen38-q6".into(),
             ctx: 4096,
             idle_min: 7,
             max_life: Duration::from_secs(3600),
@@ -236,7 +239,7 @@ async fn up_overrides() {
     let o = &s.created[0].opts;
     assert_eq!(
         (o.model.as_str(), o.ctx, o.idle_min, o.cloud.as_str()),
-        ("q6", 4096, 7, "secure")
+        ("qwen38-q6", 4096, 7, "secure")
     );
 }
 #[tokio::test]
@@ -679,7 +682,7 @@ async fn up_ignores_private_sources_and_never_forwards_their_secrets() {
     ] {
         assert!(payload.contains("exec /lobo/start"));
         assert!(payload.contains("LOBO_MODEL_BASE_URL"));
-        assert!(payload.contains("public-image-q8@sha256:fixture"));
+        assert!(payload.contains("public-image-qwen38-q6@sha256:fixture"));
         for forbidden in [
             "secret-runpod",
             "secret-vast",
@@ -747,7 +750,7 @@ struct ChangingImages(AtomicUsize);
 #[async_trait]
 impl crate::images::ImageResolver for ChangingImages {
     async fn latest(&self, model: &str) -> Result<String> {
-        assert_eq!(model, "q6");
+        assert_eq!(model, "qwen38-q6");
         let n = self.0.fetch_add(1, Ordering::SeqCst);
         if n == 2 {
             Err(Error::Other("registry unavailable".into()))
@@ -766,7 +769,7 @@ async fn each_new_start_resolves_again_and_registry_failure_never_rents() {
         let result = collect(
             d.clone(),
             UpOpts {
-                model: "q6".into(),
+                model: "qwen38-q6".into(),
                 ..Default::default()
             },
         )
@@ -1206,4 +1209,17 @@ async fn cancellation_interrupts_a_hung_provider_check_and_cleans_the_exact_pod(
     assert!(p.get_ids.lock().unwrap().iter().all(|id| id == "slow"));
     assert_eq!(p.deletes.load(Ordering::SeqCst), 1);
     assert!(p.running.lock().unwrap().is_empty());
+}
+#[tokio::test]
+async fn up_rejects_models_without_gpu_support_before_renting() {
+    for model in ["q6", "q8"] {
+        let (d, rp) = test_deps(ready());
+        let opts = UpOpts {
+            model: model.into(),
+            ..Default::default()
+        };
+        let error = collect(d, opts).await.1.unwrap_err().to_string();
+        assert!(error.contains("not supported on GPU"), "{model}: {error}");
+        assert!(rp.state.lock().unwrap().created.is_empty());
+    }
 }

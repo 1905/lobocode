@@ -246,9 +246,12 @@ async fn up_command_modes_defaults_and_report() {
         let (code, out, err) = f.invoke(&args).await;
         assert_eq!(code, 0, "{err}");
         let s = f.rp.state.lock().unwrap();
-        assert_eq!(s.created[0].opts.model, "q8");
+        assert_eq!(s.created[0].opts.model, "qwen38-q6");
         assert_eq!(s.created[0].opts.ctx, 65536);
-        assert_eq!(s.created[0].opts.image, "public-image-q8@sha256:fixture");
+        assert_eq!(
+            s.created[0].opts.image,
+            "public-image-qwen38-q6@sha256:fixture"
+        );
         assert!(s.deleted.is_empty());
         // Frozen Go output still checks the event contract. Rust cloud starts
         // use built-in defaults and resolve an image before an agent version exists.
@@ -256,7 +259,7 @@ async fn up_command_modes_defaults_and_report() {
         // fixtures unchanged, and assert this intentional producer difference.
         // A fixed clock keeps this command test independent of clock-read counts.
         let adapt =
-            |text: String| text.replace(", release 2026.09.23-1, q8 ctx 8192", ", q8 ctx 65536");
+            |text: String| text.replace(", release 2026.09.23-1, q8 ctx 8192", ", qwen38-q6 ctx 65536");
         if flag == "--json" {
             let mut expected = json_lines(&adapt(fixture("json_up_boot.jsonl")));
             assert_eq!(expected[1]["phase"], "image");

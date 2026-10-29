@@ -13,7 +13,7 @@ fn config() -> (ConfigShow, Readiness) {
         ("LOBO_CLOUD_PORT", "8933"),
         ("LOBO_API_KEY", "sk-9…7e4d"),
         ("LOBO_PROVIDER", "vast"),
-        ("LOBO_MODEL", "q6"),
+        ("LOBO_MODEL", "qwen38-q6"),
     ]
     .into_iter()
     .map(|(k, v)| (k.into(), v.into()))
@@ -30,7 +30,7 @@ fn config() -> (ConfigShow, Readiness) {
         ready: true,
         providers: vec!["runpod".into(), "vast".into()],
         default_provider: "vast".into(),
-        default_model: "q6".into(),
+        default_model: "qwen38-q6".into(),
         ..Default::default()
     };
     (c, r)
@@ -87,7 +87,7 @@ fn running() -> Snap {
                 gen_tokens_total: 115498,
                 ..Default::default()
             }),
-            model: "q6".into(),
+            model: "qwen38-q6".into(),
             ctx: 65536,
             ..Default::default()
         }),

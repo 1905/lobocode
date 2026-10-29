@@ -110,7 +110,8 @@ pub fn run(app: &App, args: ConfigArgs, path: &Path, io: &mut Io) -> Result<()> 
                     &mut *(app.prompter)(),
                     path,
                     values.clone(),
-                    (app.local_supported)().is_ok(),
+                    // Runs are cloud-only (RunPod or Vast); the form offers no local provider.
+                    false,
                 )?;
                 if let Some(set) = set {
                     config::save(path, &set)?;

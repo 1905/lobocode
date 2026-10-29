@@ -96,7 +96,7 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
             &s.provider,
         )?;
     }
-    let models = model_options(s.is_local());
+    let models = model_options();
     if !models.iter().any(|(_, v)| *v == s.model) {
         s.model = models[0].1.into();
     }
