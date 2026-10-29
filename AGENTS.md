@@ -1,5 +1,9 @@
 # Lobocode project memory
 
+## Supported scope — 2026-10-29
+
+User decision: support only `qwen38-q6`, only on RunPod or Vast GPUs. No model choice (no `q6`/`q8`) and no local runs. Enforced by the catalog `gpu` flag in the app selector and admission, the CLI config form and `lobo up`. Unused `q6`/`q8` entries and local code stay until a separate cleanup.
+
 ## Contributor PRs #2 and #3 merged — 2026-10-26
 
 The user asked to review, fix, merge and release PRs #2 and #3 from SandQuattro (fullsend). Reviews: self, China and Rival on each PR. Session trailers were stripped from the contributor commit messages before merge.

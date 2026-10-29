@@ -1,10 +1,10 @@
 # lobocode
 
-Run **Qwen3.5-27B Uncensored** (HauhauCS Aggressive) on a rented GPU from the standalone Mac app. Get an OpenAI-compatible API through a private SSH connection. The optional CLI also supports local Apple Silicon inference.
+Run **Qwen3.8-27B abliterated** (huihui-ai, Q6_K) on a rented RunPod or Vast GPU from the standalone Mac app. Get an OpenAI-compatible API through a private SSH connection. Local inference is not supported.
 
 **Mac app 0.2.2:** cloud-only, standalone, Apple Silicon. [Download the DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.2/lobocode.dmg). Homebrew installs the separately published CLI; the Rust CLI rewrite remains unreleased. Screenshots with performance numbers show sample data, not benchmark results.
 
-The Rust cloud path resolves the latest public image for the selected model on each new start. New app cloud selections default to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K), which runs from a thin image and downloads verified weights at boot. Q6 has a public complete image and passed RunPod TUI and native Mac Start → reply → Stop checks. Q8 remains available as a selection, but its complete image is not published; choosing it fails before rental. Broader telemetry acceptance remains pending.
+The only supported model is `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). It runs only on a rented RunPod or Vast GPU. The app, the Rust CLI and its configuration form accept no other model and no local run. Each new start resolves the latest public `latest-qwen38-q6` image. The thin image downloads verified weights at boot. Broader telemetry acceptance remains pending.
 
 <p align="center">
   <img src="assets/panel_boot.png" width="340" alt="booting: rent, image pull, private connection, GPU check and bundled-model verification">
@@ -88,16 +88,9 @@ Vast retired its v0 instance list (`GET /api/v0/instances/` returns HTTP 410). T
 
 The terminal dashboard updates in place. Press `q` to leave status; press `q` or Ctrl-C during startup to cancel and wait for cleanup. Short terminals use a compact layout that retains metrics, shutdown timers and the quit hint. The real RunPod check confirmed Ready and status fit 80 columns. Some startup detail lines still clip at that width.
 
-## Local inference through the optional CLI
+## Local inference
 
-The Mac app cannot run a local model. The separately installed CLI retains local execution. Existing model files, CLI settings and local processes are preserved when the app opens.
-
-For the Rust CLI development build, use `bin/lobo-rs up --provider local`. Local inference requires Apple Silicon and enough available memory. The core checks memory at Start and immediately before model load. Installed RAM or downloaded weights alone do not establish that a model fits.
-
-- Set `LOBO_WEIGHTS_DIR` to a folder with room for the GGUF (Q6 22 GB, Q8 29 GB).
-- Local startup downloads llama.cpp and model weights with resume and SHA256 verification.
-- The local endpoint defaults to `http://127.0.0.1:8931/v1` and uses `LOBO_API_KEY`.
-- `LOBO_PROVIDER=local` remains a valid CLI default. The app ignores it when choosing a cloud provider and preserves it on disk.
+Local inference is not supported. The Mac app has no local mode, and the Rust CLI rejects `--provider local` and `LOBO_PROVIDER=local` before any work starts. Existing model files, CLI settings and local processes are preserved. The released Homebrew CLI is the older Go build; its local mode and its `q6`/`q8` models are no longer supported by this project.
 
 ## Menu bar app (macOS)
 
@@ -169,16 +162,16 @@ A new host may need to download the full image. A complete image (`q6`, `q8`) re
 
 ## Config reference
 
-The table describes shared CLI configuration. App settings exclude local weights and local ports. The app permits only RunPod or Vast and defaults to `qwen38-q6` when no cloud model is selected. The Homebrew CLI is the Go build and accepts only `q6` and `q8` for `LOBO_MODEL`; a config saved with `qwen38-q6` from the app must be changed back before running that CLI.
+The table describes shared CLI configuration. App settings exclude local weights and local ports. Starts use only RunPod or Vast and only `qwen38-q6`. The Homebrew CLI is the older Go build and accepts only `q6` and `q8` for `LOBO_MODEL`; a config saved with `qwen38-q6` does not work with that CLI.
 
 `~/.config/lobo/config.env`, plain `KEY=value`, mode 600. Only this file is read. The shell environment is never used. A flag beats the file, and the file beats the built-in default.
 
 | Key | Flag | Default |
 |---|---|---|
-| `LOBO_PROVIDER` (runpod, vast, local) | `--provider` | runpod |
+| `LOBO_PROVIDER` (runpod, vast) | `--provider` | runpod |
 | `LOBO_CONNECTION` (ssh, cloudflare) | | ssh for new configurations |
 | `LOBO_CLOUD_PORT` (control API on port + 1) | | 8933 |
-| `LOBO_MODEL` (catalog id: qwen38-q6, q6, q8) | `--q6` | q8 |
+| `LOBO_MODEL` (only qwen38-q6 starts; other catalog ids are rejected before rental) | | qwen38-q6 |
 | `LOBO_MODEL_BASE_URL` (base URL of the model chunks; https only, trailing slash ignored; shown unmasked by `lobo config show`) | | `https://models.stealthcopilot.io` |
 | `LOBO_IMAGE_REPO` (GHCR repository of the pod images, complete and thin, tagged `latest-<id>`) | | 1905/lobocode |
 | `LOBO_CTX` | `--ctx` | 65536 |
