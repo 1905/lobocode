@@ -79,6 +79,8 @@ jobs:
           tags: ${{ steps.meta.outputs.repo }}:sha-${{ steps.meta.outputs.sha }}-thin
           labels: |
             org.opencontainers.image.source=https://github.com/${{ steps.meta.outputs.repo_path }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            io.lobocode.model=${{ steps.meta.outputs.id }}
       - name: Smoke test
         env:
           REF: ${{ steps.meta.outputs.repo }}@${{ steps.build.outputs.digest }}

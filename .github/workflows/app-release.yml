@@ -103,7 +103,7 @@ jobs:
               assert json.loads((root / path).read_text())['version'] == expected, path
           PY
 
-      - name: Verify public latest-q6 without registry credentials
+      - name: Verify public latest-qwen38-q6 without registry credentials
         id: image
         run: |
           python3 - <<'PY'
@@ -129,7 +129,7 @@ jobs:
               if descriptor:
                   assert descriptor['digest'] == actual and descriptor['size'] == len(raw), 'Descriptor mismatch'
               return json.loads(raw), actual
-          root, digest = fetch('manifests/latest-q6')
+          root, digest = fetch('manifests/latest-qwen38-q6')
           def descriptor(value):
               assert re.fullmatch(r'sha256:[0-9a-f]{64}', value['digest']), 'Invalid image digest'
               assert type(value['size']) is int and value['size'] > 0, 'Invalid image size'
@@ -156,12 +156,12 @@ jobs:
           config = image_config(root)
           assert config['os'] == 'linux' and config['architecture'] == 'amd64', 'Wrong GPU platform'
           labels = config['config']['Labels']
-          assert labels['io.lobocode.model'] == 'q6', 'Wrong image model'
+          assert labels['io.lobocode.model'] == 'qwen38-q6', 'Wrong image model'
           assert labels['org.opencontainers.image.source'] == 'https://github.com/1905/lobocode', 'Wrong image source'
           assert re.fullmatch(r'[0-9a-f]{40}', labels['org.opencontainers.image.revision']), 'Missing image source revision'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write('digest=' + digest + '\n')
-          print('Anonymous latest-q6 manifest/config verification passed: ' + digest)
+          print('Anonymous latest-qwen38-q6 manifest/config verification passed: ' + digest)
           PY
 
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-10-16
@@ -188,7 +188,7 @@ jobs:
         env:
           APP_VERSION: ${{ steps.gate.outputs.version }}
           SOURCE_SHA: ${{ steps.gate.outputs.source }}
-          Q6_DIGEST: ${{ steps.image.outputs.digest }}
+          GPU_IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           RUST_CI_URL: ${{ steps.gate.outputs.ci_url }}
         run: |
           make mac VERSION="$APP_VERSION" APP_VERSION="$APP_VERSION" COMMIT="$SOURCE_SHA"
@@ -202,7 +202,7 @@ jobs:
           receipt = {'schema': 1, 'tag': os.environ['APP_TAG'], 'version': os.environ['APP_VERSION'],
               'source_sha': os.environ['SOURCE_SHA'], 'rust_ci': os.environ['RUST_CI_URL'],
               'platform': 'macos-arm64', 'signature': 'ad-hoc', 'notarized': False,
-              'q6_preflight_digest': os.environ['Q6_DIGEST']}
+              'gpu_image_preflight_digest': os.environ['GPU_IMAGE_DIGEST']}
           raw = json.dumps(receipt, indent=2) + '\n'
           (app / 'Resources/app-release.json').write_text(raw)
           pathlib.Path('bin/app-release.json').write_text(raw)
@@ -243,7 +243,7 @@ jobs:
           assert receipt['schema'] == 1 and receipt['tag'] == os.environ['APP_TAG']
           assert receipt['source_sha'] == os.environ['SOURCE_SHA'] and receipt['version'] == os.environ['APP_VERSION']
           assert receipt['platform'] == 'macos-arm64' and receipt['signature'] == 'ad-hoc' and receipt['notarized'] is False
-          assert re.fullmatch(r'sha256:[0-9a-f]{64}', receipt['q6_preflight_digest'])
+          assert re.fullmatch(r'sha256:[0-9a-f]{64}', receipt['gpu_image_preflight_digest'])
           with tempfile.TemporaryDirectory(prefix='lobocode-dmg-') as mount:
               subprocess.run(['hdiutil', 'attach', str(folder / 'lobocode.dmg'), '-readonly', '-nobrowse', '-mountpoint', mount], check=True)
               try:
