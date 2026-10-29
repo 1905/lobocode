@@ -20,14 +20,17 @@
 <div class="stack model">
   <div class="row">
     {#if label}<span class="dim target">&gt; {label}</span>{/if}
-    <select
-      aria-label="model"
-      value={selected?.id ?? ''}
-      {disabled}
-      onchange={(e) => onpick(e.currentTarget.value)}
-    >
-      {#each models as m}<option value={m.id}>{modelOption(m)}</option>{/each}
-    </select>
+    {#if models.length > 1}<select
+        aria-label="model"
+        value={selected?.id ?? ''}
+        {disabled}
+        onchange={(e) => onpick(e.currentTarget.value)}
+      >
+        {#each models as m}<option value={m.id}>{modelOption(m)}</option>{/each}
+      </select>
+    {:else if selected}<span class="fixed" aria-label="model"
+        >{modelOption(selected)}</span
+      >{/if}
   </div>
   {#if selected}<p class="tiny dim">{modelCaption(selected)}</p>{/if}
 </div>
@@ -52,6 +55,16 @@
     border: 1px solid var(--line);
     border-radius: 4px;
     color: var(--text);
+  }
+  .fixed {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    padding: 5px 0;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .tiny {
     margin: 0;

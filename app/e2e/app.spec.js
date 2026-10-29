@@ -195,11 +195,8 @@ describe("cloud-only native app without provider calls", () => {
     await click("Defaults");
     await noLocalControls();
     await $('input[aria-label="context"]').setValue("16384");
-    await browser.execute(() => {
-      const el = document.querySelector('select[aria-label="model"]');
-      el.value = "qwen38-q6";
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    assert.equal(await $('select[aria-label="model"]').isExisting(), false);
+    assert.match(await $('[aria-label="model"]').getText(), /^qwen3\.8-27b abliterated/);
     await click("SAVE");
     await browser.waitUntil(async () =>
       (await $('[role="status"]').getText()).startsWith("saved "),
@@ -208,7 +205,7 @@ describe("cloud-only native app without provider calls", () => {
     assert.match(saved, /^LOBO_API_KEY=sk-/m);
     assert.match(saved, /^LOBO_CTX=16384$/m);
     assert.match(saved, /^LOBO_CONNECTION=ssh$/m);
-    assert.match(saved, /^LOBO_MODEL=qwen38-q6$/m);
+    assert.doesNotMatch(saved, /^LOBO_MODEL=(q6|q8)$/m);
     assert.equal(fs.statSync(fixture.config).mode & 0o777, 0o600);
     const diagnosticState = (await invoke("get_state")).value;
     const diagnosticLog = fs.readFileSync(diagnosticState.log_path, "utf8");
