@@ -411,7 +411,7 @@ fn cloud_selection_rejects_local_and_has_cloud_default() {
     store.set_model("q8".into());
     let request = store.begin_up(now());
     assert_eq!(request.provider.as_deref(), Some("vast"));
-    assert_eq!(request.model.as_deref(), Some("q8"));
+    assert_eq!(request.model.as_deref(), Some(lobo_proto::DEFAULT_CLOUD_MODEL));
 }
 
 #[test]

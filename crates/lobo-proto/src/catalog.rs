@@ -19,7 +19,7 @@ pub struct Model {
     pub name: String,
     pub quant: String,
     pub local: bool,
-    /// Supported on rented GPUs.
+    // Supported on rented GPUs.
     pub gpu: bool,
 }
 

@@ -216,7 +216,12 @@ impl Store {
         }
         if !self.up_running && !self.stop_running && self.state.phase != Phase::Booting {
             self.state.provider = r.default_provider.clone();
-            self.state.model = r.default_model.clone();
+            // Only offered models start; anything else selects the default.
+            self.state.model = if self.state.catalog.iter().any(|e| e.id == r.default_model) {
+                r.default_model.clone()
+            } else {
+                DEFAULT_CLOUD_MODEL.into()
+            };
         }
         self.state.config = Some(c);
         self.state.readiness = Some(r);
