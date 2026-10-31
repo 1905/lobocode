@@ -35,6 +35,9 @@ pub const MTP_DRAFT_MAX: u32 = 5;
 pub const NGRAM_MATCH: u32 = 24;
 pub const NGRAM_MIN: u32 = 48;
 pub const NGRAM_MAX: u32 = 64;
+// The MTP context needs VRAM on top of off: 23,368 -> 24,838 MiB with 5 drafts at
+// ctx 65,536 in the same sweep. n-gram lookup used none.
+pub const MTP_VRAM_MIB: i64 = 1536;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Spec {
@@ -62,6 +65,12 @@ impl Spec {
             Self::Mtp => "mtp",
             Self::Ngram => "ngram",
             Self::MtpNgram => "mtp-ngram",
+        }
+    }
+    pub fn extra_vram_mib(self) -> i64 {
+        match self {
+            Self::Mtp | Self::MtpNgram => MTP_VRAM_MIB,
+            Self::Off | Self::Ngram => 0,
         }
     }
     pub fn args(self) -> Vec<String> {
