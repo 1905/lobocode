@@ -139,8 +139,8 @@ pub struct UpArgs {
     #[arg(
         long,
         value_name = "string",
-        default_value = "community",
-        help = "community ($0.69/h, default, community hosts only) or secure (datacenter $0.99/h first, community fallback)"
+        default_value = "secure",
+        help = "secure (datacenter first, community fallback; default) or community (community hosts only, cheapest)"
     )]
     pub cloud: String,
     #[arg(

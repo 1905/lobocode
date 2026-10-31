@@ -86,49 +86,18 @@ impl Laptop {
     }
     pub fn require_cloud(&self) -> Result<()> {
         self.connection_mode()?;
-        let missing: Vec<_> = [
-            (
-                "CF_TUNNEL_TOKEN",
-                if self.uses_ssh() {
-                    "unused"
-                } else {
-                    &self.cf_tunnel_token
-                },
-            ),
-            (
-                "LOBO_DOMAIN",
-                if self.uses_ssh() {
-                    "unused"
-                } else {
-                    &self.domain
-                },
-            ),
-        ]
-        .into_iter()
-        .filter(|(_, v)| v.is_empty())
-        .map(|(k, _)| k)
-        .collect();
-        if !missing.is_empty() {
-            return Err(Error::Config(format!(
-                "config: cloud needs {}",
-                missing.join(", ")
-            )));
-        }
         self.require_provider_key()
     }
+    /// SSH is the only connection. A legacy `cloudflare` value, `LOBO_DOMAIN`
+    /// and `CF_TUNNEL_TOKEN` are ignored: the token never goes to a pod.
     pub fn connection_mode(&self) -> Result<&str> {
         match self.connection.as_str() {
-            "ssh" => Ok("ssh"),
-            "cloudflare" => Ok("cloudflare"),
-            "" if !self.domain.is_empty() && !self.cf_tunnel_token.is_empty() => Ok("cloudflare"),
-            "" => Ok("ssh"),
-            _ => Err(Error::Config(
-                "LOBO_CONNECTION: want ssh or cloudflare".into(),
-            )),
+            "" | "ssh" | "cloudflare" => Ok("ssh"),
+            _ => Err(Error::Config("LOBO_CONNECTION: want ssh".into())),
         }
     }
     pub fn uses_ssh(&self) -> bool {
-        matches!(self.connection_mode(), Ok("ssh"))
+        self.connection_mode().is_ok()
     }
     pub fn image_repo(&self) -> String {
         let v = self.image_repo.trim();
@@ -154,11 +123,7 @@ impl Laptop {
         }
     }
     pub fn cloud_url(&self) -> String {
-        if self.uses_ssh() {
-            format!("http://127.0.0.1:{}/v1", self.cloud_port())
-        } else {
-            format!("https://{}/v1", self.domain)
-        }
+        format!("http://127.0.0.1:{}/v1", self.cloud_port())
     }
     pub fn require_provider_key(&self) -> Result<()> {
         if self.runpod_api_key.is_empty() && self.vast_api_key.is_empty() {

@@ -6,7 +6,7 @@ pub fn resolve_up(cfg: &Laptop, cfg_path: &Path, req: &lobo_proto::UpRequest) ->
         model: req.model.clone().unwrap_or_default(),
         ctx: req.ctx.unwrap_or_default(),
         source: req.source.clone().unwrap_or_default(),
-        cloud: req.cloud.clone().unwrap_or_else(|| "community".into()),
+        cloud: req.cloud.clone().unwrap_or_else(|| "secure".into()),
         ..Default::default()
     };
     if !matches!(o.cloud.as_str(), "secure" | "community") {

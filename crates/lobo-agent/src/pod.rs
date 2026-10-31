@@ -514,9 +514,42 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
         result=&mut server=>{if let Err(e)=result{tracing::error!(service="lobo-agent", error=%e,"api server");}run.await}
     }
 }
+/// Status served after a startup error that happened before the agent API was up,
+/// so the laptop can show the reason before the instance deletes itself.
+pub struct FailReport {
+    pub addr: String,
+    pub boot_id: String,
+    pub grace: Duration,
+}
+impl FailReport {
+    async fn serve(self, error: &str) {
+        let status = lobo_proto::Status {
+            boot_id: self.boot_id,
+            stage: lobo_proto::Stage::Failed,
+            stage_detail: error.to_owned(),
+            kill_reason: "failed".into(),
+            ..Default::default()
+        };
+        let Ok(body) = serde_json::to_vec(&status) else {
+            return;
+        };
+        let Ok(listener) = tokio::net::TcpListener::bind(&self.addr).await else {
+            return;
+        };
+        let router = axum::Router::new().route(
+            "/api/status",
+            axum::routing::get(move || {
+                let body = body.clone();
+                async move { ([(axum::http::header::CONTENT_TYPE, "application/json")], body) }
+            }),
+        );
+        let _ = tokio::time::timeout(self.grace, axum::serve(listener, router)).await;
+    }
+}
 pub async fn main_flow<F>(
     run: F,
     api: Option<Arc<dyn crate::selfkill::PodApi>>,
+    report: Option<FailReport>,
     kill_budget: Duration,
 ) -> std::process::ExitCode
 where
@@ -537,6 +570,9 @@ where
         Err(e) => e.to_string(),
     };
     eprintln!("lobo-agent fatal: {error}");
+    if let Some(report) = report {
+        report.serve(&error).await;
+    }
     if let Some(api) = api {
         let killer = crate::selfkill::RetryKiller { api };
         let _ = tokio::time::timeout(kill_budget, killer.kill_self(CancellationToken::new())).await;
@@ -630,10 +666,42 @@ mod tests {
                 Err(Error::msg("test startup error"))
             },
             Some(Arc::new(api)),
+            None,
             Duration::from_secs(2),
         )
         .await;
         assert_eq!(code, std::process::ExitCode::FAILURE);
+    }
+    #[tokio::test]
+    async fn early_fatal_serves_failed_status_before_exit() {
+        let addr = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().to_string()
+        };
+        let flow = tokio::spawn(main_flow(
+            async { Err(Error::msg("config: LOBO_MODEL: required")) },
+            None,
+            Some(FailReport {
+                addr: addr.clone(),
+                boot_id: "b1".into(),
+                grace: Duration::from_secs(5),
+            }),
+            Duration::from_secs(1),
+        ));
+        let url = format!("http://{addr}/api/status");
+        let mut status = None;
+        for _ in 0..50 {
+            if let Ok(r) = reqwest::get(&url).await {
+                status = Some(r.json::<lobo_proto::Status>().await.unwrap());
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let status = status.expect("failure status served");
+        assert_eq!(status.stage, lobo_proto::Stage::Failed);
+        assert_eq!(status.boot_id, "b1");
+        assert_eq!(status.stage_detail, "config: LOBO_MODEL: required");
+        assert_eq!(flow.await.unwrap(), std::process::ExitCode::FAILURE);
     }
     #[tokio::test]
     async fn fatal_error_self_terminates() {

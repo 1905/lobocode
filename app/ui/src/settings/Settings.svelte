@@ -310,21 +310,10 @@
         <h2 class="copper">// access</h2>
         <div class="field">
           <span>connection</span><span class="small"
-            >{fields.plain.LOBO_CONNECTION === 'cloudflare'
-              ? 'Existing public tunnel'
-              : 'Private · encrypted SSH'}</span
+            >Private · encrypted SSH</span
           >
         </div>
-        {#if fields.plain.LOBO_CONNECTION === 'cloudflare'}
-          <LinkButton
-            label="use private connection"
-            tone="cyan"
-            disabled={saving}
-            onclick={() => (fields.plain.LOBO_CONNECTION = 'ssh')}
-          />
-        {:else}
-          <p class="small dim">No domain or tunnel account required.</p>
-        {/if}
+        <p class="small dim">No domain or tunnel account required.</p>
         <div class="field">
           <span class="dim">api key</span>
           <div class="row grow">
@@ -412,15 +401,15 @@
         <div class="field">
           <span class="dim">runpod cloud</span>
           <div class="row">
-            {#each ['community', 'secure'] as option}<button
+            {#each ['secure', 'community'] as option}<button
                 class="pick"
-                class:green={pickerValue(fields, 'LOBO_CLOUD', 'community') ===
+                class:green={pickerValue(fields, 'LOBO_CLOUD', 'secure') ===
                   option}
-                aria-pressed={pickerValue(fields, 'LOBO_CLOUD', 'community') ===
+                aria-pressed={pickerValue(fields, 'LOBO_CLOUD', 'secure') ===
                   option}
                 onclick={() => (fields.plain.LOBO_CLOUD = option)}
                 disabled={saving}
-                >{pickerValue(fields, 'LOBO_CLOUD', 'community') === option
+                >{pickerValue(fields, 'LOBO_CLOUD', 'secure') === option
                   ? `[${option}]`
                   : ` ${option} `}</button
               >{/each}

@@ -40,19 +40,6 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
         ),
         &|v| s.provider_keys(v),
     )?;
-    if lobo_core::config::Laptop::from_values(&s.cur)
-        .connection_mode()
-        .ok()
-        == Some("cloudflare")
-    {
-        let domain = p.text(
-            "2/4 · Access · Domain",
-            "The hostname your Cloudflare tunnel serves, e.g. lobo.example.com. Cloud only.",
-            &s.domain,
-            &hostname,
-        )?;
-        s.domain = domain;
-    }
     let opts = if s.current("LOBO_API_KEY").is_empty() {
         vec![("generate a key", "new")]
     } else {
@@ -70,20 +57,6 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
         &opts,
         &s.api_key,
     )?;
-    if lobo_core::config::Laptop::from_values(&s.cur)
-        .connection_mode()
-        .ok()
-        == Some("cloudflare")
-    {
-        s.tunnel = p.secret(
-            "2/4 · Access · Cloudflare tunnel token",
-            &secret_desc(
-                "Zero Trust → Networks → Tunnels → your tunnel → token. Cloud only.",
-                s.current("CF_TUNNEL_TOKEN"),
-            ),
-            &|v| s.tunnel_token(v),
-        )?;
-    }
     if s.both_keys() {
         s.provider = p.select(
             "3/4 · Provider · Default provider",
@@ -113,10 +86,10 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
     if !s.runpod_key().is_empty() {
         s.cloud = p.select(
             "3/4 · RunPod · RunPod cloud",
-            "Community = community hosts only. Secure = datacenter first, community fallback.",
+            "Secure = datacenter first, community fallback. Community = community hosts only.",
             &[
-                ("Community (cheapest, $0.69/h)", "community"),
-                ("Secure (datacenter first, $0.99/h)", "secure"),
+                ("Secure (datacenter first, default)", "secure"),
+                ("Community (cheapest)", "community"),
             ],
             &s.cloud,
         )?;

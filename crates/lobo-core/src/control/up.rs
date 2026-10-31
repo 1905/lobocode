@@ -452,7 +452,7 @@ async fn run(
     let co = read(cancel, cloud_opts(d, &mut o, model, &rel, start)).await?;
     for attempt in 1..=MAX_GPU_RETRIES {
         check_cancel(cancel)?;
-        let retry = boot(
+        let outcome = boot(
             d,
             &**provider,
             &o,
@@ -466,24 +466,30 @@ async fn run(
             scope,
         )
         .await?;
-        if !retry {
-            return Ok(());
-        }
+        let (reason, wait) = match outcome {
+            Boot::Ready => return Ok(()),
+            Boot::Retry { reason, wait } => (reason, wait),
+        };
         check_cancel(cancel)?;
         if attempt == MAX_GPU_RETRIES {
             return Err(Error::Other(format!(
-                "gave up: {attempt} pods in a row landed on bad hosts (all deleted)"
+                "gave up after {attempt} attempts; last: {reason}"
             )));
         }
         events.phase(
             "create",
-            format!(
-                "bad host, renting another pod ({}/{MAX_GPU_RETRIES})",
-                attempt + 1
-            ),
+            format!("attempt {attempt}/{MAX_GPU_RETRIES} failed: {reason}; renting another pod"),
         );
+        if wait {
+            tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),_=tokio::time::sleep(NO_CAPACITY_WAIT)=>{}}
+        }
     }
     unreachable!()
+}
+/// One startup attempt. `Retry` means the pod (if any) is already deleted.
+enum Boot {
+    Ready,
+    Retry { reason: String, wait: bool },
 }
 async fn cloud_opts(
     d: &Deps,
@@ -498,7 +504,6 @@ async fn cloud_opts(
         model_base_url: d.cfg.model_base_url(),
         dl_conns: if o.conns > 0 { o.conns } else { 32 },
         lobo_api_key: d.cfg.lobo_api_key.clone(),
-        cf_tunnel_token: d.cfg.cf_tunnel_token.clone(),
         model: m.id.clone(),
         ctx: o.ctx,
         idle_min: o.idle_min,
@@ -531,7 +536,7 @@ async fn boot(
     events: &Events,
     ownership: &mut OperationGuard<'_>,
     scope: &mut OperationScope,
-) -> Result<bool> {
+) -> Result<Boot> {
     use rand::RngExt;
     co.boot_id = hex::encode(rand::rng().random::<[u8; 8]>());
     scope.record_owner(RuntimeTarget {
@@ -592,6 +597,12 @@ async fn boot(
             }
             if matches!(e, Error::Cancelled) {
                 return Err(e);
+            }
+            if matches!(e, Error::NoCapacity(_)) && p.replaceable() {
+                return Ok(Boot::Retry {
+                    reason: format!("rent on {}: {e}", p.name()),
+                    wait: true,
+                });
             }
             return Err(Error::Other(format!("rent on {}: {e}", p.name())));
         }
@@ -726,6 +737,15 @@ async fn boot(
                     // Confirmed absence still needs the exact saved connection
                     // and keys cleaned up. Keep ownership if cleanup fails.
                     scope.cleanup(d, ownership).await?;
+                    if p.replaceable() {
+                        return Ok(Boot::Retry {
+                            reason: format!(
+                                "pod {} disappeared in phase {phase} before it reported a reason",
+                                pod.id
+                            ),
+                            wait: false,
+                        });
+                    }
                     return Err(events.fail(
                         "failed",
                         "provider confirms the pod is gone".into(),
@@ -815,22 +835,22 @@ async fn boot(
                         done: true,
                         ..Default::default()
                     });
-                    return Ok(false);
+                    return Ok(Boot::Ready);
                 }
                 "failed" | "terminating" => {
                     let s = status.as_ref().unwrap();
-                    if retriable(&s.stage_detail) && p.replaceable() {
-                        events.phase("image", s.stage_detail.clone());
-                        scope.cleanup(d, ownership).await?;
-                        return Ok(true);
-                    }
-                    let logs = probe(cancel, agent.logs(20)).await.unwrap_or_default();
-                    check_cancel(cancel)?;
                     let why = if s.stage == Stage::Terminating && s.kill_reason != "failed" {
                         format!("watchdog: {}", s.kill_reason)
                     } else {
                         s.stage_detail.clone()
                     };
+                    if p.replaceable() {
+                        events.phase(&phase, why.clone());
+                        scope.cleanup(d, ownership).await?;
+                        return Ok(Boot::Retry { reason: why, wait: false });
+                    }
+                    let logs = probe(cancel, agent.logs(20)).await.unwrap_or_default();
+                    check_cancel(cancel)?;
                     let error = if !p.replaceable() {
                         scope.cleanup(d, ownership).await?;
                         format!("pod stopped: {why} (err=none)\n{logs}")
@@ -854,9 +874,10 @@ async fn boot(
             && (d.clock.now() - created).to_std().unwrap_or_default() > CONTAINER_TIMEOUT
             && p.replaceable()
         {
-            events.phase("image", "host: container not started after 30m0s".into());
+            let reason = "host: container not started after 30m0s".to_owned();
+            events.phase("image", reason.clone());
             scope.cleanup(d, ownership).await?;
-            return Ok(true);
+            return Ok(Boot::Retry { reason, wait: false });
         }
         if (d.clock.now() - progress).to_std().unwrap_or_default() > o.timeout
             || (d.clock.now() - start).to_std().unwrap_or_default() > o.timeout
@@ -878,6 +899,4 @@ async fn boot(
         tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),_=tokio::time::sleep(poll)=>{}}
     }
 }
-fn retriable(detail: &str) -> bool {
-    detail.starts_with("gpu: ") || detail.contains("host: ")
-}
+

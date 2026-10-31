@@ -17,7 +17,7 @@ pub fn providers_from_config(cfg: &Laptop, _w: &Wiring) -> BTreeMap<String, Arc<
             "runpod".into(),
             Arc::new(runpod::RunPodProvider {
                 api: Arc::new(runpod::Client::new(&cfg.runpod_api_key)),
-                domain: cfg.domain.clone(),
+                domain: String::new(),
             }),
         );
     }
@@ -27,7 +27,7 @@ pub fn providers_from_config(cfg: &Laptop, _w: &Wiring) -> BTreeMap<String, Arc<
             Arc::new(vast::VastProvider::new(
                 vast::Client::new(&cfg.vast_api_key),
                 cfg.vast_max_dph.parse().unwrap_or(0.0),
-                &cfg.domain,
+                "",
             )),
         );
     }
@@ -37,15 +37,11 @@ pub fn deps_from_config(cfg: Laptop, w: &Wiring) -> Result<Deps> {
     let key = cfg.lobo_api_key.clone();
     Ok(Deps {
         images: Arc::new(crate::images::PublicImages::new(&cfg.image_repo())),
-        connection: if cfg.uses_ssh() {
-            Some(Arc::new(crate::connection::Manager::new(
-                w.config_path.clone(),
-                w.exe.clone(),
-                cfg.cloud_port(),
-            )?))
-        } else {
-            None
-        },
+        connection: Some(Arc::new(crate::connection::Manager::new(
+            w.config_path.clone(),
+            w.exe.clone(),
+            cfg.cloud_port(),
+        )?)),
         operations: Arc::new(OperationState::persistent(
             crate::state::state_dir().join("operation.json"),
         )),

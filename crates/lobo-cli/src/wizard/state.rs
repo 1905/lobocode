@@ -74,7 +74,7 @@ impl WizardState {
             ..Default::default()
         };
         if s.cloud.is_empty() {
-            s.cloud = "community".into();
+            s.cloud = "secure".into();
         }
         s
     }
@@ -142,7 +142,7 @@ impl WizardState {
             ("LOBO_IDLE_MIN", "0"),
             ("LOBO_MAX_HOURS", "0"),
             ("LOBO_MODEL", lobo_proto::DEFAULT_CLOUD_MODEL),
-            ("LOBO_CLOUD", "community"),
+            ("LOBO_CLOUD", "secure"),
             ("LOBO_PROVIDER", "runpod"),
             ("LOBO_VAST_MAX_DPH", "1.20"),
         ] {
@@ -226,17 +226,17 @@ mod tests {
         }
         assert_eq!(r["LOBO_API_KEY"], "sk-new");
         s.runpod = " rp-new ".into();
-        s.cloud = "secure".into();
+        s.cloud = "community".into();
         let r = s.result("");
         assert_eq!(r["RUNPOD_API_KEY"], "rp-new");
-        assert_eq!(r["LOBO_CLOUD"], "secure");
+        assert_eq!(r["LOBO_CLOUD"], "community");
     }
     #[test]
     fn new_state_migrates_saved_model_and_provider_without_local_controls() {
         let s = WizardState::new(BTreeMap::new());
         assert_eq!(
             (&*s.api_key, &*s.provider, &*s.model, &*s.cloud),
-            ("new", "runpod", "qwen38-q6", "community")
+            ("new", "runpod", "qwen38-q6", "secure")
         );
         let key = new_api_key();
         assert!(key.starts_with("sk-"));
