@@ -557,6 +557,9 @@ async fn connection_attempt(
         .truncate(true)
         .mode(0o600)
         .open(&log_path)?;
+    // No master of this helper runs here. A master killed without `-O exit`
+    // leaves its socket, and the next `ssh -M` would then disable multiplexing.
+    let _ = fs::remove_file(root.join(SOCKET));
     let mut child = ssh_command(root, s, &i)?.stderr(log).spawn()?;
     health(root, s, "connecting to cloud", false)?;
     let result = async {
