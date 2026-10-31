@@ -437,7 +437,7 @@ def stage(pod, need_draft):
 
 def start_server(pod, extra, timeout=600):
     argv = " ".join(shlex.quote(a) for a in ["/app/llama-server", *BASE_ARGS, *extra])
-    pod.sh(f"pkill -x llama-server || true; sleep 3; setsid nohup {argv} > /root/llama.log 2>&1 < /dev/null &")
+    pod.sh(f"pkill -x llama-server || true; sleep 3; LD_LIBRARY_PATH=/app:$LD_LIBRARY_PATH setsid nohup {argv} > /root/llama.log 2>&1 < /dev/null &")
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         time.sleep(5)

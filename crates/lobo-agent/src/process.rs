@@ -29,7 +29,9 @@ pub fn clean_env() -> Vec<(String, String)> {
 // Speculative decoding: drafts come from the model's MTP head and from n-grams
 // already in the context. llama-server keeps a draft token only when the target
 // samples the same token, so output quality does not change.
-pub const MTP_DRAFT_MAX: u32 = 3;
+// 5 won the 2026-10-31 RTX 5090 sweep with ngram-mod on code, long-doc and
+// tool-call workloads (2.6-9x over off); 3 is ~15% faster on free prose only.
+pub const MTP_DRAFT_MAX: u32 = 5;
 pub const NGRAM_MATCH: u32 = 24;
 pub const NGRAM_MIN: u32 = 48;
 pub const NGRAM_MAX: u32 = 64;
