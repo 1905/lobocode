@@ -45,11 +45,16 @@ pub struct GpuCheckCfg {
     pub logs: LogSource,
 }
 impl GpuCheckCfg {
-    pub fn pod(model: &catalog::Model, env: Vec<(String, String)>, logs: LogSource) -> Self {
+    pub fn pod(
+        model: &catalog::Model,
+        spec: process::Spec,
+        env: Vec<(String, String)>,
+        logs: LogSource,
+    ) -> Self {
         Self {
             llama_bin: LLAMA_BIN.into(),
             model_id: model.id.clone(),
-            min_free_mib: catalog::min_free_mib(model.size),
+            min_free_mib: catalog::min_free_mib(model.size) + spec.extra_vram_mib(),
             give_up_after: Duration::from_secs(180),
             retry_every: Duration::from_secs(10),
             try_timeout: Duration::from_secs(60),
@@ -400,7 +405,7 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
     let version = tokio::fs::read(RELEASE_JSON)
         .await
         .unwrap_or_else(|_| br#"{"version":"unknown"}"#.to_vec());
-    tracing::info!(service="lobo-agent", model=%model.file,ctx=cfg.ctx,expires_at=%cfg.expires_at,"start");
+    tracing::info!(service="lobo-agent", model=%model.file,ctx=cfg.ctx,spec=cfg.spec.as_str(),expires_at=%cfg.expires_at,"start");
     let clean = process::clean_env();
     let life = CancellationToken::new();
     let _guard = life.clone().drop_guard();
@@ -440,6 +445,7 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
         },
         gpu_check: Arc::new(PodGpuCheck(GpuCheckCfg::pod(
             &model,
+            cfg.spec,
             clean.clone(),
             logs.clone(),
         ))),
@@ -561,6 +567,7 @@ mod tests {
     use super::*;
     use crate::{
         LogRing,
+        process::Spec,
         source::{BoxRead, HttpSource},
         testutil::*,
     };
@@ -578,6 +585,7 @@ mod tests {
     fn gpu_cfg(bin: PathBuf) -> GpuCheckCfg {
         let mut c = GpuCheckCfg::pod(
             catalog::get("qwen38-q6").unwrap(),
+            Spec::Off,
             vec![("PATH".into(), "/bin:/usr/bin".into())],
             Arc::new(LogRing::new(100)),
         );
@@ -661,6 +669,7 @@ mod tests {
     fn gpu_check_defaults_are_3min_10s_1min() {
         let c = GpuCheckCfg::pod(
             catalog::get("qwen38-q6").unwrap(),
+            Spec::Off,
             vec![],
             Arc::new(LogRing::new(1)),
         );
@@ -673,6 +682,22 @@ mod tests {
             )
         );
         assert_eq!(c.min_free_mib, 23951);
+    }
+    #[test]
+    fn gpu_check_reserves_vram_for_mtp() {
+        let need = |spec| {
+            GpuCheckCfg::pod(
+                catalog::get("qwen38-q6").unwrap(),
+                spec,
+                vec![],
+                Arc::new(LogRing::new(1)),
+            )
+            .min_free_mib
+        };
+        assert_eq!(need(Spec::Off), 23951);
+        assert_eq!(need(Spec::Ngram), 23951);
+        assert_eq!(need(Spec::Mtp), 25487);
+        assert_eq!(need(Spec::MtpNgram), 25487);
     }
     #[tokio::test]
     async fn gpu_check_retries_until_cuda0() {
