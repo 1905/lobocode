@@ -344,7 +344,10 @@ class RunPod:
         self.key = os.environ["RUNPOD_API_KEY"]
 
     def call(self, method, path, body=None):
-        return http(method, RUNPOD + path, body, {"Authorization": f"Bearer {self.key}"}, timeout=60)[1]
+        try:
+            return http(method, RUNPOD + path, body, {"Authorization": f"Bearer {self.key}"}, timeout=60)[1]
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"RunPod {method} {path}: HTTP {e.code}: {e.read()[:500]!r}") from e
 
     def rent(self, cloud):
         script = ("mkdir -p /root/.ssh /run/sshd && echo \"$PUBLIC_KEY\" > /root/.ssh/authorized_keys && "
@@ -371,8 +374,8 @@ class RunPod:
     def terminate(self, pod_id):
         try:
             self.call("DELETE", f"/pods/{pod_id}")
-        except urllib.error.HTTPError as e:
-            if e.code != 404:
+        except RuntimeError as e:
+            if "HTTP 404" not in str(e):
                 raise
 
     def bench_pods(self):
