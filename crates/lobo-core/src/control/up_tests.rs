@@ -974,7 +974,11 @@ async fn up_detects_pod_gone_while_agent_silent() {
     });
     d.new_agent = Arc::new(move |_| agent.clone());
     let (events, result) = collect(d, UpOpts::default()).await;
-    assert!(result.unwrap_err().to_string().contains("pod slow is gone"));
+    let error = result.unwrap_err().to_string();
+    assert!(
+        error.contains("gave up after 10 attempts; last: pod slow disappeared"),
+        "{error}"
+    );
     assert_eq!(events.last().unwrap().phase, "failed");
 }
 
@@ -1006,10 +1010,12 @@ async fn up_detects_pod_gone_before_the_agent_ever_answers() {
     }
     let result = operation.wait().await;
     let error = result.unwrap_err().to_string();
-    assert!(error.contains("pod slow is gone"), "{error}");
-    assert!(error.contains("phase image"));
+    assert!(
+        error.contains("pod slow disappeared in phase image before it reported a reason"),
+        "{error}"
+    );
     assert_eq!(events.last().unwrap().phase, "failed");
-    assert_eq!(p.rents.load(Ordering::SeqCst), 1);
+    assert_eq!(p.rents.load(Ordering::SeqCst), 10);
     assert!(p.get_ids.lock().unwrap().iter().all(|id| id == "slow"));
     assert_eq!(p.deletes.load(Ordering::SeqCst), 1);
     assert!(
