@@ -1,4 +1,5 @@
 import type { PanelState } from '../gen/PanelState';
+import type { CatalogEntry } from '../gen/CatalogEntry';
 import type { OpenCodeInfo } from '../gen/OpenCodeInfo';
 import type { OpenCodeResult } from '../gen/OpenCodeResult';
 import { bar, duration, gb, tps, usd } from './fmt';
@@ -316,3 +317,9 @@ export async function submitClients(
     s.busy = false;
   }
 }
+export const modelLabel = (m: CatalogEntry) =>
+  `${m.name} · ${m.quant.toLowerCase()}`;
+export const modelOption = (m: CatalogEntry) =>
+  `${modelLabel(m)} · ${(m.size / 1e9).toFixed(1)} GB`;
+export const modelCaption = (m: CatalogEntry) =>
+  `${m.repo.split('/')[0]} · ${m.quant} · fits RTX 5090 with 65k context`;

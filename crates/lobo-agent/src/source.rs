@@ -1,7 +1,10 @@
 use crate::{Error, Result, download::tuning};
 use async_trait::async_trait;
 use futures_util::TryStreamExt;
-use std::fmt;
+use std::{
+    fmt,
+    sync::atomic::{AtomicU64, Ordering},
+};
 use tokio_util::io::StreamReader;
 
 pub type BoxRead = Box<dyn tokio::io::AsyncRead + Send + Unpin>;
@@ -10,6 +13,10 @@ pub type BoxRead = Box<dyn tokio::io::AsyncRead + Send + Unpin>;
 pub trait Source: Send + Sync + fmt::Display {
     /// Negative length reads to EOF. The returned size is the full object size, or -1 if unknown.
     async fn open(&self, offset: i64, len: i64) -> Result<(BoxRead, i64)>;
+    /// One-line transfer statistics for the end-of-download log. Empty when there are none.
+    fn summary(&self) -> String {
+        String::new()
+    }
 }
 
 pub struct HttpSource {
@@ -23,39 +30,14 @@ impl HttpSource {
             http: crate::http::client(),
         }
     }
-}
-
-pub fn redact_url(raw: &str) -> String {
-    let Ok(url) = url::Url::parse(raw) else {
-        return "?".into();
-    };
-    if url.host_str().is_none() {
-        return "?".into();
+    /// One TCP connection per parallel range stream.
+    pub fn http1(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            http: crate::http::client_http1(),
+        }
     }
-    format!(
-        "{}://{}",
-        url.scheme(),
-        &url[url::Position::BeforeHost..url::Position::AfterPort]
-    )
-}
-
-impl fmt::Display for HttpSource {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&redact_url(&self.url))
-    }
-}
-
-pub fn range_total(content_range: &str) -> i64 {
-    content_range
-        .rsplit_once('/')
-        .and_then(|(_, n)| n.parse().ok())
-        .filter(|n: &i64| *n >= 0)
-        .unwrap_or(-1)
-}
-
-#[async_trait]
-impl Source for HttpSource {
-    async fn open(&self, offset: i64, len: i64) -> Result<(BoxRead, i64)> {
+    pub(crate) async fn request(&self, offset: i64, len: i64) -> Result<(reqwest::Response, i64)> {
         let mut req = self.http.get(&self.url);
         let ranged = offset > 0 || len >= 0;
         if ranged {
@@ -95,10 +77,120 @@ impl Source for HttpSource {
             (_, 429 | 500..=599) => return Err(Error::msg(format!("HTTP {status}"))),
             _ => return Err(Error::Permanent(format!("download {self}: HTTP {status}"))),
         };
-        let stream = response
-            .bytes_stream()
-            .map_err(|e| std::io::Error::other(e.without_url()));
-        Ok((Box::new(StreamReader::new(stream)), total))
+        Ok((response, total))
+    }
+}
+
+pub fn redact_url(raw: &str) -> String {
+    let Ok(url) = url::Url::parse(raw) else {
+        return "?".into();
+    };
+    if url.host_str().is_none() {
+        return "?".into();
+    }
+    format!(
+        "{}://{}",
+        url.scheme(),
+        &url[url::Position::BeforeHost..url::Position::AfterPort]
+    )
+}
+
+impl fmt::Display for HttpSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&redact_url(&self.url))
+    }
+}
+
+pub fn range_total(content_range: &str) -> i64 {
+    content_range
+        .rsplit_once('/')
+        .and_then(|(_, n)| n.parse().ok())
+        .filter(|n: &i64| *n >= 0)
+        .unwrap_or(-1)
+}
+
+#[async_trait]
+impl Source for HttpSource {
+    async fn open(&self, offset: i64, len: i64) -> Result<(BoxRead, i64)> {
+        let (response, total) = self.request(offset, len).await?;
+        Ok((body(response), total))
+    }
+}
+
+fn body(response: reqwest::Response) -> BoxRead {
+    let stream = response
+        .bytes_stream()
+        .map_err(|e| std::io::Error::other(e.without_url()));
+    Box::new(StreamReader::new(stream))
+}
+
+/// Reads a model stored as content-addressed chunk objects `<prefix>/<nnn>`, one
+/// `tuning().chunk` bytes each except the last.
+pub struct ChunkSource {
+    prefix: String,
+    size: i64,
+    http: reqwest::Client,
+    hit: AtomicU64,
+    miss: AtomicU64,
+    other: AtomicU64,
+}
+impl ChunkSource {
+    pub fn new(prefix: impl Into<String>, size: i64) -> Self {
+        Self {
+            prefix: prefix.into(),
+            size,
+            http: crate::http::client_http1(),
+            hit: AtomicU64::new(0),
+            miss: AtomicU64::new(0),
+            other: AtomicU64::new(0),
+        }
+    }
+}
+impl fmt::Display for ChunkSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&redact_url(&self.prefix))
+    }
+}
+#[async_trait]
+impl Source for ChunkSource {
+    async fn open(&self, offset: i64, len: i64) -> Result<(BoxRead, i64)> {
+        let chunk = tuning().chunk;
+        let n = offset / chunk;
+        if offset < 0
+            || len < 0
+            || offset
+                .checked_add(len)
+                .is_none_or(|end| end > (n + 1) * chunk)
+        {
+            return Err(Error::Permanent(format!(
+                "range {offset}+{len} is not inside one {chunk}-byte chunk"
+            )));
+        }
+        let object = HttpSource {
+            url: format!("{}/{n:03}", self.prefix),
+            http: self.http.clone(),
+        };
+        let (response, _) = object.request(offset - n * chunk, len).await?;
+        let status = response
+            .headers()
+            .get("cf-cache-status")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        let counter = match status.to_ascii_uppercase().as_str() {
+            "HIT" => &self.hit,
+            "MISS" => &self.miss,
+            _ => &self.other,
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
+        Ok((body(response), self.size))
+    }
+    fn summary(&self) -> String {
+        format!(
+            "cache HIT={} MISS={} other={}",
+            self.hit.load(Ordering::Relaxed),
+            self.miss.load(Ordering::Relaxed),
+            self.other.load(Ordering::Relaxed)
+        )
     }
 }
 
@@ -281,6 +373,7 @@ pub fn model_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::{ChunkOpts, RangeServer};
     use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
     #[test]
     fn range_total() {
@@ -334,6 +427,95 @@ mod tests {
             };
             assert_eq!(e.is_permanent(), permanent);
         }
+    }
+    const CHUNK: usize = 64 << 10;
+    async fn tuned<F: std::future::Future>(f: F) -> F::Output {
+        crate::download::with_tuning(
+            crate::download::Tuning {
+                chunk: CHUNK as i64,
+                ..Default::default()
+            },
+            f,
+        )
+        .await
+    }
+    async fn read_all(mut body: BoxRead) -> Vec<u8> {
+        let mut out = Vec::new();
+        tokio::io::AsyncReadExt::read_to_end(&mut body, &mut out)
+            .await
+            .unwrap();
+        out
+    }
+    #[tokio::test]
+    async fn chunk_source_maps_offsets_to_chunk_objects() {
+        let size = 3 * CHUNK + 37;
+        let bytes = crate::testutil::data(size);
+        let server = RangeServer::chunked(bytes.clone(), CHUNK, Default::default()).await;
+        let source = ChunkSource::new(&server.prefix, size as i64);
+        tuned(async {
+            let (_, total) = source.open(0, CHUNK as i64).await.unwrap();
+            assert_eq!(total, size as i64);
+            assert_eq!(server.ranges_for(0), ["bytes=0-65535"]);
+            let (body, _) = source.open(CHUNK as i64 + 10, 100).await.unwrap();
+            assert_eq!(server.ranges_for(1), ["bytes=10-109"]);
+            assert_eq!(read_all(body).await, bytes[65546..65646]);
+            let (body, _) = source.open(3 * CHUNK as i64, 37).await.unwrap();
+            assert_eq!(server.ranges_for(3), ["bytes=0-36"]);
+            assert_eq!(read_all(body).await, bytes[196608..]);
+        })
+        .await;
+    }
+    #[tokio::test]
+    async fn chunk_source_rejects_unbounded_and_cross_chunk_ranges() {
+        let source = ChunkSource::new("http://127.0.0.1:1/m", 1 << 20);
+        tuned(async {
+            for (offset, len) in [(0, -1), (65530, 20)] {
+                let Err(e) = source.open(offset, len).await else {
+                    panic!("accepted {offset}+{len}")
+                };
+                assert!(e.is_permanent());
+            }
+        })
+        .await;
+    }
+    #[tokio::test]
+    async fn chunk_source_missing_or_unranged_is_permanent() {
+        let bytes = crate::testutil::data(2 * CHUNK);
+        let missing = ChunkOpts {
+            missing: Some(1),
+            ..Default::default()
+        };
+        let unranged = ChunkOpts {
+            ignore_range: true,
+            ..Default::default()
+        };
+        for (opts, offset, want) in [(missing, CHUNK as i64, "404"), (unranged, 0, "Range")] {
+            let server = RangeServer::chunked(bytes.clone(), CHUNK, opts).await;
+            let source = ChunkSource::new(&server.prefix, bytes.len() as i64);
+            let Err(e) = tuned(source.open(offset, 10)).await else {
+                panic!("expected error")
+            };
+            assert!(e.is_permanent());
+            assert!(e.to_string().contains(want), "{e}");
+        }
+    }
+    #[tokio::test]
+    async fn chunk_source_counts_cache_status() {
+        let bytes = crate::testutil::data(3 * CHUNK);
+        let opts = ChunkOpts {
+            cache: vec!["HIT", "MISS", ""],
+            ..Default::default()
+        };
+        let server = RangeServer::chunked(bytes.clone(), CHUNK, opts).await;
+        let source = ChunkSource::new(&server.prefix, bytes.len() as i64);
+        tuned(async {
+            for n in 0..3 {
+                let (body, _) = source.open((n * CHUNK) as i64, 100).await.unwrap();
+                read_all(body).await;
+            }
+        })
+        .await;
+        assert_eq!(source.summary(), "cache HIT=1 MISS=1 other=1");
     }
 }
 
@@ -422,6 +604,7 @@ mod ssh_tests {
             Tuning {
                 stall: Duration::from_millis(200),
                 chunk: 65536,
+                ..Default::default()
             },
             async {
                 let Err(e) = within(Duration::from_secs(2), s.open(0, -1)).await else {
@@ -442,6 +625,7 @@ mod ssh_tests {
             Tuning {
                 stall: Duration::from_secs(2),
                 chunk: 65536,
+                ..Default::default()
             },
             async {
                 within(

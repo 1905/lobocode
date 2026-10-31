@@ -4,13 +4,22 @@ pub static USER_AGENT: LazyLock<String> =
     LazyLock::new(|| format!("lobo-agent/{}", crate::VERSION));
 
 pub fn client() -> reqwest::Client {
+    builder().build().expect("agent HTTP client")
+}
+
+pub fn client_http1() -> reqwest::Client {
+    // One TCP connection per parallel stream: HTTP/2 would multiplex them all onto one connection.
+    builder()
+        .http1_only()
+        .build()
+        .expect("agent HTTP/1.1 client")
+}
+
+fn builder() -> reqwest::ClientBuilder {
     // Connection drivers belong to the runtime that sent the request. A global
     // pool can reuse a socket whose runtime has stopped. Callers that repeat
     // requests retain this client for the lifetime of their operation.
-    reqwest::Client::builder()
-        .user_agent(USER_AGENT.as_str())
-        .build()
-        .expect("agent HTTP client")
+    reqwest::Client::builder().user_agent(USER_AGENT.as_str())
 }
 
 #[cfg(test)]

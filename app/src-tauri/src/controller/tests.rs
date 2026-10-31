@@ -423,7 +423,7 @@ async fn opencode_stop_settings_and_change_back_during_http_invalidate_setup() {
             match mutation {
                 0 => controller.stop(),
                 1 => { controller.begin_config_write(); controller.end_config_write(); },
-                2 => { controller.set_model("q6".into()); controller.set_model("q8".into()); },
+                2 => { controller.set_model("qwen38-q6".into()); controller.set_model("qwen38-q6".into()); },
                 3 => { controller.set_provider("vast".into()).unwrap(); controller.set_provider("runpod".into()).unwrap(); },
                 _ => unreachable!(),
             }
@@ -490,8 +490,8 @@ async fn opencode_stale_owner_stop_or_selection_before_final_callback_rejects() 
                 controller.stop();
             }
             _ => {
-                controller.set_model("q6".into());
-                controller.set_model("q8".into());
+                controller.set_model("qwen38-q6".into());
+                controller.set_model("qwen38-q6".into());
             }
         }));
         assert!(c.configure_opencode(setup_path(&b), true).await.is_err());
@@ -776,7 +776,7 @@ fn queued_cloud_start_preserves_selection_and_rejects_changed_config() {
         c.set_model("q6".into());
         c.set_provider("vast".into()).unwrap();
         // Existing UI policy rejects selection while Start is reserved.
-        assert_eq!(c.state().model, "q8");
+        assert_eq!(c.state().model, "qwen38-q6");
         assert_eq!(c.state().provider, "runpod");
         c.submit_start().unwrap().await.unwrap().unwrap();
         c.begin_config_write();

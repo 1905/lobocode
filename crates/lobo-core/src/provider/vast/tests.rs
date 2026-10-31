@@ -125,6 +125,16 @@ async fn get_null_instances_is_not_found() {
 }
 
 #[tokio::test]
+async fn provisioning_nulls_parse_as_empty() {
+    let inst = json!({"id":7,"label":null,"actual_status":null,"dph_total":null,
+        "inet_down":null,"geolocation":null,"start_date":null});
+    let (_s, c) = reply(200, json!({"instances":inst})).await;
+    assert_eq!(c.get(7).await.unwrap().status, "");
+    let (_s, c) = reply(200, json!({"instances":[inst]})).await;
+    assert_eq!(c.list().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn malformed_response_returns_error_instead_of_panicking() {
     let (_s, c) = reply(200, json!("bad gateway payload")).await;
     assert!(c.list().await.is_err());

@@ -41,6 +41,11 @@ pub enum Cmd {
         about = "Build lobo-agent, zip it with release.json, scan for secrets, upload to bucket lobo"
     )]
     Release(ReleaseArgs),
+    #[command(
+        hide = true,
+        about = "Verify a model GGUF and upload it as content-addressed chunks to bucket lobocode-models"
+    )]
+    PublishModel(PublishModelArgs),
     #[command(about = "Rent a 5090 and boot lobo; shows progress until the API is ready")]
     Up(UpArgs),
     #[command(about = "Delete every lobo pod on every provider")]
@@ -130,6 +135,13 @@ pub struct ReleaseArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct PublishModelArgs {
+    pub id: String,
+    #[arg(long)]
+    pub file: PathBuf,
+}
+
+#[derive(Debug, Args)]
 pub struct UpArgs {
     #[arg(
         long,
@@ -144,7 +156,7 @@ pub struct UpArgs {
         default_value_t = 0,
         allow_hyphen_values = true,
         hide = true,
-        help = "obsolete: model weights are included in the public image"
+        help = "parallel download streams for chunked models (default 32)"
     )]
     pub conns: i64,
     #[arg(

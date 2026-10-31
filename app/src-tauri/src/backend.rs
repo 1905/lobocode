@@ -161,8 +161,9 @@ fn cloud_config(mut cfg: config::Laptop) -> config::Laptop {
             .cloned()
             .unwrap_or_else(|| "runpod".into());
     }
-    if cfg.model.is_empty() {
-        cfg.model = "q6".into();
+    // Only GPU-supported models start; a legacy q6 or q8 selection maps to the default.
+    if !lobo_proto::catalog::get(&cfg.model).is_ok_and(|m| m.gpu) {
+        cfg.model = lobo_proto::DEFAULT_CLOUD_MODEL.into();
     }
     // Legacy CLI settings stay on disk and do not participate in app admission.
     cfg.local_port.clear();
@@ -425,7 +426,7 @@ impl Backend for CoreBackend {
             .remove("LOBO_API_KEY")
             .unwrap_or_default())
     }
-    async fn save(&self, set: BTreeMap<String, String>) -> Result<()> {
+    async fn save(&self, mut set: BTreeMap<String, String>) -> Result<()> {
         if let Some(provider) = set.get("LOBO_PROVIDER").filter(|p| !p.is_empty()) {
             require_cloud_provider(provider)?;
         }
@@ -439,6 +440,8 @@ impl Backend for CoreBackend {
             kind: "invalid".into(),
             message,
         })?;
+        // ConfigShow reports the effective model, so the UI cannot detect a stale on-disk value.
+        set.insert("LOBO_MODEL".into(), lobo_proto::DEFAULT_CLOUD_MODEL.into());
         config::save(&self.path, &set)?;
         Ok(())
     }
@@ -516,7 +519,7 @@ mod tests {
         let original = std::fs::read(&backend.path).unwrap();
         let (shown, readiness) = backend.config().await.unwrap();
         assert_eq!(readiness.default_provider, "runpod");
-        assert_eq!(readiness.default_model, "q6");
+        assert_eq!(readiness.default_model, lobo_proto::DEFAULT_CLOUD_MODEL);
         assert!(readiness.cloud_ready);
         assert!(!readiness.local_supported);
         assert!(!shown.values.contains_key("LOBO_WEIGHTS_DIR"));
@@ -533,10 +536,14 @@ mod tests {
         assert!(saved.contains("LOBO_PROVIDER=local"));
         assert!(saved.contains("LOBO_WEIGHTS_DIR=/untouched/model"));
         assert!(saved.contains("LOBO_LOCAL_PORT=invalid-legacy-port"));
+        assert_eq!(
+            config::values(&backend.path).unwrap()["LOBO_MODEL"],
+            lobo_proto::DEFAULT_CLOUD_MODEL
+        );
         assert!(saved.starts_with("# keep\n"));
         let prepared = backend.prepare_up(UpRequest::default()).unwrap();
         assert_eq!(prepared.options.provider, "runpod");
-        assert_eq!(prepared.options.model, "q6");
+        assert_eq!(prepared.options.model, lobo_proto::DEFAULT_CLOUD_MODEL);
         backend
             .save(BTreeMap::from([
                 ("LOBO_MODEL".into(), "q8".into()),
@@ -547,11 +554,15 @@ mod tests {
             .unwrap();
         let (_, readiness) = backend.config().await.unwrap();
         assert_eq!(
+            config::values(&backend.path).unwrap()["LOBO_MODEL"],
+            lobo_proto::DEFAULT_CLOUD_MODEL
+        );
+        assert_eq!(
             (
                 readiness.default_provider.as_str(),
                 readiness.default_model.as_str()
             ),
-            ("vast", "q8")
+            ("vast", lobo_proto::DEFAULT_CLOUD_MODEL)
         );
     }
     #[tokio::test]
@@ -665,7 +676,7 @@ mod tests {
                 cfg.provider, expected,
                 "{provider} / runpod={runpod} / vast={vast}"
             );
-            assert_eq!(cfg.model, "q8");
+            assert_eq!(cfg.model, lobo_proto::DEFAULT_CLOUD_MODEL);
             assert!(cfg.local_port.is_empty());
         }
     }

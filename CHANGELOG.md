@@ -1,5 +1,14 @@
 # Changelog
 
+## App 0.2.3 — 2026-10-31
+
+- Support only `qwen38-q6` on RunPod or Vast. Show the model as fixed text; remove Q6/Q8 choices and local runs.
+- Download 84 SHA-256-verified weight chunks. Fall back from the contributor CDN to the original Hugging Face file.
+- Persist the supported model when Settings saves a legacy configuration. Fix Vast provisioning fields that temporarily contain null.
+- Remove GitHub Actions workflows. Build and test on Feesh and Air.
+- Validation: 548 workspace tests, 97 app library tests, two binary tests, 21 UI tests and six native fresh/legacy setup checks pass. Lint and 25 image-verifier checks pass. Two workspace integration tests remain ignored.
+- Limits: no new live GPU inference test. The contributor CDN returned HTTP 403; fresh Hugging Face first/last chunk hashes matched. The legacy Homebrew Go CLI cannot use the new model. Ad-hoc signing; no notarization. Publication is pending.
+
 ## App 0.2.2 — 2026-10-05
 
 - Add private, rotating startup logs and a Logs control. Show the last backend update and any logging failure.
@@ -22,6 +31,12 @@
 
 Historical development entries below retain their original validation limits. App 0.2.1 supersedes the app release hold and removes app-local features. CLI release and Q8 publication remain held.
 
+- Persist `qwen38-q6` when Settings saves a legacy config. The previous UI fix only changed the displayed value; the old `q6` or `q8` value could remain on disk. Native fresh and legacy setup checks pass on Air.
+- Remove GitHub Actions workflows. Builds and tests run on the designated Feesh and Air hosts.
+- Support only `qwen38-q6` on a rented RunPod or Vast GPU. The app selector and Settings list only that model, and a saved legacy `q6` or `q8` selection starts `qwen38-q6`. `lobo up` rejects other models and local runs before any rental, and the CLI configuration form offers no local provider. A catalog `gpu` flag marks the supported model; the unused `q6` and `q8` entries and local code remain for a later cleanup.
+- Deliver `qwen38-q6` weights as 84 verified 256 MiB chunks from `LOBO_MODEL_BASE_URL` (default `https://models.stealthcopilot.io`, operated by the contributor) into a thin pod image, with ramped parallel streams, restart of slow streams and a slow-host gate on the recent rate. If the CDN fails or is too slow, the agent reads the same byte ranges from the original Hugging Face file. Every chunk from either source must match the pinned table; the table matched the complete Hugging Face file (84 of 84 chunks and the whole-file SHA-256) on 2026-10-26. `q6` and `q8` keep their complete images. Contributed in PR #2 by SandQuattro. Review fixes: Hugging Face fallback, catalog models in the CLI wizard, acceptance of a retried chunk upload that already landed, and workflow actions pinned to commit SHAs. Validation: 545 workspace tests, clippy and fmt on Linux; the contributor's live Vast CLI and Mac app runs reached Ready in 222–264 s.
+- Add a catalog-driven model selector to the panel and Settings, loaded from `crates/lobo-proto/catalog.json`. The new default for cloud configurations is `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). Add `LOBO_IMAGE_REPO` for the registry of complete model images. Local mode accepts only `q6` and `q8`. The image workflow builds one image per catalog id and tags it `latest-<id>` in the registry of the repository that ran it. Validation: 39 lobo-proto tests, 77 lobo-core local-mode tests within a green workspace suite, the Go CLI replay golden, 97 app Rust tests plus two binary tests, 21 UI tests and the image verifier self-test at 25 checks pass. Limits: the Homebrew Go CLI rejects `LOBO_MODEL=qwen38-q6`.
+- Open the SSH control socket by a relative path from the cloud directory, so a long configuration path no longer fails cloud Start in preflight. A new `ssh-integration` CI job runs the real OpenSSH tunnel test with a 120-byte directory. Contributed in PR #3 by SandQuattro.
 - Move Vast instance listing to `GET /api/v1/instances/` with `next_token` pagination; Vast now answers the v0 list with HTTP 410, which failed every status snapshot and blocked Start before rental. Offer search, create, single-instance get and delete stay on v0. Validation: 24 Vast tests including a v1 pagination case, workspace lint and tests and 95 app tests pass. A rebuilt local app completed a live Vast Start → Ready → Stop on instance 57639258: Ready after about 8.5 minutes, Stop confirmed by `instances: null` and an empty v1 list. No inference request was sent. The Go CLI listing remains on v0.
 - Clarify the Rust source quick start, Q6-only public cloud image, separate app/CLI installation and CLI bulk-stop behavior. App/CLI releases remain held; loading-memory progression and remaining native checks are not complete.
 - Pass the actual hosted Mac app `b5617ae` cloud Start → Ready → direct reply → Stop → Off flow. The request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds; two tokens do not establish sustained output speed. Controls fit without scrolling, and rounded corners were visible. Exact pod and local tunnel cleanup, native Quit and guarded preference restoration passed.

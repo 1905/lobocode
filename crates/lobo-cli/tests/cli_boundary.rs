@@ -284,6 +284,20 @@ async fn gates_reject_before_dependencies() {
         assert!(err.contains(needle), "{err}");
     }
 }
+#[tokio::test]
+async fn publish_model_needs_only_r2_keys() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("config");
+    std::fs::write(
+        &path,
+        "R2_ACCOUNT_ID=a\nR2_ACCESS_KEY=k\nR2_SECRET_KEY=s\nR2_ENDPOINT=https://r2.example\n",
+    )
+    .unwrap();
+    let args = ["--config", path.to_str().unwrap(), "publish-model", "nope"];
+    let (code, _, err) = run(&App::real(), &[&args[..], &["--file", "x"]].concat()).await;
+    assert_eq!(code, 1);
+    assert!(err.contains("unknown model \"nope\""), "{err}");
+}
 
 struct WizardAnswer {
     abort: bool,

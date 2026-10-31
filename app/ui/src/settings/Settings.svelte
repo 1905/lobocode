@@ -2,6 +2,7 @@
   import { onMount, untrack } from 'svelte';
   import type { PanelState } from '../gen/PanelState';
   import type { OpenCodeInfo } from '../gen/OpenCodeInfo';
+  import type { CatalogEntry } from '../gen/CatalogEntry';
   import type { ConfigShow } from '../proto/ConfigShow';
   import type { Readiness } from '../proto/Readiness';
   import { api, message, onState, onSettingsTab } from '../lib/api';
@@ -14,6 +15,7 @@
     maskNew,
     pickerValue,
   } from '../lib/settings';
+  import ModelSelect from '../widgets/ModelSelect.svelte';
   import Logo from '../widgets/Logo.svelte';
   import RasterBar from '../widgets/RasterBar.svelte';
   import BracketButton from '../widgets/BracketButton.svelte';
@@ -34,6 +36,7 @@
     config: ConfigShow;
     readiness: Readiness;
     clients?: OpenCodeInfo;
+    catalog?: CatalogEntry[];
   };
   let {
     fixture,
@@ -46,6 +49,7 @@
   } = $props();
   let config = $state<ConfigShow>();
   let readiness = $state<Readiness>();
+  let catalog = $state<CatalogEntry[]>(untrack(() => fixture?.catalog ?? []));
   let fields = $state(loadFields());
   let saving = $state(false);
   let status = $state('');
@@ -93,6 +97,7 @@
     fields = loadFields(config);
     const state = await api.getState();
     readiness = state.readiness ?? undefined;
+    catalog = state.catalog;
     updateRuntime(state);
   }
   onMount(() => {
@@ -106,6 +111,7 @@
       void attempt(reload);
       void onState((s) => {
         readiness = s.readiness ?? undefined;
+        catalog = s.catalog;
         updateRuntime(s);
       })
         .then((f) => {
@@ -385,19 +391,16 @@
           </div>{/if}
         <div class="field">
           <span class="dim">model</span>
-          <div class="row">
-            {#each ['q6', 'q8'] as option}<button
-                class="pick"
-                class:green={pickerValue(fields, 'LOBO_MODEL', 'q6') === option}
-                aria-pressed={pickerValue(fields, 'LOBO_MODEL', 'q6') ===
-                  option}
-                onclick={() => (fields.plain.LOBO_MODEL = option)}
-                disabled={saving}
-                >{pickerValue(fields, 'LOBO_MODEL', 'q6') === option
-                  ? `[${option}]`
-                  : ` ${option} `}</button
-              >{/each}
-          </div>
+          <ModelSelect
+            models={catalog}
+            value={pickerValue(
+              fields,
+              'LOBO_MODEL',
+              readiness?.default_model ?? '',
+            )}
+            disabled={saving}
+            onpick={(id) => (fields.plain.LOBO_MODEL = id)}
+          />
         </div>
         {#each numeric.slice(0, 3) as [key, label, placeholder]}<label
             class="field"

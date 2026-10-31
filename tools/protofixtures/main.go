@@ -13,7 +13,6 @@ import (
 	"github.com/1905/lobocode/internal/agent"
 	"github.com/1905/lobocode/internal/control"
 	"github.com/1905/lobocode/internal/local"
-	"github.com/1905/lobocode/internal/model"
 	"github.com/1905/lobocode/internal/provider"
 	"github.com/1905/lobocode/internal/release"
 )
@@ -30,15 +29,6 @@ type configShow struct {
 	Exists bool              `json:"exists"`
 	Values map[string]string `json:"values"`
 	Set    map[string]bool   `json:"set"`
-}
-
-type catalogModel struct {
-	ID       string   `json:"id"`
-	File     string   `json:"file"`
-	SHA256   string   `json:"sha256"`
-	Alias    string   `json:"alias"`
-	Size     int64    `json:"size"`
-	ChunkSHA []string `json:"chunk_sha"`
 }
 
 var fixedTime = time.Date(2026, 9, 29, 10, 0, 0, 500000000, time.UTC)
@@ -98,8 +88,8 @@ func write(path string, value any) error {
 }
 
 func run() error {
-	if len(os.Args) != 3 {
-		return fmt.Errorf("usage: protofixtures <fixture-directory> <catalog.json>")
+	if len(os.Args) != 2 {
+		return fmt.Errorf("usage: protofixtures <fixture-directory>")
 	}
 	ready := sample[agent.Status]()
 	ready.Stage, ready.Model = agent.StageReady, "q8"
@@ -144,11 +134,7 @@ func run() error {
 			return err
 		}
 	}
-	var catalog []catalogModel
-	for _, m := range model.All() {
-		catalog = append(catalog, catalogModel{m.ID, m.File, m.SHA256, m.Alias, m.Size, m.ChunkSHA()})
-	}
-	return write(os.Args[2], catalog)
+	return nil
 }
 
 func main() {

@@ -53,10 +53,10 @@ pub fn snapshot() -> Result<MemorySnapshot> {
 }
 
 pub fn assess(model: &str, ctx: i64, snapshot: &MemorySnapshot) -> Result<MemoryAssessment> {
-    if !matches!(model, "q6" | "q8") {
-        return Err(Error::Local(format!(
-            "unknown local memory profile {model:?}; select q6 or q8"
-        )));
+    let entry = lobo_proto::catalog::get(model)
+        .map_err(|_| Error::Local(super::models::unknown_message(model)))?;
+    if !entry.local {
+        return Err(Error::Local(super::models::cloud_only_message(model)));
     }
     if !(1..=262_144).contains(&ctx) {
         return Err(Error::Local(format!(
@@ -64,9 +64,7 @@ pub fn assess(model: &str, ctx: i64, snapshot: &MemorySnapshot) -> Result<Memory
         )));
     }
     validate(snapshot)?;
-    let weights = lobo_proto::catalog::get(model).map_err(|e| Error::Local(e.to_string()))?;
-    let weights =
-        u64::try_from(weights.size).map_err(|_| invalid("invalid catalog weight size"))?;
+    let weights = u64::try_from(entry.size).map_err(|_| invalid("invalid catalog weight size"))?;
     let padded = (ctx as u64).checked_add(255).ok_or_else(overflow)? / 256 * 256;
     let required = padded
         .checked_mul(KV_BYTES_PER_TOKEN)

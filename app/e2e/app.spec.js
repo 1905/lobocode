@@ -108,7 +108,7 @@ describe("cloud-only native app without provider calls", () => {
     });
     const state = (await invoke("get_state")).value;
     assert.notEqual(state.provider, "local");
-    assert.equal(state.model, "q6");
+    assert.equal(state.model, "qwen38-q6");
     for (const key of ["target", "is_local", "local_memory", "models"])
       assert.equal(key in state, false);
     assert.equal(state.readiness.cloud_ready, false);
@@ -195,7 +195,8 @@ describe("cloud-only native app without provider calls", () => {
     await click("Defaults");
     await noLocalControls();
     await $('input[aria-label="context"]').setValue("16384");
-    await click("q6");
+    assert.equal(await $('select[aria-label="model"]').isExisting(), false);
+    assert.match(await $('[aria-label="model"]').getText(), /^qwen3\.8-27b abliterated/);
     await click("SAVE");
     await browser.waitUntil(async () =>
       (await $('[role="status"]').getText()).startsWith("saved "),
@@ -204,6 +205,8 @@ describe("cloud-only native app without provider calls", () => {
     assert.match(saved, /^LOBO_API_KEY=sk-/m);
     assert.match(saved, /^LOBO_CTX=16384$/m);
     assert.match(saved, /^LOBO_CONNECTION=ssh$/m);
+    for (const [, model] of saved.matchAll(/^LOBO_MODEL=(.*)$/gm))
+      assert.equal(model, "qwen38-q6");
     assert.equal(fs.statSync(fixture.config).mode & 0o777, 0o600);
     const diagnosticState = (await invoke("get_state")).value;
     const diagnosticLog = fs.readFileSync(diagnosticState.log_path, "utf8");

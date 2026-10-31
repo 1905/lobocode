@@ -1,7 +1,7 @@
 use axum::{
     Router,
     body::Body,
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, Response, StatusCode},
     routing::get,
 };
@@ -29,9 +29,37 @@ struct Data {
     calls: AtomicUsize,
     ranges: Mutex<Vec<String>>,
 }
+/// Behaviour of `RangeServer::chunked`; the default serves every chunk normally.
+#[derive(Default)]
+pub struct ChunkOpts {
+    /// `cf-cache-status` per chunk index; empty string or no entry sends no header.
+    pub cache: Vec<&'static str>,
+    pub missing: Option<usize>,
+    pub ignore_range: bool,
+    /// Chunk index and body delay per KiB, applied to that chunk's first request only.
+    pub slow_first: Option<(usize, Duration)>,
+    /// Body delay per KiB on every request.
+    pub pace: Duration,
+}
+struct Chunked {
+    bytes: Arc<Vec<u8>>,
+    chunk: usize,
+    opts: ChunkOpts,
+    ranges: Mutex<Vec<Vec<String>>>,
+    inflight: AtomicUsize,
+    max_inflight: AtomicUsize,
+}
+struct Inflight(Arc<Chunked>);
+impl Drop for Inflight {
+    fn drop(&mut self) {
+        self.0.inflight.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 pub struct RangeServer {
     pub url: String,
+    pub prefix: String,
     data: Arc<Data>,
+    chunked: Option<Arc<Chunked>>,
     task: tokio::task::JoinHandle<()>,
 }
 impl Drop for RangeServer {
@@ -55,7 +83,59 @@ impl RangeServer {
         let task = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
         });
-        Self { url, data, task }
+        Self {
+            url,
+            prefix: String::new(),
+            data,
+            chunked: None,
+            task,
+        }
+    }
+    /// Serves `bytes` as `chunk`-sized objects on `GET /m/{nnn}`; the last one is shorter.
+    pub async fn chunked(bytes: Arc<Vec<u8>>, chunk: usize, opts: ChunkOpts) -> Self {
+        let count = bytes.len().div_ceil(chunk);
+        let state = Arc::new(Chunked {
+            bytes: bytes.clone(),
+            chunk,
+            opts,
+            ranges: Mutex::new(vec![Vec::new(); count]),
+            inflight: AtomicUsize::new(0),
+            max_inflight: AtomicUsize::new(0),
+        });
+        let app = Router::new()
+            .route("/m/{nnn}", get(serve_chunk))
+            .with_state(state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let prefix = format!("http://{}/m", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        Self {
+            url: String::new(),
+            prefix,
+            data: Arc::new(Data {
+                bytes,
+                fault: Fault::Normal,
+                calls: AtomicUsize::new(0),
+                ranges: Mutex::new(Vec::new()),
+            }),
+            chunked: Some(state),
+            task,
+        }
+    }
+    pub fn calls_for(&self, n: usize) -> usize {
+        self.ranges_for(n).len()
+    }
+    pub fn ranges_for(&self, n: usize) -> Vec<String> {
+        self.chunked.as_ref().unwrap().ranges.lock().unwrap()[n].clone()
+    }
+    /// Highest number of simultaneously open chunk responses.
+    pub fn max_inflight(&self) -> usize {
+        self.chunked
+            .as_ref()
+            .unwrap()
+            .max_inflight
+            .load(Ordering::SeqCst)
     }
     pub fn calls(&self) -> usize {
         self.data.calls.load(Ordering::Relaxed)
@@ -63,6 +143,89 @@ impl RangeServer {
     pub fn ranges(&self) -> Vec<String> {
         self.data.ranges.lock().unwrap().clone()
     }
+}
+fn parse_range(range: &str, total: usize) -> (usize, usize) {
+    let mut start = 0;
+    let mut end = total;
+    if let Some((a, b)) = range.strip_prefix("bytes=").and_then(|s| s.split_once('-')) {
+        start = a.parse().unwrap();
+        end = b
+            .parse::<usize>()
+            .map(|x| x + 1)
+            .unwrap_or(total)
+            .min(total);
+    }
+    (start, end)
+}
+async fn serve_chunk(
+    State(state): State<Arc<Chunked>>,
+    Path(nnn): Path<String>,
+    headers: HeaderMap,
+) -> Response<Body> {
+    let n: usize = nnn.parse().unwrap();
+    let range = headers
+        .get("range")
+        .and_then(|s| s.to_str().ok())
+        .unwrap_or_default();
+    let first = {
+        let mut ranges = state.ranges.lock().unwrap();
+        ranges[n].push(range.into());
+        ranges[n].len() == 1
+    };
+    if state.opts.missing == Some(n) {
+        return Response::builder().status(404).body(Body::empty()).unwrap();
+    }
+    let lo = n * state.chunk;
+    let object = &state.bytes[lo..(lo + state.chunk).min(state.bytes.len())];
+    let (mut start, mut end) = parse_range(range, object.len());
+    let ranged = !range.is_empty() && !state.opts.ignore_range;
+    if !ranged {
+        (start, end) = (0, object.len());
+    }
+    if start > end {
+        return Response::builder().status(416).body(Body::empty()).unwrap();
+    }
+    let mut delay = state.opts.pace;
+    if let Some((slow, d)) = state.opts.slow_first
+        && slow == n
+        && first
+    {
+        delay += d;
+    }
+    let now = state.inflight.fetch_add(1, Ordering::SeqCst) + 1;
+    state.max_inflight.fetch_max(now, Ordering::SeqCst);
+    let guard = Inflight(state.clone());
+    let bytes = Bytes::copy_from_slice(&object[start..end]);
+    let body = Body::from_stream(stream::unfold(
+        (0, bytes, guard),
+        move |(at, bytes, guard)| async move {
+            if at >= bytes.len() {
+                return None;
+            }
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            let piece = bytes.slice(at..(at + 1024).min(bytes.len()));
+            Some((Ok::<_, std::io::Error>(piece), (at + 1024, bytes, guard)))
+        },
+    ));
+    let mut response = Response::builder()
+        .status(if ranged {
+            StatusCode::PARTIAL_CONTENT
+        } else {
+            StatusCode::OK
+        })
+        .header("Content-Length", end - start);
+    if ranged {
+        response = response.header(
+            "Content-Range",
+            format!("bytes {start}-{}/{}", end.saturating_sub(1), object.len()),
+        );
+    }
+    if let Some(status) = state.opts.cache.get(n).filter(|s| !s.is_empty()) {
+        response = response.header("cf-cache-status", *status);
+    }
+    response.body(body).unwrap()
 }
 async fn serve(State(data): State<Arc<Data>>, headers: HeaderMap) -> Response<Body> {
     let call = data.calls.fetch_add(1, Ordering::Relaxed);
@@ -76,16 +239,7 @@ async fn serve(State(data): State<Arc<Data>>, headers: HeaderMap) -> Response<Bo
         return std::future::pending().await;
     }
     let total = data.bytes.len();
-    let mut start = 0;
-    let mut end = total;
-    if let Some((a, b)) = range.strip_prefix("bytes=").and_then(|s| s.split_once('-')) {
-        start = a.parse().unwrap();
-        end = b
-            .parse::<usize>()
-            .map(|x| x + 1)
-            .unwrap_or(total)
-            .min(total);
-    }
+    let (start, end) = parse_range(range, total);
     if start > end {
         return Response::builder().status(416).body(Body::empty()).unwrap();
     }
@@ -158,6 +312,29 @@ async fn range_server_serves_ranges() {
     assert_eq!(r.status(), 206);
     assert_eq!(r.headers()["Content-Range"], "bytes 5-9/100");
     assert_eq!(r.bytes().await.unwrap().as_ref(), &bytes[5..10]);
+}
+#[tokio::test]
+async fn range_server_chunked_tracks_requests() {
+    let bytes = data(3000);
+    let opts = ChunkOpts {
+        slow_first: Some((1, Duration::from_millis(30))),
+        pace: Duration::from_millis(1),
+        ..Default::default()
+    };
+    let server = RangeServer::chunked(bytes.clone(), 1024, opts).await;
+    let get = |n: usize| {
+        let url = format!("{}/{n:03}", server.prefix);
+        async move { crate::http::client().get(url).send().await.unwrap() }
+    };
+    let started = std::time::Instant::now();
+    let (a, b) = tokio::join!(get(0), get(1));
+    assert_eq!(a.bytes().await.unwrap().as_ref(), &bytes[..1024]);
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert_eq!(b.bytes().await.unwrap().as_ref(), &bytes[1024..2048]);
+    assert_eq!(get(2).await.bytes().await.unwrap().len(), 3000 - 2048);
+    assert_eq!((server.calls_for(0), server.calls_for(1)), (1, 1));
+    assert_eq!(server.ranges_for(2), [""]);
+    assert_eq!(server.max_inflight(), 2);
 }
 #[tokio::test]
 async fn range_server_half_then_close() {

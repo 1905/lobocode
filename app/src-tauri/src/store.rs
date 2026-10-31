@@ -1,6 +1,8 @@
 use crate::{fmt, types::*};
 use chrono::{DateTime, Utc};
-use lobo_proto::{ConfigShow, Readiness, Snap, Stage, UpEvent, UpRequest, catalog};
+use lobo_proto::{
+    ConfigShow, DEFAULT_CLOUD_MODEL, Readiness, Snap, Stage, UpEvent, UpRequest, catalog,
+};
 use std::time::Duration;
 
 /// State rules only. The controller owns work and supplies the clock.
@@ -21,13 +23,16 @@ pub struct Store {
 }
 impl Store {
     pub fn new() -> Self {
-        let mut ids: Vec<_> = catalog::all().iter().map(|m| m.id.clone()).collect();
-        ids.sort_by_key(|s| (s != "q6", s.clone()));
+        let catalog = catalog::all()
+            .iter()
+            .filter(|m| m.gpu)
+            .map(CatalogEntry::from)
+            .collect::<Vec<_>>();
         Self {
             state: PanelState {
                 provider: "runpod".into(),
-                model: "q6".into(),
-                catalog_ids: ids,
+                model: DEFAULT_CLOUD_MODEL.into(),
+                catalog,
                 ..Default::default()
             },
             up_running: false,
@@ -211,7 +216,12 @@ impl Store {
         }
         if !self.up_running && !self.stop_running && self.state.phase != Phase::Booting {
             self.state.provider = r.default_provider.clone();
-            self.state.model = r.default_model.clone();
+            // Only offered models start; anything else selects the default.
+            self.state.model = if self.state.catalog.iter().any(|e| e.id == r.default_model) {
+                r.default_model.clone()
+            } else {
+                DEFAULT_CLOUD_MODEL.into()
+            };
         }
         self.state.config = Some(c);
         self.state.readiness = Some(r);
@@ -464,7 +474,7 @@ impl Store {
         }
     }
     pub fn set_model(&mut self, m: String) {
-        if !self.up_running && !self.stop_running && self.state.catalog_ids.contains(&m) {
+        if !self.up_running && !self.stop_running && self.state.catalog.iter().any(|e| e.id == m) {
             self.state.model = m;
             self.selection_generation = self.selection_generation.wrapping_add(1);
         }

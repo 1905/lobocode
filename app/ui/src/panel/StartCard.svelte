@@ -2,6 +2,7 @@
   import type { PanelState } from '../gen/PanelState';
   import { limits, canStart } from '../lib/view';
   import { cloudProviders } from '../lib/settings';
+  import ModelSelect from '../widgets/ModelSelect.svelte';
   import BracketPicker from '../widgets/BracketPicker.svelte';
   import BracketButton from '../widgets/BracketButton.svelte';
   let {
@@ -39,9 +40,9 @@
         <span class="dim target">&gt; provider</span><span
           >{panel.provider}</span
         >
-      </div>{/if}<BracketPicker
+      </div>{/if}<ModelSelect
       label="model"
-      options={panel.catalog_ids}
+      models={panel.catalog}
       value={panel.model}
       onpick={(v) => pick('model', v)}
     />

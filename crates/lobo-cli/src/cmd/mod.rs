@@ -4,6 +4,7 @@ pub mod genkey;
 pub mod local;
 pub mod logs;
 pub mod models;
+pub mod publish_model;
 pub mod release;
 pub mod status;
 pub mod test;

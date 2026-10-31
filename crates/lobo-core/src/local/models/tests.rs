@@ -170,3 +170,15 @@ fn marker_written_by_go_is_valid() {
     fs::write(marker_path(w, "x"), format!("abc 5 {nanos}\n")).unwrap();
     assert!(marker_valid(w, &m, Some(&meta)));
 }
+
+#[test]
+fn list_shows_local_models_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let ids: Vec<_> = list(dir.path())
+        .unwrap()
+        .models
+        .into_iter()
+        .map(|m| m.id)
+        .collect();
+    assert_eq!(ids, ["q6", "q8"]);
+}

@@ -57,6 +57,22 @@ pub fn provider_options(local: bool) -> Vec<(&'static str, &'static str)> {
     ]);
     out
 }
+/// GPU-supported catalog models; the only ones `lobo up` starts.
+pub fn model_options() -> Vec<(String, &'static str)> {
+    lobo_proto::catalog::all()
+        .iter()
+        .filter(|m| m.gpu)
+        .map(|m| {
+            let label = format!(
+                "{} {} ({})",
+                m.name,
+                m.quant,
+                crate::tui::styles::gb(m.size)
+            );
+            (label, m.id.as_str())
+        })
+        .collect()
+}
 impl WizardState {
     pub fn provider_keys(&self, typed: &str) -> Result<(), String> {
         if !self.is_local()
@@ -91,6 +107,15 @@ impl WizardState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn model_options_list_gpu_models_only() {
+        let ids: Vec<_> = model_options().into_iter().map(|(_, v)| v).collect();
+        assert_eq!(ids, ["qwen38-q6"]);
+        assert_eq!(
+            model_options()[0].0,
+            "qwen3.8-27b abliterated Q6_K (22.4 GB)"
+        );
+    }
     #[test]
     fn validators() {
         assert!(whole_number(512)("100").is_err());

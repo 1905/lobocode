@@ -2,14 +2,17 @@ use crate::{
     Error, LogSource, Result,
     process::{self, LlamaArgs},
     runner::*,
-    source::{Source, redact_url},
+    source::{ChunkSource, HttpSource, Source, redact_url},
 };
 use async_trait::async_trait;
 use lobo_proto::{DownloadProgress, GoTime, Timings, catalog};
 use std::{
     future::Future,
     path::PathBuf,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{
+        Arc, LazyLock, Mutex,
+        atomic::{AtomicI64, Ordering},
+    },
     time::Duration,
 };
 use tokio::time::Instant;
@@ -19,9 +22,9 @@ pub const LLAMA_BIN: &str = "/app/llama-server";
 pub const CUDA_LD_PATH: &str = "/app:/usr/local/cuda/lib64";
 pub const MODEL_DIR: &str = "/models";
 pub const SLOW_CHECK_AFTER: Duration = Duration::from_secs(20);
+/// The slow check judges the rate over this window, so a link still ramping up is not penalised.
+const SLOW_WINDOW: Duration = Duration::from_secs(5);
 pub const SSH_MAX_CONNS: usize = 8;
-pub const CLOUDFLARED_URL: &str =
-    "https://github.com/cloudflare/cloudflared/releases/download/2026.9.1/cloudflared-linux-amd64";
 pub const BIN_DIR: &str = "/lobo/bin";
 pub const RELEASE_JSON: &str = "/lobo/release.json";
 
@@ -113,6 +116,7 @@ pub struct SlowGate {
     after: Duration,
     floor: f64,
     source: String,
+    sample: Option<(Duration, i64)>,
     checked: bool,
 }
 impl SlowGate {
@@ -121,14 +125,23 @@ impl SlowGate {
             after,
             floor: floor_mbps,
             source: redacted_src,
+            sample: None,
             checked: false,
         }
     }
-    pub fn observe(&mut self, elapsed: Duration, mbps: f64) -> Option<String> {
-        if self.checked || elapsed <= self.after {
+    pub fn observe(&mut self, elapsed: Duration, bytes: i64) -> Option<String> {
+        if self.checked {
+            return None;
+        }
+        if elapsed <= self.after {
+            if self.sample.is_none() && elapsed >= self.after.saturating_sub(SLOW_WINDOW) {
+                self.sample = Some((elapsed, bytes));
+            }
             return None;
         }
         self.checked = true;
+        let (from, base) = self.sample.unwrap_or_default();
+        let mbps = (bytes - base) as f64 / (elapsed - from).as_secs_f64().max(1e-9) / 1e6;
         (mbps < self.floor).then(|| {
             format!(
                 "host: download too slow: {mbps:.1} MB/s after {:.0}s from {} (min {:.0})",
@@ -169,6 +182,16 @@ where
     Ok(())
 }
 pub type MakeSource = Arc<dyn Fn(&str) -> Result<Arc<dyn Source>> + Send + Sync>;
+/// `ranges` is read with HTTP range requests; any other URL is a chunk-object prefix.
+pub fn chunks_or_ranges(ranges: String, size: i64) -> MakeSource {
+    Arc::new(move |url| {
+        Ok(if url == ranges {
+            Arc::new(HttpSource::http1(url)) as Arc<dyn Source>
+        } else {
+            Arc::new(ChunkSource::new(url, size))
+        })
+    })
+}
 pub struct ModelDownload {
     pub urls: Vec<String>,
     pub dst: PathBuf,
@@ -214,18 +237,21 @@ impl Download for ModelDownload {
                     let start = Instant::now();
                     let gate = Mutex::new(SlowGate::new(self.slow_check_after, self.min_mbps, redact_url(&url)));
                     let cause = Mutex::new(None);
+                    // Restarted chunks lower the net count; the gate judges bytes actually received.
+                    // Single-stream downloads leave `received` at zero, so the larger count wins.
+                    let received = Arc::new(AtomicI64::new(0));
                     let progress = |mut dp: DownloadProgress| {
                         if i > 0 { dp.source = redact_url(&url); }
-                        let mbps = dp.mbps;
+                        let bytes = dp.bytes.max(received.load(Ordering::Relaxed));
                         on_progress(dp);
-                        if let Some(error) = gate.lock().unwrap().observe(start.elapsed(), mbps) {
+                        if let Some(error) = gate.lock().unwrap().observe(start.elapsed(), bytes) {
                             *cause.lock().unwrap() = Some(error);
                             child.cancel();
                         }
                     };
-                    let result = crate::download::download_parallel(
+                    let result = crate::download::download_parallel_counted(
                         child.clone(), source.as_ref(), &self.dst, self.size, &self.sha,
-                        &self.chunk_sha, self.conns_for(&url), Some(&progress),
+                        &self.chunk_sha, self.conns_for(&url), received.clone(), Some(&progress),
                     ).await;
                     if cancel.is_cancelled() { return Err(Error::Cancelled); }
                     if let Some(error) = cause.into_inner().unwrap() { return Err(Error::msg(error)); }
@@ -378,16 +404,8 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
     let clean = process::clean_env();
     let life = CancellationToken::new();
     let _guard = life.clone().drop_guard();
-    let mut urls = vec![cfg.model_url.clone()];
-    if !cfg.model_fallback.is_empty() {
-        urls.push(cfg.model_fallback.clone());
-    }
-    let (ssh, host, file, size) = (
-        cfg.model_ssh_key.clone(),
-        cfg.model_host_key.clone(),
-        model.file.clone(),
-        model.size,
-    );
+    // The CDN serves chunk objects; Hugging Face serves byte ranges of the same file.
+    let (cdn, hf) = (model.url(&cfg.model_base_url), model.hf_url());
     let api = self_api(
         &cfg.provider,
         &cfg.runpod_pod_id,
@@ -408,7 +426,7 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
     } else {
         (
             Arc::new(ModelDownload {
-                urls,
+                urls: vec![cdn, hf.clone()],
                 dst: PathBuf::from(MODEL_DIR).join(&model.file),
                 size: model.size,
                 sha: model.sha256.clone(),
@@ -416,9 +434,7 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
                 conns: cfg.dl_conns,
                 min_mbps: cfg.min_mbps as f64,
                 slow_check_after: SLOW_CHECK_AFTER,
-                make_source: Arc::new(move |url| {
-                    crate::source::model_source(url, &ssh, &host, &file, size)
-                }),
+                make_source: chunks_or_ranges(hf, model.size),
             }),
             PathBuf::from(MODEL_DIR).join(&model.file),
         )
@@ -429,11 +445,7 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
         } else {
             Arc::new(PodTunnel {
                 bin: PathBuf::from(BIN_DIR).join("cloudflared"),
-                url: if cfg.image_model {
-                    String::new()
-                } else {
-                    CLOUDFLARED_URL.into()
-                },
+                url: String::new(),
                 token: cfg.cf_tunnel_token,
                 env: clean.clone(),
                 logs: logs.clone(),
@@ -479,7 +491,7 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
     timings.download_source = if cfg.image_model {
         "Docker image".into()
     } else {
-        redact_url(&cfg.model_url)
+        redact_url(&cfg.model_base_url)
     };
     let idle = Duration::from_secs(
         (cfg.idle_min as u64)
@@ -753,16 +765,34 @@ mod tests {
     }
     #[test]
     fn slow_gate_decides_once_after_20s() {
+        let secs = Duration::from_secs;
         let mut s = SlowGate::new(SLOW_CHECK_AFTER, 100.0, "https://h".into());
-        assert!(s.observe(Duration::from_secs(19), 10.0).is_none());
+        assert!(s.observe(secs(19), 10_000_000).is_none());
+        // sample kept at 19 s (>= 15 s): 199.8 MB over 2 s
         assert_eq!(
-            s.observe(Duration::from_secs(21), 99.9).unwrap(),
+            s.observe(secs(21), 10_000_000 + 199_800_000).unwrap(),
             "host: download too slow: 99.9 MB/s after 21s from https://h (min 100)"
         );
-        assert!(s.observe(Duration::from_secs(22), 1.0).is_none());
+        assert!(s.observe(secs(22), 1).is_none());
         let mut s = SlowGate::new(SLOW_CHECK_AFTER, 100.0, "https://h".into());
-        assert!(s.observe(Duration::from_secs(21), 150.0).is_none());
-        assert!(s.observe(Duration::from_secs(22), 1.0).is_none());
+        assert!(s.observe(secs(21), 3_150_000_000).is_none());
+        assert!(s.observe(secs(22), 3_150_000_001).is_none());
+    }
+    #[test]
+    fn slow_gate_judges_trailing_rate_not_cumulative_average() {
+        let secs = Duration::from_secs;
+        let mut s = SlowGate::new(SLOW_CHECK_AFTER, 100.0, "https://h".into());
+        assert!(s.observe(secs(10), 100_000_000).is_none());
+        assert!(s.observe(secs(15), 300_000_000).is_none());
+        // cumulative 1000 MB / 21 s = 47.6 MB/s, trailing 700 MB / 6 s = 116.7 MB/s
+        assert!(s.observe(secs(21), 1_000_000_000).is_none());
+        let mut s = SlowGate::new(SLOW_CHECK_AFTER, 100.0, "https://h".into());
+        assert!(s.observe(secs(15), 3_000_000_000).is_none());
+        // cumulative 3.5 GB / 21 s is above the floor, trailing 500 MB / 6 s = 83.3 MB/s is not
+        assert_eq!(
+            s.observe(secs(21), 3_500_000_000).unwrap(),
+            "host: download too slow: 83.3 MB/s after 21s from https://h (min 100)"
+        );
     }
     #[tokio::test]
     async fn download_any_falls_back_on_any_error() {
@@ -895,6 +925,43 @@ mod tests {
         .unwrap();
         assert_eq!(std::fs::read(&d.dst).unwrap(), *bytes);
         assert!(sources.lock().unwrap().contains(&redact_url(&server.url)));
+    }
+    #[tokio::test]
+    async fn missing_chunks_switch_to_hugging_face_ranges() {
+        let chunk = 64 << 10;
+        let bytes = data(3 * chunk + 37);
+        let cdn = RangeServer::chunked(
+            bytes.clone(),
+            chunk,
+            ChunkOpts {
+                missing: Some(1),
+                ..Default::default()
+            },
+        )
+        .await;
+        let hf = RangeServer::new(bytes.clone(), Fault::Normal).await;
+        let dir = tempfile::tempdir().unwrap();
+        let mut d = download(dir.path().join("m"));
+        d.urls = vec![cdn.prefix.clone(), hf.url.clone()];
+        d.size = bytes.len() as i64;
+        d.sha = hex::encode(Sha256::digest(&*bytes));
+        d.chunk_sha = chunk_table(&bytes, chunk as i64);
+        d.conns = 2;
+        d.min_mbps = 0.0;
+        d.make_source = chunks_or_ranges(hf.url.clone(), d.size);
+        let tuning = crate::download::Tuning {
+            chunk: chunk as i64,
+            ..Default::default()
+        };
+        within(
+            Duration::from_secs(10),
+            crate::download::with_tuning(tuning, d.run(CancellationToken::new(), &|_| {})),
+        )
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read(&d.dst).unwrap(), *bytes);
+        assert!(hf.calls() > 0);
+        assert!(hf.ranges().iter().all(|r| r.starts_with("bytes=")));
     }
     #[test]
     fn ssh_source_conns_capped_at_8() {

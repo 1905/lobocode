@@ -7,9 +7,6 @@ import shutil
 import subprocess
 import sys
 
-MODEL_REPO = "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive"
-BASE = f"https://huggingface.co/{MODEL_REPO}/resolve/main/"
-
 
 def sha256(path):
     with path.open("rb") as stream:
@@ -19,13 +16,15 @@ def sha256(path):
 def build(model_id, output):
     catalog = json.loads(Path("/build/catalog.json").read_text())
     model = next(m for m in catalog if m["id"] == model_id)
+    repo = model["repo"]
+    base = f"https://huggingface.co/{repo}/resolve/main/"
     output.mkdir(parents=True)
     licenses = output / "licenses"
     licenses.mkdir()
     # Missing license text must fail before downloading or splitting model bytes.
     shutil.copyfile("/build/Apache-2.0.txt", licenses / "Apache-2.0.txt")
     (licenses / "MODEL.txt").write_text(
-        f"Model: {MODEL_REPO}\nSource: https://huggingface.co/{MODEL_REPO}\n"
+        f"Model: {repo}\nSource: https://huggingface.co/{repo}\n"
         f"Original GGUF SHA-256: {model['sha256']}\nLicense: Apache-2.0\n"
         "Packaging modification: split into GGUF shards with llama.cpp. Model tensors are unchanged.\n"
     )
@@ -36,7 +35,7 @@ def build(model_id, output):
         # Rename only complete downloads; an interrupted build leaves no reusable source.
         partial = source.with_suffix(".partial")
         subprocess.run(["curl", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https", "--retry", "5", "--retry-all-errors",
-                        "--output", str(partial), BASE + model["file"]], check=True)
+                        "--output", str(partial), base + model["file"]], check=True)
         partial.replace(source)
     else:
         print(f"Rechecking cached upstream source: {source.name}", flush=True)

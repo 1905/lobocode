@@ -128,7 +128,7 @@ rust-lint:
 	cargo clippy --workspace --all-targets --locked --features lobo-cli/test-fakes -- -D warnings
 
 proto-fixtures:
-	go run ./tools/protofixtures crates/lobo-proto/fixtures crates/lobo-proto/catalog.json
+	go run ./tools/protofixtures crates/lobo-proto/fixtures
 
 proto-ts:
 	cargo test --locked -p lobo-proto export_bindings

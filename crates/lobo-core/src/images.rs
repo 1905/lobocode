@@ -15,17 +15,19 @@ pub trait ImageResolver: Send + Sync {
 pub struct PublicImages {
     client: reqwest::Client,
     base: String,
+    repository: String,
 }
 impl Default for PublicImages {
     fn default() -> Self {
-        Self::new()
+        Self::new(REPOSITORY)
     }
 }
 impl PublicImages {
-    pub fn new() -> Self {
+    pub fn new(repository: &str) -> Self {
         Self {
             client: crate::http::client(Duration::from_secs(30)),
             base: "https://ghcr.io".into(),
+            repository: repository.to_lowercase(),
         }
     }
 }
@@ -42,7 +44,7 @@ impl ImageResolver for PublicImages {
             .get(format!("{}/token", self.base))
             .query(&[
                 ("service", "ghcr.io"),
-                ("scope", &format!("repository:{REPOSITORY}:pull")),
+                ("scope", &format!("repository:{}:pull", self.repository)),
             ])
             .header("Cache-Control", "no-cache")
             .send()
@@ -57,8 +59,8 @@ impl ImageResolver for PublicImages {
         let mut response = self
             .client
             .get(format!(
-                "{}/v2/{REPOSITORY}/manifests/latest-{model}",
-                self.base
+                "{}/v2/{}/manifests/latest-{model}",
+                self.base, self.repository
             ))
             .bearer_auth(token.token)
             .header("Accept", ACCEPT)
@@ -103,7 +105,7 @@ impl ImageResolver for PublicImages {
                 "public GPU image manifest hash does not match".into(),
             ));
         }
-        Ok(format!("ghcr.io/{REPOSITORY}@{digest}"))
+        Ok(format!("ghcr.io/{}@{digest}", self.repository))
     }
 }
 
@@ -112,14 +114,14 @@ mod tests {
     use super::*;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
-        matchers::{header, path},
+        matchers::{header, path, query_param},
     };
     #[tokio::test]
     async fn latest_is_refetched_and_registry_failure_never_returns_stale_image() {
         let server = MockServer::start().await;
         let client = PublicImages {
             base: server.uri(),
-            ..PublicImages::new()
+            ..PublicImages::default()
         };
         let mut previous = String::new();
         for n in 0..3 {
@@ -162,7 +164,7 @@ mod tests {
         let server = MockServer::start().await;
         let client = PublicImages {
             base: server.uri(),
-            ..PublicImages::new()
+            ..PublicImages::default()
         };
         Mock::given(path("/token"))
             .respond_with(
@@ -192,7 +194,7 @@ mod tests {
         let server = MockServer::start().await;
         let client = PublicImages {
             base: server.uri(),
-            ..PublicImages::new()
+            ..PublicImages::default()
         };
         assert!(client.latest("q2").await.is_err());
         assert!(server.received_requests().await.unwrap().is_empty());
@@ -216,6 +218,59 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("invalid manifest")
+        );
+    }
+    #[tokio::test]
+    async fn resolves_from_configured_repository() {
+        let server = MockServer::start().await;
+        let client = PublicImages {
+            base: server.uri(),
+            ..PublicImages::new("SandQuattro/lobocode")
+        };
+        Mock::given(path("/token"))
+            .and(query_param("scope", "repository:sandquattro/lobocode:pull"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"token":"anonymous"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(path("/v2/sandquattro/lobocode/manifests/latest-qwen38-q6"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"schemaVersion":2,"layers":[{"digest":"sha256:fixture"}]}),
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert!(
+            client
+                .latest("qwen38-q6")
+                .await
+                .unwrap()
+                .starts_with("ghcr.io/sandquattro/lobocode@sha256:")
+        );
+    }
+    #[tokio::test]
+    async fn unpublished_tag_fails_before_rental() {
+        let server = MockServer::start().await;
+        let client = PublicImages {
+            base: server.uri(),
+            ..PublicImages::default()
+        };
+        Mock::given(path("/token"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"token":"anonymous"})),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(path("/v2/1905/lobocode/manifests/latest-q8"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let err = client.latest("q8").await.unwrap_err().to_string();
+        assert!(
+            err.contains("HTTP 404") && err.contains("no GPU was rented"),
+            "{err}"
         );
     }
 }

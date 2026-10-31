@@ -96,15 +96,12 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
             &s.provider,
         )?;
     }
-    s.model = p.select(
-        "3/4 · Defaults for lobo up · Model",
-        "",
-        &[
-            ("Q8_0 (28.6 GB, best quality)", "q8"),
-            ("Q6_K (22 GB, faster boot)", "q6"),
-        ],
-        &s.model,
-    )?;
+    let models = model_options();
+    if !models.iter().any(|(_, v)| *v == s.model) {
+        s.model = models[0].1.into();
+    }
+    let models: Vec<_> = models.iter().map(|(l, v)| (l.as_str(), *v)).collect();
+    s.model = p.select("3/4 · Defaults for lobo up · Model", "", &models, &s.model)?;
     s.ctx = p.text(
         "3/4 · Defaults for lobo up · Context size",
         "Tokens. Empty = release default (65536).",

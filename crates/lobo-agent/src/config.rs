@@ -8,15 +8,12 @@ pub struct AgentConfig {
     pub lobo_api_key: String,
     pub cf_tunnel_token: String,
     pub model: String,
-    pub model_url: String,
-    pub model_fallback: String,
+    pub model_base_url: String,
     pub provider: String,
     pub runpod_pod_id: String,
     pub runpod_api_key: String,
     pub vast_id: String,
     pub vast_api_key: String,
-    pub model_ssh_key: String,
-    pub model_host_key: String,
     pub boot_id: String,
     pub ctx: i64,
     pub idle_min: i64,
@@ -60,14 +57,22 @@ impl AgentConfig {
         };
         let model = required("LOBO_MODEL")?;
         let image_model = value("LOBO_IMAGE_MODEL") == "1";
-        let model_url = if image_model {
+        let model_base_url = if image_model {
             String::new()
         } else {
-            required("LOBO_MODEL_URL")?
+            required("LOBO_MODEL_BASE_URL")?
         };
         if !image_model {
-            url::Url::parse(&model_url)
-                .map_err(|_| Error::msg("config: LOBO_MODEL_URL: invalid URL"))?;
+            url::Url::parse(&model_base_url)
+                .map_err(|_| Error::msg("config: LOBO_MODEL_BASE_URL: invalid URL"))?;
+        }
+        let dl_conns = usize::try_from(positive("LOBO_DL_CONNS", 1)?)
+            .map_err(|_| Error::msg("config: LOBO_DL_CONNS: too large"))?;
+        // Chunk objects need the multi-stream path; one stream reads a single URL to EOF.
+        if !image_model && dl_conns < 2 {
+            return Err(Error::msg(format!(
+                "config: LOBO_DL_CONNS: want at least 2, got {dl_conns}"
+            )));
         }
         let mut provider = value("LOBO_PROVIDER");
         if provider.is_empty() {
@@ -95,23 +100,6 @@ impl AgentConfig {
                 )));
             }
         }
-        let model_ssh_key = if image_model {
-            String::new()
-        } else {
-            value("LOBO_MODEL_SSH_KEY")
-        };
-        let model_host_key = if image_model {
-            String::new()
-        } else {
-            value("LOBO_MODEL_SSH_HOSTKEY")
-        };
-        if model_url.starts_with("ssh://")
-            && (model_ssh_key.is_empty() || model_host_key.is_empty())
-        {
-            return Err(Error::msg(
-                "config: LOBO_MODEL_URL is ssh://: LOBO_MODEL_SSH_KEY and LOBO_MODEL_SSH_HOSTKEY are required",
-            ));
-        }
         let exp = value("LOBO_EXPIRES_AT");
         let expires_at = DateTime::parse_from_rfc3339(&exp)
             .map_err(|_| {
@@ -136,24 +124,16 @@ impl AgentConfig {
             lobo_api_key,
             cf_tunnel_token,
             model,
-            model_url,
-            model_fallback: if image_model {
-                String::new()
-            } else {
-                value("LOBO_MODEL_URL_FALLBACK")
-            },
+            model_base_url,
             provider,
             runpod_pod_id,
             runpod_api_key,
             vast_id,
             vast_api_key,
-            model_ssh_key,
-            model_host_key,
             boot_id: value("LOBO_BOOT_ID"),
             ctx: positive("LOBO_CTX", 8192)?,
             idle_min: positive("LOBO_IDLE_MIN", 30)?,
-            dl_conns: usize::try_from(positive("LOBO_DL_CONNS", 1)?)
-                .map_err(|_| Error::msg("config: LOBO_DL_CONNS: too large"))?,
+            dl_conns,
             min_mbps: positive("LOBO_MIN_MBPS", 100)?,
             expires_at,
             boot_timeout,
@@ -205,7 +185,8 @@ mod tests {
             ("LOBO_API_KEY", "api"),
             ("CF_TUNNEL_TOKEN", "tunnel"),
             ("LOBO_MODEL", "q8"),
-            ("LOBO_MODEL_URL", "https://example.com/m"),
+            ("LOBO_MODEL_BASE_URL", "https://models.example"),
+            ("LOBO_DL_CONNS", "32"),
             ("RUNPOD_POD_ID", "pod"),
             ("RUNPOD_API_KEY", "key"),
             ("LOBO_EXPIRES_AT", "2026-09-29T20:00:00Z"),
@@ -221,7 +202,7 @@ mod tests {
     fn load_agent() {
         use chrono::Timelike;
         let a = load(&vars()).unwrap();
-        assert_eq!((a.ctx, a.idle_min, a.dl_conns), (8192, 30, 1));
+        assert_eq!((a.ctx, a.idle_min, a.dl_conns), (8192, 30, 32));
         assert_eq!(a.expires_at.hour(), 20);
         assert_eq!(a.boot_timeout, Duration::from_secs(2400));
     }
@@ -240,37 +221,48 @@ mod tests {
         assert!(load(&v).is_err());
     }
     #[test]
-    fn image_mode_needs_no_source_and_ignores_obsolete_credentials() {
+    fn image_mode_needs_no_source_and_ignores_obsolete_settings() {
         for connection in ["ssh", "cloudflare"] {
             let mut v = vars();
             v.insert("LOBO_IMAGE_MODEL".into(), "1".into());
             v.insert("LOBO_CONNECTION".into(), connection.into());
-            v.remove("LOBO_MODEL_URL");
+            v.insert("LOBO_DL_CONNS".into(), "1".into());
+            v.remove("LOBO_MODEL_BASE_URL");
             if connection == "ssh" {
                 v.remove("CF_TUNNEL_TOKEN");
             }
             let cfg = load(&v).unwrap();
             assert!(cfg.image_model);
-            assert!(cfg.model_url.is_empty());
-            v.insert("LOBO_MODEL_URL".into(), "invalid obsolete URL".into());
-            v.insert(
-                "LOBO_MODEL_URL_FALLBACK".into(),
-                "https://private.invalid/model".into(),
-            );
-            v.insert("LOBO_MODEL_SSH_KEY".into(), "obsolete private key".into());
-            v.insert("LOBO_MODEL_SSH_HOSTKEY".into(), "obsolete host".into());
-            let cfg = load(&v).unwrap();
-            assert!(cfg.model_url.is_empty());
-            assert!(cfg.model_fallback.is_empty());
-            assert!(cfg.model_ssh_key.is_empty());
-            assert!(cfg.model_host_key.is_empty());
+            assert!(cfg.model_base_url.is_empty());
+            v.insert("LOBO_MODEL_BASE_URL".into(), "invalid obsolete URL".into());
+            assert!(load(&v).unwrap().model_base_url.is_empty());
         }
+    }
+    #[test]
+    fn download_mode_needs_base_url_and_two_streams() {
+        let err = |v: &BTreeMap<String, String>| load(v).err().map(|e| e.to_string());
+        let mut v = vars();
+        v.remove("LOBO_MODEL_BASE_URL");
+        assert!(err(&v).unwrap().contains("LOBO_MODEL_BASE_URL: required"));
+        v.insert("LOBO_MODEL_BASE_URL".into(), "not a url".into());
+        assert!(
+            err(&v)
+                .unwrap()
+                .contains("LOBO_MODEL_BASE_URL: invalid URL")
+        );
+        let mut v = vars();
+        v.insert("LOBO_DL_CONNS".into(), "1".into());
+        assert!(err(&v).unwrap().contains("LOBO_DL_CONNS: want at least 2"));
+        v.remove("LOBO_DL_CONNS");
+        assert!(err(&v).unwrap().contains("LOBO_DL_CONNS: want at least 2"));
+        v.insert("LOBO_DL_CONNS".into(), "32".into());
+        assert_eq!(load(&v).unwrap().model_base_url, "https://models.example");
     }
     #[test]
     fn load_agent_errors() {
         for (key, bad) in [
             ("LOBO_API_KEY", ""),
-            ("LOBO_MODEL_URL", "bad"),
+            ("LOBO_MODEL_BASE_URL", "bad"),
             ("LOBO_CTX", "0"),
             ("LOBO_IDLE_MIN", "-1"),
             ("LOBO_DL_CONNS", "bad"),
@@ -300,10 +292,6 @@ mod tests {
         v.insert("LOBO_PROVIDER".into(), "runpod".into());
         assert!(load(&v).is_err());
         v.insert("RUNPOD_API_KEY".into(), "key".into());
-        v.insert("LOBO_MODEL_URL".into(), "ssh://lobo@host".into());
-        assert!(load(&v).is_err());
-        v.insert("LOBO_MODEL_SSH_KEY".into(), "ssh".into());
-        v.insert("LOBO_MODEL_SSH_HOSTKEY".into(), "pin".into());
         assert!(load(&v).is_ok());
     }
     #[test]

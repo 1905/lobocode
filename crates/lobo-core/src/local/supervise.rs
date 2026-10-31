@@ -106,7 +106,11 @@ impl RunConfig {
     }
 }
 fn validate_values(model: &str, ctx: i64, idle: i64, port: i64, api_port: i64) -> Result<()> {
-    catalog::get(model).map_err(|e| Error::Other(e.to_string()))?;
+    let entry =
+        catalog::get(model).map_err(|_| Error::Other(super::models::unknown_message(model)))?;
+    if !entry.local {
+        return Err(Error::Other(super::models::cloud_only_message(model)));
+    }
     let error = if ctx <= 0 {
         Some(format!("--ctx: want > 0, got {ctx}"))
     } else if idle <= 0 {

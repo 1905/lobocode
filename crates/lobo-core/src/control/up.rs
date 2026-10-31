@@ -393,11 +393,11 @@ async fn run(
                     .into(),
             ));
         }
-        if o.conns != 0 {
-            return Err(Error::Config(
-                "cloud models are included in the Docker image; --conns is no longer supported"
-                    .into(),
-            ));
+        if (..2).contains(&o.conns) && o.conns != 0 {
+            return Err(Error::Config(format!(
+                "--conns: want at least 2 parallel streams, got {}",
+                o.conns
+            )));
         }
         if !o.ssh_key.is_empty() {
             return Err(Error::Config(
@@ -405,9 +405,18 @@ async fn run(
             ));
         }
         if o.model.is_empty() {
-            o.model = release::DEFAULT_MODEL.into();
+            o.model = release::DEFAULT_CLOUD_MODEL.into();
         }
-        catalog::get(&o.model).map_err(|e| Error::Other(e.to_string()))?;
+        if !catalog::get(&o.model)
+            .map_err(|e| Error::Other(e.to_string()))?
+            .gpu
+        {
+            return Err(Error::Config(format!(
+                "model {} is not supported on GPU; use {}",
+                o.model,
+                release::DEFAULT_CLOUD_MODEL
+            )));
+        }
         // Re-resolve on every start. Never fall back to a cached tag or config image.
         let image = if o.image.is_empty() {
             read(cancel, d.images.latest(&o.model)).await?
@@ -501,6 +510,8 @@ async fn cloud_opts(
     Ok(CreateOpts {
         image: rel.manifest.llama_image.clone(),
         image_model: true,
+        model_base_url: d.cfg.model_base_url(),
+        dl_conns: if o.conns > 0 { o.conns } else { 32 },
         lobo_api_key: d.cfg.lobo_api_key.clone(),
         cf_tunnel_token: d.cfg.cf_tunnel_token.clone(),
         model: m.id.clone(),

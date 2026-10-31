@@ -150,6 +150,66 @@ fn secret_values_includes_ssh_key_file() {
     );
 }
 #[test]
+fn defaults_accept_every_catalog_id() {
+    for id in lobo_proto::catalog::ids() {
+        let l = Laptop {
+            model: id.into(),
+            ..Default::default()
+        };
+        assert_eq!(l.defaults().unwrap().model, id);
+    }
+    let l = Laptop::from_values(&[("LOBO_MODEL".into(), "q4".into())].into());
+    assert_eq!(
+        defaults_partial(&l).1["LOBO_MODEL"],
+        "want q6 or q8 or qwen38-q6, got \"q4\""
+    );
+}
+#[test]
+fn image_repo_defaults_to_upstream_and_normalizes_input() {
+    assert_eq!(Laptop::default().image_repo(), "1905/lobocode");
+    for v in [
+        "SandQuattro/lobocode",
+        "ghcr.io/SandQuattro/lobocode/",
+        " sandquattro/lobocode ",
+    ] {
+        let l = Laptop::from_values(&[("LOBO_IMAGE_REPO".into(), v.into())].into());
+        assert_eq!(l.image_repo(), "sandquattro/lobocode", "{v:?}");
+    }
+}
+#[test]
+fn model_base_url_default_override_and_validation() {
+    assert_eq!(
+        Laptop::default().model_base_url(),
+        lobo_proto::release::DEFAULT_MODEL_BASE_URL
+    );
+    let l = Laptop::from_values(
+        &[(
+            "LOBO_MODEL_BASE_URL".into(),
+            " https://cdn.example/ ".into(),
+        )]
+        .into(),
+    );
+    assert_eq!(l.model_base_url(), "https://cdn.example");
+    for v in ["http://cdn.example", "nope"] {
+        let l = Laptop {
+            model_base_url: v.into(),
+            ..Default::default()
+        };
+        let msg = defaults_partial(&l).1["LOBO_MODEL_BASE_URL"].clone();
+        assert!(msg.starts_with("want an https URL"), "{v}: {msg}");
+    }
+    for v in ["https://cdn.example/", ""] {
+        let l = Laptop {
+            model_base_url: v.into(),
+            ..Default::default()
+        };
+        assert!(
+            !defaults_partial(&l).1.contains_key("LOBO_MODEL_BASE_URL"),
+            "{v}"
+        );
+    }
+}
+#[test]
 fn defaults_parse_and_reject() {
     let l = Laptop {
         provider: "vast".into(),
@@ -278,5 +338,34 @@ fn loose_mode_bits() {
     for (mode, want) in [(0o600, false), (0o644, true)] {
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).unwrap();
         assert_eq!(loose_mode(&p), want);
+    }
+}
+#[test]
+fn image_repo_rejects_malformed_values() {
+    for v in [
+        "https://ghcr.io/sandquattro/lobocode",
+        "sandquattro/lobocode:latest-q6",
+        "ghcr.io/",
+        "lobocode",
+    ] {
+        let l = Laptop {
+            image_repo: v.into(),
+            ..Default::default()
+        };
+        let (_, bad) = defaults_partial(&l);
+        let msg = bad
+            .get("LOBO_IMAGE_REPO")
+            .unwrap_or_else(|| panic!("{v}: accepted"));
+        assert!(msg.starts_with("want <owner>/<name>"), "{v}: {msg}");
+    }
+    for v in ["ghcr.io/SandQuattro/lobocode/", ""] {
+        let l = Laptop {
+            image_repo: v.into(),
+            ..Default::default()
+        };
+        assert!(
+            !defaults_partial(&l).1.contains_key("LOBO_IMAGE_REPO"),
+            "{v}"
+        );
     }
 }

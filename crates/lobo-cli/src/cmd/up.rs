@@ -192,6 +192,9 @@ pub fn prepare(
     }
     let mut opts = up_opts(a);
     control::apply_defaults(&mut opts, cfg, &set_fn(changed), path)?;
+    if opts.provider == "local" {
+        anyhow::bail!("local runs are not supported; use --provider runpod or vast");
+    }
     control::check_target(cfg, &opts.provider, app.local_supported)?;
     if !a.ssh.is_empty() {
         opts.ssh_key = std::fs::read_to_string(&a.ssh)?.trim().into();

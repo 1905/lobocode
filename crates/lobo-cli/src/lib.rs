@@ -138,6 +138,7 @@ async fn execute(app: &App, argv: Vec<OsString>, io: &mut Io) -> anyhow::Result<
         Some(Cmd::Logs(a)) => cmd::logs::run(app, &a, &path, io).await?,
         Some(Cmd::Test(_)) => cmd::test::run(app, &path, io).await?,
         Some(Cmd::Release(a)) => cmd::release::run(app, &a, &path, io).await?,
+        Some(Cmd::PublishModel(a)) => cmd::publish_model::run(app, &a, &path, io).await?,
         Some(Cmd::Completion(a)) => {
             if let Some(shell) = a.shell {
                 clap_complete::generate(

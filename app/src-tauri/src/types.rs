@@ -106,7 +106,7 @@ pub struct PanelState {
     pub snap: Option<Snap>,
     pub config: Option<ConfigShow>,
     pub readiness: Option<Readiness>,
-    pub catalog_ids: Vec<String>,
+    pub catalog: Vec<CatalogEntry>,
     pub download: Option<DownloadProgress>,
     pub steps: Vec<StepMark>,
     #[ts(type = "number | null")]
@@ -185,6 +185,28 @@ impl std::error::Error for AppError {}
 pub struct Note {
     pub title: String,
     pub body: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../gen/")]
+pub struct CatalogEntry {
+    pub id: String,
+    pub name: String,
+    pub quant: String,
+    pub repo: String,
+    #[ts(type = "number")]
+    pub size: i64,
+}
+impl From<&lobo_proto::catalog::Model> for CatalogEntry {
+    fn from(m: &lobo_proto::catalog::Model) -> Self {
+        Self {
+            id: m.id.clone(),
+            name: m.name.clone(),
+            quant: m.quant.clone(),
+            repo: m.repo.clone(),
+            size: m.size,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -272,6 +294,7 @@ mod tests {
         let dir = ui.join("gen");
         let expected = [
             "AppError.ts",
+            "CatalogEntry.ts",
             "OpenCodeInfo.ts",
             "OpenCodeResult.ts",
             "PanelState.ts",

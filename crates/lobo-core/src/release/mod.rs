@@ -1,10 +1,12 @@
 use crate::{Error, Result, http};
 use chrono::{DateTime, Utc};
 pub use lobo_proto::release::{
-    DEFAULT_DEFAULTS, DEFAULT_LLAMA_IMAGE, DEFAULT_MODEL, Defaults, Manifest, ModelRef, Resolved,
+    DEFAULT_CLOUD_MODEL, DEFAULT_DEFAULTS, DEFAULT_LLAMA_IMAGE, DEFAULT_MODEL, Defaults, Manifest,
+    ModelRef, Resolved,
 };
 use std::time::Duration;
 
+pub mod models;
 pub mod store;
 pub mod zip;
 pub use store::Store;
