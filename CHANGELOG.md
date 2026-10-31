@@ -1,5 +1,14 @@
 # Changelog
 
+## App 0.2.3 — 2026-10-31
+
+- Support only `qwen38-q6` on RunPod or Vast. Show the model as fixed text; remove Q6/Q8 choices and local runs.
+- Download 84 SHA-256-verified weight chunks. Fall back from the contributor CDN to the original Hugging Face file.
+- Persist the supported model when Settings saves a legacy configuration. Fix Vast provisioning fields that temporarily contain null.
+- Remove GitHub Actions workflows. Build and test on Feesh and Air.
+- Validation: 548 workspace tests, 97 app library tests, two binary tests, 21 UI tests and six native fresh/legacy setup checks pass. Lint and 25 image-verifier checks pass. Two workspace integration tests remain ignored.
+- Limits: no new live GPU inference test. The contributor CDN returned HTTP 403; fresh Hugging Face first/last chunk hashes matched. The legacy Homebrew Go CLI cannot use the new model. Ad-hoc signing; no notarization. Publication is pending.
+
 ## App 0.2.2 — 2026-10-05
 
 - Add private, rotating startup logs and a Logs control. Show the last backend update and any logging failure.
@@ -22,7 +31,7 @@
 
 Historical development entries below retain their original validation limits. App 0.2.1 supersedes the app release hold and removes app-local features. CLI release and Q8 publication remain held.
 
-- Persist `qwen38-q6` when Settings saves a legacy config. The previous UI fix only changed the displayed value; the old `q6` or `q8` value could remain on disk. Regression validation is in progress.
+- Persist `qwen38-q6` when Settings saves a legacy config. The previous UI fix only changed the displayed value; the old `q6` or `q8` value could remain on disk. Native fresh and legacy setup checks pass on Air.
 - Remove GitHub Actions workflows. Builds and tests run on the designated Feesh and Air hosts.
 - Support only `qwen38-q6` on a rented RunPod or Vast GPU. The app selector and Settings list only that model, and a saved legacy `q6` or `q8` selection starts `qwen38-q6`. `lobo up` rejects other models and local runs before any rental, and the CLI configuration form offers no local provider. A catalog `gpu` flag marks the supported model; the unused `q6` and `q8` entries and local code remain for a later cleanup.
 - Deliver `qwen38-q6` weights as 84 verified 256 MiB chunks from `LOBO_MODEL_BASE_URL` (default `https://models.stealthcopilot.io`, operated by the contributor) into a thin pod image, with ramped parallel streams, restart of slow streams and a slow-host gate on the recent rate. If the CDN fails or is too slow, the agent reads the same byte ranges from the original Hugging Face file. Every chunk from either source must match the pinned table; the table matched the complete Hugging Face file (84 of 84 chunks and the whole-file SHA-256) on 2026-10-26. `q6` and `q8` keep their complete images. Contributed in PR #2 by SandQuattro. Review fixes: Hugging Face fallback, catalog models in the CLI wizard, acceptance of a retried chunk upload that already landed, and workflow actions pinned to commit SHAs. Validation: 545 workspace tests, clippy and fmt on Linux; the contributor's live Vast CLI and Mac app runs reached Ready in 222–264 s.

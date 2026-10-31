@@ -2,7 +2,7 @@
 
 Run **Qwen3.8-27B abliterated** (huihui-ai, Q6_K) on a rented RunPod or Vast GPU from the standalone Mac app. Get an OpenAI-compatible API through a private SSH connection. Local inference is not supported.
 
-**Mac app 0.2.2:** cloud-only, standalone, Apple Silicon. [Download the DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.2/lobocode.dmg). Homebrew installs the separately published CLI; the Rust CLI rewrite remains unreleased. Screenshots with performance numbers show sample data, not benchmark results.
+**Mac app 0.2.3:** cloud-only, standalone, Apple Silicon. [Download the DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.3/lobocode.dmg). Homebrew installs the legacy Go CLI, which cannot use `qwen38-q6`; the Rust CLI rewrite remains unreleased. Screenshots with performance numbers show sample data, not benchmark results.
 
 The only supported model is `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). It runs only on a rented RunPod or Vast GPU. The app, the Rust CLI and its configuration form accept no other model and no local run. Each new start resolves the latest public `latest-qwen38-q6` image. The thin image downloads verified weights at boot. Broader telemetry acceptance remains pending.
 
@@ -14,8 +14,8 @@ The only supported model is `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K
 ## TL;DR
 
 - **What:** start a 5090 on RunPod or Vast.ai from the standalone Mac app or optional CLI. The app connects through private SSH at `http://127.0.0.1:8933/v1`. No domain or bucket is required.
-- **Measured Q6 cloud check:** 47,000 uncached input tokens at 2,186.7 prompt tok/s; first content after 24.04 seconds. Sustained output speed remains unmeasured.
-- **Startup varies:** the TUI reached Ready in 230.178 seconds. Mac Ready occurred between about 21m11s and 22m30s after the Start capture. The provider still reported downloading at 15 minutes. No transfer-byte progress or cache-hit evidence was captured.
+- **Historical Qwen3.5 cloud check:** 47,000 uncached input tokens at 2,186.7 prompt tok/s; first content after 24.04 seconds. Sustained output speed remains unmeasured.
+- **Historical Qwen3.5 startup:** the TUI reached Ready in 230.178 seconds. Mac Ready occurred between about 21m11s and 22m30s after the Start capture. The provider still reported downloading at 15 minutes. No transfer-byte progress or cache-hit evidence was captured.
 - **Observed test rates:** $0.69/h and $0.99/h. Available prices vary. Default shutdown limits are 30 minutes idle and 12 hours maximum life.
 - **Safe to forget:** the pod kills itself. Your account keys never leave your laptop.
 
@@ -23,7 +23,7 @@ For the Rust cloud candidate, build from source using the instructions below, th
 
 ```sh
 bin/lobo-rs config       # configure provider and API keys
-bin/lobo-rs up --q6      # use the published complete Q6 image
+bin/lobo-rs up           # start qwen38-q6 on RunPod or Vast
 bin/lobo-rs status       # inspect the running GPU
 bin/lobo-rs down         # deletes all lobo instances on configured providers
 ```
@@ -32,7 +32,7 @@ The app's Stop button targets its recorded runtime. The CLI's `down` command ret
 
 ## Install
 
-The desktop app installs from its DMG and does not require the CLI. Install the optional CLI separately through Homebrew. [Download Mac app 0.2.2](https://github.com/1905/lobocode/releases/download/app-v0.2.2/lobocode.dmg), open the DMG, and drag **lobocode** to **Applications**. Requires Apple Silicon and macOS 13 or later. The app is ad-hoc signed and is not notarized.
+The desktop app installs from its DMG and does not require the CLI. Install the optional CLI separately through Homebrew. [Download Mac app 0.2.3](https://github.com/1905/lobocode/releases/download/app-v0.2.3/lobocode.dmg), open the DMG, and drag **lobocode** to **Applications**. Requires Apple Silicon and macOS 13 or later. The app is ad-hoc signed and is not notarized.
 
 **Published CLI through Homebrew** (macOS, Linux):
 
@@ -50,7 +50,7 @@ make install-mac    # optional: the menu bar app → /Applications/lobocode.app
 
 The source retains the legacy Go CLI and `make install` target until the Rust release. Use `bin/lobo-rs` to test the Rust CLI.
 
-Open **Settings → Cloud**, enter a RunPod or Vast API key, save, and start Q6. An unavailable image fails before rental. Updating the app does not install or replace the optional CLI.
+Open **Settings → Cloud**, enter a RunPod or Vast API key, save, and start `qwen38-q6`. An unavailable image fails before rental. Updating the app does not install or replace the optional CLI.
 
 ## What you need
 
@@ -102,7 +102,7 @@ Windows use native macOS title bars and rounded corners. Each view fits without 
 
 The Mac cloud request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds. Ready displayed 22.8 / 31.8 GB of GPU memory. The idle gauges showed `0 / 0` after the reply; live rate updates were not verified. Owned pod/tunnel cleanup, native Quit and preference restoration passed. Loading-memory progression remains unfinished. Local Metal inference and live OpenCode integration remain unverified.
 
-The [standalone DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.2/lobocode.dmg) contains only the app. For development, `make install-mac` builds the app and `make dmg` creates `bin/lobocode.dmg`.
+The [standalone DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.3/lobocode.dmg) contains only the app. For development, `make install-mac` builds the app and `make dmg` creates `bin/lobocode.dmg`.
 
 - The app is not notarized. If macOS blocks the first open, go to System Settings → Privacy & Security → **Open Anyway**. Or run `xattr -dr com.apple.quarantine /Applications/lobocode.app`.
 
@@ -134,9 +134,9 @@ The optional CLI retains its separate export command: `lobo gen-api-key` writes 
 
 ## Pod image
 
-The Rust candidate uses a separate complete image per catalog model, except `qwen38-q6`, which uses a thin image (see below). Each complete image includes the agent, inference runtime, SSH server and model weights. The Q6 tag, `ghcr.io/1905/lobocode:latest-q6`, is public and passed anonymous manifest verification on October 1, 2026. Q8 publication remains pending. Direct RunPod TUI inference and the native Mac cloud lifecycle passed. Broader telemetry acceptance and the Rust CLI release remain pending.
+The Rust candidate uses a separate complete image per catalog model, except `qwen38-q6`, which uses a thin image (see below). Each complete image includes the agent, inference runtime, SSH server and model weights. The legacy Q6 tag passed anonymous manifest verification on October 1, 2026, but returned 404 on October 31. Q8 publication remains pending. Neither legacy model is offered by the current app. Direct RunPod TUI inference and the native Mac cloud lifecycle passed. Broader telemetry acceptance and the Rust CLI release remain pending.
 
-The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The default registry `ghcr.io/1905/lobocode` carries `latest-q6` and `latest-qwen38-q6`. A different registry must carry a `latest-<id>` tag for each model that is selected; otherwise the start fails with `cannot resolve latest <id> GPU image` before any rental.
+The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The default registry is `ghcr.io/1905/lobocode`; the supported model uses `latest-qwen38-q6`. A different registry must carry a `latest-<id>` tag for each model that is selected; otherwise the start fails with `cannot resolve latest <id> GPU image` before any rental.
 
 The app resolves the selected tag again before each new start. The provider receives `ghcr.io/<LOBO_IMAGE_REPO>@sha256:<digest>`, by default `ghcr.io/1905/lobocode@sha256:<digest>`. It may reuse identical layers, but cannot substitute an older image digest.
 
