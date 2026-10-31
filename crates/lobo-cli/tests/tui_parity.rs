@@ -110,7 +110,9 @@ async fn up_goldens() {
     for n in 1..10 {
         events.push(UpEvent {
             phase: "create".into(),
-            detail: format!("attempt {n}/10 failed: download: sha256 mismatch; renting another pod"),
+            detail: format!(
+                "attempt {n}/10 failed: download: sha256 mismatch; renting another pod"
+            ),
             ..Default::default()
         });
         events.push(UpEvent {
@@ -123,7 +125,9 @@ async fn up_goldens() {
         phase: "failed".into(),
         detail: "download: sha256 mismatch".into(),
         done: true,
-        err: Some("gave up after 10 attempts; last: download: sha256 mismatch\nlast log line".into()),
+        err: Some(
+            "gave up after 10 attempts; last: download: sha256 mismatch\nlast log line".into(),
+        ),
         ..Default::default()
     });
     let mut state = UpState::default();
