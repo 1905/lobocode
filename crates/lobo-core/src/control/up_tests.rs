@@ -1017,7 +1017,8 @@ async fn up_detects_pod_gone_before_the_agent_ever_answers() {
     assert_eq!(events.last().unwrap().phase, "failed");
     assert_eq!(p.rents.load(Ordering::SeqCst), 10);
     assert!(p.get_ids.lock().unwrap().iter().all(|id| id == "slow"));
-    assert_eq!(p.deletes.load(Ordering::SeqCst), 1);
+    // Each vanished pod still gets its exact cleanup before the next rent.
+    assert_eq!(p.deletes.load(Ordering::SeqCst), 10);
     assert!(
         operations
             .acquire(&CancellationToken::new())
