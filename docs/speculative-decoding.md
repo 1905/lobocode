@@ -9,7 +9,7 @@ The flags come from `Spec::args()` in `crates/lobo-agent/src/process.rs`:
 --spec-ngram-mod-n-match 24 --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64
 ```
 
-The MTP head is part of the Q6_K GGUF, so no extra file downloads. VRAM use rises by about 1.5 GB (23.4 GB to 24.9 GB on the RTX 5090 at ctx 65,536). The agent's free-VRAM check before model load therefore requires 1,536 MiB more in `mtp` and `mtp-ngram` modes: 25,487 MiB instead of 23,951 MiB. A host without that room fails with `only N MiB VRAM free` before the load, not with a CUDA allocation error during it.
+The MTP head is part of the Q6_K GGUF, so no extra file downloads. VRAM use rises by about 1.5 GB (23.4 GB to 24.9 GB on the RTX 5090 at ctx 65,536). The agent's free-VRAM check before model load therefore requires 1,536 MiB more in `mtp` and `mtp-ngram` modes: 25,487 MiB instead of 23,951 MiB. A host without that room fails with `only N MiB VRAM free` before the load, not with a CUDA allocation error during it. This check ships with the next image build; image 0.2.5 still checks for 23,951 MiB. The app rents only RTX 5090 cards (32 GB), so a host fails the new check only when other processes use about 7 GB of its VRAM.
 
 ## Switch
 

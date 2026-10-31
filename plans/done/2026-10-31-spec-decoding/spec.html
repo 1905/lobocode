@@ -141,7 +141,7 @@ ul.tasks { padding-left: 1.2rem; }
     <dt>Assumes</dt><dd>The qwen38-q6-only PR (<code>review/pr-2</code>) is merged: one model, RTX 5090 only, llama.cpp <code>b11118</code></dd>
     <dt>Source</dt><dd><a href="https://github.com/syv-ai/HyperQwen">syv-ai/HyperQwen</a> (renamed from <code>syv-ai/qwen38-27b-rtx3090</code>)</dd>
     <dt>Status</dt><dd><span class="status">done 2026-10-31 · shipped in image 0.2.5</span></dd>
-    <dt>Shipped</dt><dd>Option A with <code>MTP_DRAFT_MAX=5</code> (the spec assumed 3; the sweep picked 5). DFlash2 (option B) is not shipped: slower on long documents and needs a 2.06 GB file. The ≥90% greedy-match gate was replaced by: W2–W5 identical, tool calls parse. See <a href="results.html">results.html</a>.</dd>
+    <dt>Shipped</dt><dd>Option A with <code>MTP_DRAFT_MAX=5</code> (the spec assumed 3; the sweep picked 5). DFlash2 (option B) is not shipped: slower on long documents and needs a 2.06 GB file. The ≥90% greedy-match gate was replaced by: W2–W5 identical in the sweep, tool calls parse. Review follow-up (PR #5): the shipped mode is not reproducible at temperature 0 on W1/W2, and the free-VRAM boot check now adds 1,536 MiB for MTP. See <a href="results.html">results.html</a>.</dd>
   </dl>
 
   <figure class="strip">

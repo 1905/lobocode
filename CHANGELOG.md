@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased (next image)
+
+- Raise the agent's free-VRAM boot check by 1,536 MiB in `mtp` and `mtp-ngram` modes: 25,487 MiB instead of 23,951 MiB. Image 0.2.5 passed hosts with 23,951–24,900 MiB free, which then failed during model load with a CUDA allocation error. The agent `start` log line now includes the `spec` mode.
+- Docs: cold W4 time to first token is 8.95 s → 9.73 s (+8.7%); the earlier 4.76 s → 5.17 s mixed a cold request and a prefix-cache hit. Output under `mtp-ngram` is not reproducible at temperature 0 or with a fixed seed on free prose and Go code; code edits and long-document answers matched.
+
 ## Image 0.2.5 — 2026-10-31
 
 - Start `llama-server` with speculative decoding: up to 5 drafts from the model's MTP head plus n-gram lookup in the context. The model checks every draft token, so weights and sampling do not change. `LOBO_SPEC` (`mtp-ngram` default, `mtp`, `ngram`, `off`) selects the mode in the pod.

@@ -105,7 +105,7 @@ pre { overflow-x: auto; background: var(--surface-0); border-radius: 8px; paddin
   <ul>
     <li><b>Ships:</b> <code>LOBO_SPEC=mtp-ngram</code> (default), <code>MTP_DRAFT_MAX=5</code>.</li>
     <li><b>Speed:</b> 1.8× on free prose, 2.7× on code, 4.2–4.8× on long-doc answers, <b>9.3× on code edits</b>.</li>
-    <li><b>Quality:</b> the 27B checks every draft token. Code, edit and long-doc outputs are byte-identical to the baseline.</li>
+    <li><b>Quality:</b> the 27B checks every draft token. Code-edit and long-doc outputs are byte-identical to the baseline. Free prose and Go code can vary from run to run at temperature 0 (see Quality).</li>
     <li><b>Cost:</b> +1.5 GB VRAM (24.9 of 32 GB). No new download. All measurements cost $1.60.</li>
   </ul>
 </section>
@@ -137,22 +137,24 @@ pre { overflow-x: auto; background: var(--surface-0); border-radius: 8px; paddin
       <tr><td>W1 free prose, sampled</td><td>53.8</td><td>89.7</td><td class="x">1.67×</td><td>29%</td><td>0.19 → 0.16 s</td></tr>
       <tr><td>W2 Go code</td><td>54.5</td><td>147.9</td><td class="x">2.71×</td><td>60%</td><td>0.18 → 0.16 s</td></tr>
       <tr><td>W2 Go code, sampled</td><td>54.0</td><td>147.5</td><td class="x">2.73×</td><td>52%</td><td>0.20 → 0.16 s</td></tr>
-      <tr><td>W3 code edit (2.5k-token file)</td><td>54.4</td><td>504.4</td><td class="x">9.28×</td><td>88%</td><td>0.63 → 0.65 s</td></tr>
-      <tr><td>W4 quote from 24,733-token doc</td><td>50.4</td><td>212.4</td><td class="x">4.22×</td><td>63%</td><td>4.76 → 5.17 s</td></tr>
+      <tr><td>W3 code edit (2.5k-token file)</td><td>54.4</td><td>504.4</td><td class="x">9.28×</td><td>88%</td><td>1.05 → 1.15 s cold · 0.21 → 0.15 s cached</td></tr>
+      <tr><td>W4 quote from 24,733-token doc</td><td>50.4</td><td>212.4</td><td class="x">4.22×</td><td>63%</td><td>8.95 → 9.73 s cold · 0.57 → 0.61 s cached</td></tr>
       <tr><td>W5 2nd question, same doc</td><td>50.2</td><td>242.3</td><td class="x">4.83×</td><td>75%</td><td>0.50 → 0.61 s</td></tr>
-      <tr><td>W6 tool call</td><td>52.6</td><td>137.3</td><td class="x">2.61×</td><td>86%</td><td>0.32 → 0.26 s · parses ✓</td></tr>
+      <tr><td>W6 tool call</td><td>52.6</td><td>137.3</td><td class="x">2.61×</td><td>86%</td><td>0.38 → 0.37 s cold · 0.26 → 0.14 s cached · parses ✓</td></tr>
     </tbody>
   </table>
   </div>
-  <p class="note">Draft acceptance = accepted / proposed draft tokens. Median of 2 reps after a warm-up. Before and after ran on different hosts of the same GPU type.</p>
+  <p class="note">Draft acceptance = accepted / proposed draft tokens. Median of 2 reps after a warm-up. TTFT for W3, W4 and W6: rep 1 is cold, rep 2 hits the prefix cache, so both are given. Before and after ran on different hosts of the same GPU type.</p>
 </section>
 
 <section id="quality">
   <h2>Quality</h2>
   <ul class="facts">
     <li>llama-server keeps a draft token only when the 27B samples the same token itself. Speculation changes speed, not the model.</li>
-    <li><span class="ok">✓</span> W2–W5 outputs are byte-identical (SHA-256) to the baseline.</li>
-    <li><span class="warn">⚠</span> W1 prose differs. The likely cause is float noise from verifying a batch of tokens: <code>ngram</code> W1 matched the baseline on one rep and not on the next, with the same prompt. ~80% sure; the texts were not diffed.</li>
+    <li><span class="ok">✓</span> Sweep: W2–W5 outputs are byte-identical (SHA-256) to <code>off</code> for every MTP and n-gram mode, one rep each.</li>
+    <li><span class="ok">✓</span> Shipped image, <code>lobo up</code>: W3–W5 match the baseline on both reps.</li>
+    <li><span class="warn">⚠</span> Output is not reproducible at temperature 0 or with a fixed seed. Greedy W1 gave a different text in each of 3 runs; the baseline gave one text every time. Greedy W2 differed on rep 2. Sampled W1/W2 with seed 42 matched in 1 of 4 runs.</li>
+    <li><span class="warn">⚠</span> Likely cause: the <code>ngram-mod</code> pool is shared across requests, so drafts, batch shapes and float rounding depend on earlier requests. In the sweep, <code>mtp</code> alone gave the same W1 text on both reps; <code>ngram</code> and <code>mtp-ngram</code> did not. Not proven; the texts were not compared token by token.</li>
     <li><span class="ok">✓</span> W6 mismatches came from random tool-call ids in the hash (Rival finding, fixed). Both after-run W6 reps are identical, and the tool call parses.</li>
   </ul>
 </section>
@@ -161,7 +163,7 @@ pre { overflow-x: auto; background: var(--surface-0); border-radius: 8px; paddin
   <h2>Cost of the change</h2>
   <ul class="facts">
     <li>VRAM: 23.4 GB → 24.9 GB (+1.5 GB) on the 32 GB card.</li>
-    <li>Time to first token: W4 4.76 s → 5.17 s (+9%) on the 25k-token prompt. Short prompts did not change.</li>
+    <li>Time to first token, cold 24,733-token prompt (W4): 8.95 s → 9.73 s (+0.78 s, +8.7%). Prefix-cache hit: 0.57 s → 0.61 s. Short prompts stayed within 0.15 s.</li>
     <li>No extra weights: the MTP head is already in the Q6_K GGUF.</li>
     <li>Spend: $1.41 sweep pod + $0.12 before pod + $0.07 after pod = $1.60 of the $10 budget.</li>
   </ul>
