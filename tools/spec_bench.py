@@ -268,7 +268,8 @@ def report_md(rows):
 def http(method, url, body=None, headers=None, timeout=900):
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(url, data=data, method=method,
-                                 headers={"Content-Type": "application/json", **(headers or {})})
+                                 headers={"Content-Type": "application/json", "User-Agent": "lobo-spec-bench/1",
+                                          **(headers or {})})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         raw = resp.read()
         return resp.status, (json.loads(raw) if raw else None)
