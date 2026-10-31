@@ -9,7 +9,7 @@ The flags come from `Spec::args()` in `crates/lobo-agent/src/process.rs`:
 --spec-ngram-mod-n-match 24 --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64
 ```
 
-The MTP head is part of the Q6_K GGUF, so no extra file downloads. VRAM use rises by about 1.5 GB (23.4 GB to 24.9 GB on the RTX 5090 at ctx 65,536).
+The MTP head is part of the Q6_K GGUF, so no extra file downloads. VRAM use rises by about 1.5 GB (23.4 GB to 24.9 GB on the RTX 5090 at ctx 65,536). The agent's free-VRAM check before model load therefore requires 1,536 MiB more in `mtp` and `mtp-ngram` modes: 25,487 MiB instead of 23,951 MiB. A host without that room fails with `only N MiB VRAM free` before the load, not with a CUDA allocation error during it.
 
 ## Switch
 
@@ -30,7 +30,7 @@ Measured through the real `lobo up` path on RTX 5090 SECURE pods at ctx 65,536. 
 | W5 second question, same document | 50.2 | 242.3 | 4.83× | 75% |
 | W6 tool call | 52.6 | 137.3 | 2.61× | 86% |
 
-The before and after runs used different hosts of the same GPU type. Time to first token did not change materially: W4 went from 4.76 s to 5.17 s, and the other workloads stayed within ±0.1 s.
+The before and after runs used different hosts of the same GPU type. Cold time to first token on the 24,733-token W4 prompt rose from 8.95 s to 9.73 s (+0.78 s, +8.7%). The W4 repeat hit the prefix cache and processed 516 prompt tokens: 0.57 s before, 0.61 s after. The other workloads stayed within 0.15 s.
 
 ## How the mode was chosen
 
@@ -52,6 +52,8 @@ mtp-ngram with 5 drafts is the best overall choice for coding-agent work: code, 
 ## Output agreement
 
 In the sweep, W2–W5 outputs were byte-identical to `off` for every MTP mode. W1 differed, and so did `ngram` W1 between two reps of the same prompt. This points to floating-point differences when tokens are checked as a batch, not to a quality change; the texts were not compared token by token. The earlier W6 mismatches came from llama-server's random tool-call ids in the hash; the bench now ignores those ids, and both W6 reps in the after run are identical.
+
+The after run on the shipped image shows that `mtp-ngram` output is not reproducible at temperature 0 or with a fixed seed. Greedy W3–W5 matched `before` on both reps. Greedy W2 matched on rep 1 and differed on rep 2. Greedy W1 gave a different text in each of its three runs, warm-up included, and none matched `before`, which gave the same W1 text every time. Sampled W1 and W2 with seed 42 matched `before` in 1 of 4 runs. A likely cause is the `ngram-mod` hash pool, which llama-server shares across requests, so drafts depend on earlier requests. In the sweep, `mtp` with 5 drafts gave one W1 text in both runs; `mtp-ngram` gave that text in its first run and a different one in its second. This is not established; the texts were not compared token by token.
 
 ## Rollback
 
