@@ -863,7 +863,6 @@ async fn boot(
                     let logs = probe(cancel, agent.logs(20)).await.unwrap_or_default();
                     check_cancel(cancel)?;
                     if p.replaceable() {
-                        events.phase(&phase, why.clone());
                         scope.cleanup(d, ownership).await?;
                         return Ok(Boot::Retry {
                             reason: why,

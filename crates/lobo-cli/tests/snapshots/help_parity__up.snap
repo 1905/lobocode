@@ -8,7 +8,7 @@ Usage:
   lobo up [OPTIONS]
 
 Flags:
-      --cloud <string>       community ($0.69/h, default, community hosts only) or secure (datacenter $0.99/h first, community fallback) [default: community]
+      --cloud <string>       secure (datacenter first, community fallback; default) or community (community hosts only, cheapest) [default: secure]
       --ctx <int>            context size (0 = built-in default)
       --idle-min <int>       minutes without requests before the pod deletes itself (0 = built-in default)
       --image <string>       development override: GPU image (default: resolve latest public image for the selected model)
