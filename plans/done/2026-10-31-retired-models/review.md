@@ -41,4 +41,3 @@ What I checked and found clean:
 - **Pod image:** `thin` is the last Dockerfile stage. `start.sh` requires `LOBO_MODEL_BASE_URL`, and bootstrap always sets it (`image_model: true`, non-empty default URL). The agent's `LOBO_IMAGE_MODEL` bypass is gone and tested.
 - **Image tools:** the verifier rejects `LOBO_IMAGE_MODEL` and models other than `qwen38-q6`.
 - **Clients and probes:** the OpenCode binding uses `lobo` only. The renamed probe tools have no references left to removed names.
-
