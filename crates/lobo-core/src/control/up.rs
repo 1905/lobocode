@@ -466,30 +466,44 @@ async fn run(
             scope,
         )
         .await?;
-        let (reason, wait) = match outcome {
+        let (reason, wait, logs) = match outcome {
             Boot::Ready => return Ok(()),
-            Boot::Retry { reason, wait } => (reason, wait),
+            Boot::Retry { reason, wait, logs } => (reason, wait, logs),
         };
         check_cancel(cancel)?;
         if attempt == MAX_GPU_RETRIES {
-            return Err(Error::Other(format!(
-                "gave up after {attempt} attempts; last: {reason}"
-            )));
+            let error = format!("gave up after {attempt} attempts; last: {reason}");
+            return Err(events.fail(
+                "failed",
+                reason,
+                Error::Other(format!("{error}\n{}", logs.trim()).trim_end().to_owned()),
+            ));
         }
         events.phase(
             "create",
             format!("attempt {attempt}/{MAX_GPU_RETRIES} failed: {reason}; renting another pod"),
         );
         if wait {
-            tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),_=tokio::time::sleep(NO_CAPACITY_WAIT)=>{}}
+            // Tests set `poll`; zero means production timing.
+            let pause = if d.poll.is_zero() {
+                NO_CAPACITY_WAIT
+            } else {
+                d.poll
+            };
+            tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),_=tokio::time::sleep(pause)=>{}}
         }
     }
     unreachable!()
 }
-/// One startup attempt. `Retry` means the pod (if any) is already deleted.
+/// One startup attempt. `Retry` means the pod (if any) is already deleted;
+/// `logs` holds the agent's last lines when it could still answer.
 enum Boot {
     Ready,
-    Retry { reason: String, wait: bool },
+    Retry {
+        reason: String,
+        wait: bool,
+        logs: String,
+    },
 }
 async fn cloud_opts(
     d: &Deps,
@@ -602,6 +616,7 @@ async fn boot(
                 return Ok(Boot::Retry {
                     reason: format!("rent on {}: {e}", p.name()),
                     wait: true,
+                    logs: String::new(),
                 });
             }
             return Err(Error::Other(format!("rent on {}: {e}", p.name())));
@@ -744,6 +759,7 @@ async fn boot(
                                 pod.id
                             ),
                             wait: false,
+                            logs: String::new(),
                         });
                     }
                     return Err(events.fail(
@@ -844,16 +860,17 @@ async fn boot(
                     } else {
                         s.stage_detail.clone()
                     };
+                    let logs = probe(cancel, agent.logs(20)).await.unwrap_or_default();
+                    check_cancel(cancel)?;
                     if p.replaceable() {
                         events.phase(&phase, why.clone());
                         scope.cleanup(d, ownership).await?;
                         return Ok(Boot::Retry {
                             reason: why,
                             wait: false,
+                            logs,
                         });
                     }
-                    let logs = probe(cancel, agent.logs(20)).await.unwrap_or_default();
-                    check_cancel(cancel)?;
                     let error = if !p.replaceable() {
                         scope.cleanup(d, ownership).await?;
                         format!("pod stopped: {why} (err=none)\n{logs}")
@@ -883,6 +900,7 @@ async fn boot(
             return Ok(Boot::Retry {
                 reason,
                 wait: false,
+                logs: String::new(),
             });
         }
         if (d.clock.now() - progress).to_std().unwrap_or_default() > o.timeout

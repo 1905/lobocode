@@ -2,7 +2,7 @@
 
 Run **Qwen3.8-27B abliterated** (huihui-ai, Q6_K) on a rented RunPod or Vast GPU from the standalone Mac app. Get an OpenAI-compatible API through a private SSH connection. Local inference is not supported.
 
-**Mac app 0.2.4:** cloud-only, standalone, Apple Silicon. [Download the DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.4/lobocode.dmg). Homebrew installs the legacy Go CLI, which cannot use `qwen38-q6`; the Rust CLI rewrite remains unreleased. Screenshots with performance numbers show sample data, not benchmark results.
+**Mac app 0.2.4:** cloud-only, standalone, Apple Silicon. [Download the DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.4/lobocode.dmg). The optional CLI 0.2.0 (Rust) installs through Homebrew: `brew install 1905/tap/lobo`. Screenshots with performance numbers show sample data, not benchmark results.
 
 The only supported model is `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). It runs only on a rented RunPod or Vast GPU. The app, the Rust CLI and its configuration form accept no other model and no local run. Each new start resolves the latest public `latest-qwen38-q6` image. The thin image downloads verified weights at boot. Broader telemetry acceptance remains pending.
 
@@ -20,20 +20,20 @@ The only supported model is `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K
 - **Observed test rates:** $0.69/h and $0.99/h. Available prices vary. Default shutdown limits are 30 minutes idle and 12 hours maximum life.
 - **Safe to forget:** the pod kills itself. Your account keys never leave your laptop.
 
-For the Rust cloud candidate, build from source using the instructions below, then run:
+With the optional CLI (`brew install 1905/tap/lobo`):
 
 ```sh
-bin/lobo-rs config       # configure provider and API keys
-bin/lobo-rs up           # start qwen38-q6 on RunPod or Vast
-bin/lobo-rs status       # inspect the running GPU
-bin/lobo-rs down         # deletes all lobo instances on configured providers
+lobo config       # configure provider and API keys
+lobo up           # start qwen38-q6 on RunPod or Vast
+lobo status       # inspect the running GPU
+lobo down         # deletes all lobo instances on configured providers
 ```
 
 The app's Stop button targets its recorded runtime. The CLI's `down` command retains its broader all-provider behavior.
 
 ## Install
 
-The desktop app installs from its DMG and does not require the CLI. Install the optional CLI separately through Homebrew. [Download Mac app 0.2.4](https://github.com/1905/lobocode/releases/download/app-v0.2.4/lobocode.dmg), open the DMG, and drag **lobocode** to **Applications**. Requires Apple Silicon and macOS 13 or later. The app is ad-hoc signed and is not notarized.
+The desktop app installs from its DMG and does not require the CLI. Install the optional CLI 0.2.0 separately through Homebrew. It is the Rust CLI and uses the same core as the app. [Download Mac app 0.2.4](https://github.com/1905/lobocode/releases/download/app-v0.2.4/lobocode.dmg), open the DMG, and drag **lobocode** to **Applications**. Requires Apple Silicon and macOS 13 or later. The app is ad-hoc signed and is not notarized.
 
 **Published CLI through Homebrew** (macOS, Linux):
 
@@ -49,7 +49,7 @@ make rust-build-lobo # → bin/lobo-rs; does not replace the installed CLI
 make install-mac    # optional: the menu bar app → /Applications/lobocode.app
 ```
 
-The source retains the legacy Go CLI and `make install` target until the Rust release. Use `bin/lobo-rs` to test the Rust CLI.
+The source still contains the legacy Go CLI and its `make install` target. Homebrew installs the Rust CLI.
 
 Open **Settings → Cloud**, enter a RunPod or Vast API key, save, and start `qwen38-q6`. An unavailable image fails before rental. Updating the app does not install or replace the optional CLI.
 
@@ -85,7 +85,9 @@ Every new cloud start looks up the current `latest-qwen38-q6` tag and sends its 
 
 Useful flags for `lobo up`: `--provider vast`, `--ctx 16384`, `--idle-min 10`, `--max-life 4h`.
 
-Vast retired its v0 instance list (`GET /api/v0/instances/` returns HTTP 410). The Mac app and the Rust CLI (`bin/lobo-rs`) list through `/api/v1/instances/`. The published Homebrew CLI still uses the v0 list, so its Vast `up`, `status` and `down` commands fail until a new CLI release. RunPod is not affected.
+Vast retired its v0 instance list (`GET /api/v0/instances/` returns HTTP 410). The Mac app and the CLI list through `/api/v1/instances/`.
+
+A failed start rents another GPU automatically, up to 10 attempts. Each attempt shows its reason, for example `attempt 2/10 failed: download below 100 MB/s; renting another pod`. The failed pod is deleted first. After 10 attempts, the start stops with the last reason. When the provider has no free GPU, the next attempt waits 30 seconds.
 
 The terminal dashboard updates in place. Press `q` to leave status; press `q` or Ctrl-C during startup to cancel and wait for cleanup. Short terminals use a compact layout that retains metrics, shutdown timers and the quit hint. The real RunPod check confirmed Ready and status fit 80 columns. Some startup detail lines still clip at that width.
 
@@ -161,14 +163,14 @@ A new GPU host may need to download every image layer and model chunk. Cached la
 
 ## Config reference
 
-The table describes the Rust app and CLI configuration. Starts use only RunPod or Vast and only `qwen38-q6`. The Homebrew CLI is the older Go build and accepts only `q6` and `q8` for `LOBO_MODEL`; a config saved with `qwen38-q6` does not work with that CLI.
+The table describes the Rust app and CLI configuration. Starts use only RunPod or Vast and only `qwen38-q6`. CLI 0.2.0 and later read the same configuration as the app. The legacy Go CLI 0.1.0 accepts only `q6` and `q8` for `LOBO_MODEL`.
 
 `~/.config/lobo/config.env`, plain `KEY=value`, mode 600. Only this file is read. The shell environment is never used. A flag beats the file, and the file beats the built-in default.
 
 | Key | Flag | Default |
 |---|---|---|
 | `LOBO_PROVIDER` (runpod, vast) | `--provider` | runpod |
-| `LOBO_CONNECTION` (ssh, cloudflare) | | ssh for new configurations |
+| `LOBO_CONNECTION` (ssh only; a saved `cloudflare` is ignored and rewritten on save) | | ssh |
 | `LOBO_CLOUD_PORT` (control API on port + 1) | | 8933 |
 | `LOBO_MODEL` (qwen38-q6 only; saved q6/q8 values migrate on load and save) | | qwen38-q6 |
 | `LOBO_MODEL_BASE_URL` (base URL of the model chunks; https only, trailing slash ignored; shown unmasked by `lobo config show`) | | `https://models.stealthcopilot.io` |
@@ -176,17 +178,17 @@ The table describes the Rust app and CLI configuration. Starts use only RunPod o
 | `LOBO_CTX` | `--ctx` | 65536 |
 | `LOBO_IDLE_MIN` | `--idle-min` | 30 |
 | `LOBO_MAX_HOURS` | `--max-life` | 12 |
-| `LOBO_CLOUD` (community, secure) | `--cloud` | community |
+| `LOBO_CLOUD` (secure: datacenter first, community fallback; community: community hosts only) | `--cloud` | secure |
 | `LOBO_MIN_MBPS` (minimum advertised Vast host speed, MB/s; also the agent's measured-rate gate during the chunk download: rate over the last ~5 s before the 20 s check, a slower host is replaced) | `--min-mbps` | 100 |
 | `LOBO_VAST_MAX_DPH` | | 1.20 |
 
-SSH mode selects RunPod hosts with public TCP mappings and Vast hosts with direct ports. This can reduce host availability. `LOBO_DOMAIN` and `CF_TUNNEL_TOKEN` are only needed for the legacy `cloudflare` connection.
+The app and CLI connect only through private SSH. They select RunPod hosts with public TCP mappings and Vast hosts with direct ports. The Cloudflare tunnel connection is removed: `LOBO_DOMAIN` and `CF_TUNNEL_TOKEN` are ignored, and the token is never sent to a pod. The values stay in an existing file until you delete them.
 
 ## Safety
 
 - **Idle kill:** 30 min without requests. **Hard expiry:** fixed at create time, 12 h by default.
 - The pod deletes itself with a pod-scoped key that the provider injects. Your account keys stay on the laptop.
-- Bad hosts can be replaced automatically: container never started, broken CUDA or unavailable VRAM. At most 4 tries, within the startup limit.
+- Failed starts are replaced automatically: container never started, broken CUDA, unavailable VRAM, slow download, an agent error or a pod that disappeared. At most 10 attempts, within the startup limit.
 
 ## Development
 
@@ -206,6 +208,6 @@ Image builds no longer download or package retired model weights. Build the imag
 
 App releases use an `app-vX.Y.Z` tag at the exact tested `master` commit. Run workspace tests on Feesh and app tests plus native fresh/legacy setup smoke on Air. Check anonymous access to `latest-qwen38-q6` before publishing the DMG, checksums and source receipt. Build the standalone DMG on Air with `make dmg`; do not bundle or replace the optional CLI.
 
-CLI releases require separate authorization. Image publication is separate from normal app startup. End users always resolve the current public image at each new start.
+CLI releases require separate authorization. A CLI release uses a `vX.Y.Z` tag. Build the two macOS archives on Air and the two static Linux musl archives on Feesh (`cargo zigbuild`). Publish them with `checksums.txt`, then update `lobo.rb` in `1905/homebrew-tap`. GitHub Actions and goreleaser publishing are not used. Image publication is separate from normal app startup. End users always resolve the current public image at each new start.
 
 Maintainers must make the `1905/lobocode` container package public before release acceptance. New GHCR packages default to private. The anonymous-access check deliberately fails until visibility is public. End users do not need a GitHub account or registry credentials. See [GitHub's container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).

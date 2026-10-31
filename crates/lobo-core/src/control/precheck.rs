@@ -143,7 +143,7 @@ mod tests {
                 defaults.model.as_str(),
                 defaults.cloud.as_str()
             ),
-            ("runpod", "qwen38-q6", "community")
+            ("runpod", "qwen38-q6", "secure")
         );
         assert_eq!(
             (defaults.ctx, defaults.idle_min, defaults.min_mbps),
@@ -219,17 +219,13 @@ mod tests {
         assert!(check_target(&cloud(), "runpod").is_ok());
     }
     #[test]
-    fn cloud_mode_needs_tunnel_and_domain() {
+    fn legacy_cloudflare_mode_starts_over_ssh() {
         let cfg = Laptop {
             connection: "cloudflare".into(),
             ..cloud()
         };
-        assert!(
-            check_target(&cfg, "runpod")
-                .unwrap_err()
-                .to_string()
-                .contains("CF_TUNNEL_TOKEN")
-        );
+        assert!(check_target(&cfg, "runpod").is_ok());
+        assert!(cfg.uses_ssh());
     }
     #[test]
     fn release_still_requires_bucket_credentials() {

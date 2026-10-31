@@ -17,9 +17,13 @@ fn cloud_without_domain_and_legacy_selection() {
         assert!(generated.contains("http://127.0.0.1:8933/v1"));
         assert!(!generated.contains("https:///"));
     }
+    // Old Cloudflare keys and an explicit `cloudflare` value no longer select a tunnel.
     let legacy = load(FULL).unwrap();
-    assert!(!legacy.uses_ssh());
-    assert_eq!(legacy.cloud_url(), "https://lobo.x.cc/v1");
+    assert!(legacy.uses_ssh());
+    assert_eq!(legacy.cloud_url(), "http://127.0.0.1:8933/v1");
+    let explicit = load(&format!("{FULL}LOBO_CONNECTION=cloudflare\n")).unwrap();
+    assert!(explicit.uses_ssh());
+    explicit.require_cloud().unwrap();
     let migrated = load(&format!(
         "{FULL}LOBO_CONNECTION=ssh\nLOBO_CLOUD_PORT=9010\n"
     ))
