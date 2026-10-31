@@ -58,7 +58,7 @@ The after run on the shipped image shows that `mtp-ngram` output is not reproduc
 ## Rollback
 
 - One pod: start the agent with `LOBO_SPEC=off`.
-- All new starts: tag `ghcr.io/1905/lobocode@sha256:3d64617400c59420f0aea21a0bb6c0ac83376a8ee377dd2710ef63d5fc41fc0a` again as `latest-qwen38-q6`.
+- All new starts: tag an earlier image again as `latest-qwen38-q6`. Image 0.2.6 (current, `sha256:9e844775378310a06675adff793d83e6a17965d2a575cb41be15b3b8302dcaa0`) and 0.2.5 (`sha256:7b53f3158c91042cf8ce6375c9a4f24918f894db7b353d32025e574aa8a51604`) use speculative decoding; 0.2.4 (`sha256:3d64617400c59420f0aea21a0bb6c0ac83376a8ee377dd2710ef63d5fc41fc0a`) does not.
 
 ## Reproduce
 

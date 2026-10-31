@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Startup retry, SSH only, SECURE default — plan v1.0</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mute:#6b6a64;--line:#e4e1d8;--heavy:#b4472f;--light:#2f6db4;--gate:#2f8a57;--card:#fff}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:860px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.15rem;margin:32px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
+.status{color:var(--mute);font-size:.9rem}
+code{font:13px ui-monospace,Menlo,monospace;background:#f1efe8;padding:1px 4px;border-radius:4px;overflow-wrap:anywhere}
+.tldr{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+.tablewrap{overflow-x:auto}
+ol.tasks{padding-left:0;list-style:none}ol.tasks li{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--light);border-radius:8px;padding:10px 12px;margin:8px 0}
+ol.tasks li.heavy{border-left-color:var(--heavy)}ol.tasks li.gate{border-left-color:var(--gate)}
+.tag{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-right:6px}
+.heavy .tag{color:var(--heavy)}.light .tag{color:var(--light)}.gate .tag{color:var(--gate)}
+.risk{background:#fff4ef;border:1px solid #f0cdbf;border-radius:8px;padding:10px 12px}
+</style>
+</head>
+<body><main>
+<h1>Startup retry, SSH only, SECURE default</h1>
+<p class="status">Status: done 2026-10-31 · shipped in app 0.2.5, image 0.2.6, CLI 0.2.0 · approved choices 1A 2A 3A 4A 5A (user, 2026-10-31)</p>
+
+<section id="tldr" class="tldr">
+<h2 style="margin-top:0;border:0">TL;DR</h2>
+<ul>
+<li><b>SSH only:</b> remove the Cloudflare connection. Old <code>LOBO_CONNECTION</code>, <code>CF_TUNNEL_TOKEN</code> and <code>LOBO_DOMAIN</code> keys are ignored and never sent to a pod.</li>
+<li><b>SECURE default:</b> rent SECURE first; COMMUNITY only as a fallback.</li>
+<li><b>Retry:</b> any startup failure rents a new pod, up to 10 attempts, each with its reason; then stop with the last reason.</li>
+<li><b>Clear reason:</b> an agent that fails before its API starts still serves its error for 60 s before it deletes the pod. A pod that disappears without a reason says so.</li>
+<li><b>Release:</b> image 0.2.6, app 0.2.5, CLI 0.2.0 (Homebrew) from one tested commit. Not in scope: removing cloudflared from the agent and image.</li>
+</ul>
+</section>
+
+<section id="cause">
+<h2>Why</h2>
+<p>The user's old config had <code>CF_TUNNEL_TOKEN</code> and <code>LOBO_DOMAIN</code>; Settings saved <code>LOBO_CONNECTION=cloudflare</code>. The pod tunnel never connected (Cloudflare 1033), the app saw only "pod is gone (deleted) during startup in phase image", and stopped. SSH mode on the same image: Ready in 46.8 s.</p>
+</section>
+
+<section id="tasks">
+<h2>Tasks</h2>
+<ol class="tasks">
+<li id="T1" class="heavy"><span class="tag">heavy</span><b>T1 SSH only.</b> <code>Laptop::connection_mode()</code> always returns <code>ssh</code>; <code>cloud_url()</code> always local. Do not send <code>CF_TUNNEL_TOKEN</code> in <code>bootstrap::env</code>. Readiness and <code>require_cloud</code> stop asking for the domain or tunnel token. Config save drops <code>LOBO_CONNECTION=cloudflare</code>; other user keys stay. Remove the connection choice and Cloudflare fields from the CLI wizard and app Settings. Provider <code>on_domain</code> no longer sets a domain URL.</li>
+<li id="T2" class="light"><span class="tag">light</span><b>T2 SECURE default.</b> <code>LOBO_CLOUD</code> default <code>secure</code> in core, CLI flag help, app Settings default, README table.</li>
+<li id="T3" class="heavy"><span class="tag">heavy</span><b>T3 Retry up to 10.</b> <code>MAX_GPU_RETRIES</code> 4 → 10. During startup, retry (replaceable providers) on: agent <code>failed</code>/<code>terminating</code> with any reason, pod gone, container not started, and no capacity at rent (wait 30 s first). Delete the failed pod before the next rent. Event text: <code>attempt 3/10 failed: &lt;reason&gt;; renting another pod</code>. After 10: <code>gave up after 10 attempts; last: &lt;reason&gt;</code>. Not retried: cancel, preflight/config errors, unknown image, provider auth errors.</li>
+<li id="T4" class="heavy"><span class="tag">heavy</span><b>T4 Agent reason before self-delete.</b> In <code>main_flow</code>, when <code>run</code> fails before the API is up, serve <code>/api/status</code> (stage <code>failed</code>, the error, <code>LOBO_BOOT_ID</code>) and <code>/api/logs</code> on the agent port with the same Bearer key for 60 s, then self-terminate. App: a pod gone with no reason reads <code>pod deleted itself before it reported a reason</code>.</li>
+<li id="T5" class="light"><span class="tag">light</span><b>T5 Docs.</b> README (SSH only, SECURE, retry, CLI install through Homebrew), CHANGELOG, AGENTS.md, <code>docs/cloud-without-domain.md</code>, goreleaser description.</li>
+<li id="T6" class="gate"><span class="tag">gate</span><b>T6 Checks.</b> feesh9: fmt, clippy <code>-D warnings</code>, workspace tests. Air: CLI/core/proto tests on macOS, app tests. New tests: retry count and messages, gone-without-reason, SSH-only config with old Cloudflare keys, SECURE default, agent early-fatal status.</li>
+<li id="T7" class="gate"><span class="tag">gate</span><b>T7 Review.</b> <code>/rival review</code> of the branch, fixes, <code>/simplify</code>.</li>
+<li id="T8" class="heavy"><span class="tag">heavy</span><b>T8 Release.</b> Merge to master. Image 0.2.6 on feesh9, smoke, promote <code>latest-qwen38-q6</code>. One real SECURE e2e with the new CLI (~$0.05). DMG 0.2.5 on Air, publish <code>app-v0.2.5</code>. CLI <code>v0.2.0</code>: 2 macOS (Air) + 2 Linux musl (feesh9) archives, checksums, tap <code>lobo.rb</code>. Install on this Mac and verify.</li>
+</ol>
+</section>
+
+<section id="files">
+<h2>Files</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>Area</th><th>Files</th></tr></thead>
+<tbody>
+<tr><td>Config</td><td><code>crates/lobo-core/src/config/{mod,readiness,show,envfile}.rs</code></td></tr>
+<tr><td>Start</td><td><code>crates/lobo-core/src/control/{up,mod,precheck,status,wiring}.rs</code>, <code>bootstrap.rs</code>, <code>provider/{mod,runpod,vast}.rs</code></td></tr>
+<tr><td>Agent</td><td><code>crates/lobo-agent/src/{pod,api,main}.rs</code></td></tr>
+<tr><td>CLI</td><td><code>crates/lobo-cli/src/{cli.rs,cmd/config.rs,wizard/*}</code></td></tr>
+<tr><td>App</td><td><code>app/ui/src/settings/Settings.svelte</code>, <code>app/ui/src/lib/settings.ts</code>, <code>app/src-tauri/src/controller.rs</code></td></tr>
+</tbody></table></div>
+</section>
+
+<section id="risks">
+<h2>Risks</h2>
+<div class="risk"><ul>
+<li>10 attempts on a deterministic agent error cost about 10 × 30 s of pod time (~$0.10 at $1.19/h). Accepted.</li>
+<li>SSH mode needs hosts with public TCP ports; SECURE has them. COMMUNITY fallback may have fewer.</li>
+<li>Users who relied on the public HTTPS domain lose it. No known users.</li>
+</ul></div>
+</section>
+</main></body></html>

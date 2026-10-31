@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased (next image, app and CLI)
+## App 0.2.5, image 0.2.6, CLI 0.2.0 — 2026-10-31
+
+Published: app `app-v0.2.5` (DMG sha256 in `SHA256SUMS`), CLI `v0.2.0` (Homebrew `1905/tap/lobo`, four archives), image `latest-qwen38-q6` = `sha256:9e844775378310a06675adff793d83e6a17965d2a575cb41be15b3b8302dcaa0` from `9ddbcad`. Live check: RunPod Secure RTX 5090 with a legacy Cloudflare configuration connected over SSH, Ready in 80 s, chat and tool call passed, 145.6 tok/s on code. Rollback image: `sha256:7b53f3158c91042cf8ce6375c9a4f24918f894db7b353d32025e574aa8a51604` (0.2.5).
+
 
 - Remove the Cloudflare tunnel connection. The app and CLI connect only through private SSH. A saved `LOBO_CONNECTION=cloudflare`, `LOBO_DOMAIN` and `CF_TUNNEL_TOKEN` are ignored, and the token is no longer sent to a pod. Settings no longer sets `cloudflare` when old domain and token keys exist. In that mode the pod tunnel did not connect (Cloudflare error 1033), and starts failed with "pod is gone (deleted) during startup in phase image".
 - Default RunPod cloud is `secure` (datacenter first, community fallback) in the app, the CLI flag and the configuration wizard.
