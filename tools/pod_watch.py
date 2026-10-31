@@ -16,6 +16,18 @@ import spec_bench as sb
 host, port, log = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 pid = int(sys.argv[4]) if len(sys.argv) > 4 else None
 pod = sb.Pod(host, port)
+
+
+def alive():
+    if pid is None:
+        return True
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+
+
 idle = 0
 n = 0
 while True:
@@ -24,12 +36,12 @@ while True:
     try:
         out = pod.sh("nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits; "
                      "pgrep -c llama-server || true", timeout=30)
-        util, mem = [int(x) for x in out.splitlines()[0].split(",")]
-        servers = out.splitlines()[1].strip() if len(out.splitlines()) > 1 else "?"
+        lines = out.splitlines()
+        util, mem = [int(x) for x in lines[0].split(",")]
+        servers = lines[1].strip() if len(lines) > 1 else "?"
     except Exception as e:  # pod gone or SSH flaky
-        alive = pid is None or os.path.exists(f"/proc/{pid}") or os.system(f"kill -0 {pid} 2>/dev/null") == 0
-        print(f"{now} SSH-FAIL {str(e)[:120]} sweep_alive={alive}", flush=True)
-        if not alive:
+        print(f"{now} SSH-FAIL {str(e)[:120]} sweep_alive={alive()}", flush=True)
+        if not alive():
             sys.exit(0)
         time.sleep(60)
         continue
@@ -39,7 +51,7 @@ while True:
         print(f"{now} IDLE gpu=0% x{idle} mem={mem}MiB llama-server={servers} log_age={age:.0f}s", flush=True)
     if age > 180:
         print(f"{now} STALL log not written for {age:.0f}s gpu={util}%", flush=True)
-    if pid is not None and os.system(f"kill -0 {pid} 2>/dev/null") != 0:
+    if not alive():
         print(f"{now} ORPHAN sweep pid {pid} exited, pod still up gpu={util}%", flush=True)
     elif n % 5 == 0:
         print(f"{now} STATUS gpu={util}% mem={mem}MiB llama-server={servers} log_age={age:.0f}s", flush=True)

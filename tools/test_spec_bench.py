@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 import unittest
 
 import spec_bench as sb
@@ -23,8 +24,7 @@ class Pure(unittest.TestCase):
         self.assertEqual(sb.median([1, 2, 3, 4]), 2.5)
         self.assertEqual(sb.median([7]), 7)
         self.assertEqual(sb.median([None, 5]), 5)
-        with self.assertRaises(ValueError):
-            sb.median([])
+        self.assertIsNone(sb.median([]))
 
     def test_output_sha_ignores_tool_call_ids(self):
         call = {"type": "function", "function": {"name": "read_file", "arguments": "{\"path\": \"a\"}"}}
@@ -103,8 +103,22 @@ class Pure(unittest.TestCase):
         self.assertIn("$1.25", text)
 
     def test_base_args_mirror_agent(self):
-        self.assertEqual(sb.BASE_ARGS[-2:], ["--metrics", "--no-webui"])
+        src = (sb.ROOT / "crates/lobo-agent/src/process.rs").read_text()
+        body = src[src.index("pub fn to_args"):src.index(".into_iter()", src.index("pub fn to_args"))]
+        rust = re.findall(r'^\s*"([^"]+)",$', body, re.M)
+        # The Rust list binds model, alias, host, port and ctx from fields; the bench fills them in.
+        fixed = [a for i, a in enumerate(sb.BASE_ARGS)
+                 if i == 0 or sb.BASE_ARGS[i - 1] not in ("-m", "--alias", "--host", "--port", "-c")]
+        self.assertEqual(rust, fixed)
         self.assertIn(sb.MODEL["file"], sb.BASE_ARGS[1])
+
+    def test_shipped_mode_mirrors_agent(self):
+        src = (sb.ROOT / "crates/lobo-agent/src/process.rs").read_text()
+        consts = dict(re.findall(r"pub const (\w+): u32 = (\d+);", src))
+        self.assertEqual(sb.CONFIGS["mtp-ngram"],
+                         ["--spec-type", "draft-mtp,ngram-mod", "--spec-draft-n-max", consts["MTP_DRAFT_MAX"]])
+        # The bench leaves ngram-mod at llama.cpp's defaults; the agent passes the same values.
+        self.assertEqual((consts["NGRAM_MATCH"], consts["NGRAM_MIN"], consts["NGRAM_MAX"]), ("24", "48", "64"))
 
     def test_workloads_are_pinned(self):
         ws = sb.workloads()

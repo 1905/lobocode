@@ -12,6 +12,7 @@ pods      List bench pods.  terminate  Delete one bench pod.
 RUNPOD_API_KEY comes from the environment only. Rows go to --out as JSONL.
 """
 import argparse
+import functools
 import hashlib
 import json
 import os
@@ -68,6 +69,8 @@ CONFIGS = {
     "mtp1": mtp(1), "mtp2": mtp(2), "mtp3": mtp(3),
     "ngram": ngram(), "ngram-small": ngram(24, 16, 32),
     "dflash7": dflash(7), "dflash15": dflash(15),
+    # LOBO_SPEC=mtp-ngram as shipped: MTP_DRAFT_MAX and llama.cpp's ngram-mod defaults (24/48/64).
+    "mtp-ngram": ["--spec-type", "draft-mtp,ngram-mod", "--spec-draft-n-max", "5"],
     "cms1024": ["--checkpoint-min-step", "1024"], "cms0": ["--checkpoint-min-step", "0"],
 }
 
@@ -82,6 +85,7 @@ def pinned(path):
                           capture_output=True, text=True).stdout
 
 
+@functools.cache
 def workloads():
     doc = "\n\n".join(f"=== {p} ===\n{pinned(p)}" for p in (
         "README.md", "AGENTS.md", "CHANGELOG.md", "crates/lobo-core/src/control/up.rs"))
@@ -123,9 +127,7 @@ def output_sha(msg):
 
 def median(xs):
     xs = [x for x in xs if x is not None]
-    if not xs:
-        raise ValueError("median of no values")
-    return float(statistics.median(xs))
+    return float(statistics.median(xs)) if xs else None
 
 
 def summarize(rows):
@@ -140,8 +142,7 @@ def summarize(rows):
         cold = [r["prompt_ms"] / 1000 for r in rs if r["rep"] == 1]
         out[key] = {
             "tok_s": median(r["predicted_per_second"] for r in rs),
-            "prompt_tok_s": median(rates) if (rates := [r["prompt_per_second"] for r in rs
-                                                         if r["prompt_per_second"] is not None]) else None,
+            "prompt_tok_s": median(r["prompt_per_second"] for r in rs),
             "ttft_s": median(r["prompt_ms"] / 1000 for r in rs),
             "cold_ttft_s": cold[0] if cold else None,
             "predicted_n": median(r["predicted_n"] for r in rs),
@@ -246,10 +247,9 @@ def report_md(rows):
                     continue
                 gain = g.get(c, {}).get(w)
                 cells.append(f"{v['tok_s']:.1f}" + (f" ({gain:+.0%})" if gain is not None else ""))
-                if v["accept_rate"] is not None:
-                    acc.append(v["accept_rate"])
+                acc.append(v["accept_rate"])
             m, t = matches.get(c, (0, 0))
-            lines.append(f"| {c} | " + " | ".join(cells) + f" | {fmt(median(acc) if acc else None, '{:.0%}')} | "
+            lines.append(f"| {c} | " + " | ".join(cells) + f" | {fmt(median(acc), '{:.0%}')} | "
                          + (f"{m}/{t}" if t else "–") + " |")
         winner, reasons = gate(summary, matches, label)
         lines += ["", f"Gate winner: `{winner}`" if winner else "Gate winner: none", ""]
@@ -373,7 +373,7 @@ class RunPod:
             port = ports.get("22") if isinstance(ports, dict) else next(
                 (m.get("publicPort") for m in ports if m.get("privatePort") == 22), None)
             if p.get("publicIp") and port:
-                return p["publicIp"], int(port), p
+                return p["publicIp"], int(port)
             time.sleep(10)
         raise TimeoutError(f"pod {pod_id} has no SSH address after {timeout}s")
 
@@ -455,12 +455,17 @@ def stage(pod, need_draft):
             raise RuntimeError(f"{name}: sha256 {got.get(name)} != {sha}")
 
 
+def vram_mb(pod):
+    return int(pod.sh("nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits").split()[0])
+
+
 def start_server(pod, extra, timeout=600):
     argv = " ".join(shlex.quote(a) for a in ["/app/llama-server", *BASE_ARGS, *extra])
-    pod.sh(f"pkill -x llama-server || true; sleep 3; LD_LIBRARY_PATH=/app:$LD_LIBRARY_PATH setsid nohup {argv} > /root/llama.log 2>&1 < /dev/null &")
+    pod.sh("pkill -x llama-server; while pgrep -x llama-server >/dev/null; do sleep 0.2; done; "
+           f"LD_LIBRARY_PATH=/app:$LD_LIBRARY_PATH setsid nohup {argv} > /root/llama.log 2>&1 < /dev/null &")
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        time.sleep(5)
+        time.sleep(2)
         try:
             if http("GET", f"http://127.0.0.1:{pod.local_port}/health", timeout=10)[0] == 200:
                 return None
@@ -488,7 +493,7 @@ def cmd_sweep(a):
                       cost_per_hr=cost, started=started)
             Path(a.out).with_suffix(".pod").write_text(json.dumps({"id": pod_id, "started": started,
                                                                    "cost_per_hr": cost}))
-        ip, port, info = rp.ssh_addr(pod_id)
+        ip, port = rp.ssh_addr(pod_id)
         pod = Pod(ip, port)
         pod.wait_ssh()
         stage(pod, any("-md" in configs[n] for n in names))
@@ -500,13 +505,12 @@ def cmd_sweep(a):
                 out.write(kind="error", label=a.label, config=name, msg="llama-server did not become healthy",
                           log_tail=err)
                 continue
-            used = pod.sh("nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits").strip()
-            out.write(kind="vram", label=a.label, config=name, used_mb=int(used.split()[0]),
+            out.write(kind="vram", label=a.label, config=name, used_mb=vram_mb(pod),
                       argv=configs[name])
             run_workloads(out, f"http://127.0.0.1:{pod.local_port}", a.label, name, a.reps,
                           sampled=name in (a.sampled or "").split(","))
             out.write(kind="vram", label=a.label, config=name + "@end",
-                      used_mb=int(pod.sh("nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits").split()[0]))
+                      used_mb=vram_mb(pod))
     finally:
         if pod:
             pod.close()
