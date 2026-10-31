@@ -14,7 +14,8 @@ The only supported model is `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K
 ## TL;DR
 
 - **What:** start a 5090 on RunPod or Vast.ai from the standalone Mac app or optional CLI. The app connects through private SSH at `http://127.0.0.1:8933/v1`. No domain or bucket is required.
-- **Historical Qwen3.5 cloud check:** 47,000 uncached input tokens at 2,186.7 prompt tok/s; first content after 24.04 seconds. Sustained output speed remains unmeasured.
+- **Output speed (qwen38-q6, RTX 5090, image 0.2.5):** 102 tok/s on free prose, 148 on code, 212–242 on answers from a 25k-token document and 504 on code edits. Before speculative decoding it was 50–56 tok/s. See [speculative decoding](docs/speculative-decoding.md).
+- **Historical Qwen3.5 cloud check:** 47,000 uncached input tokens at 2,186.7 prompt tok/s; first content after 24.04 seconds.
 - **Historical Qwen3.5 startup:** the TUI reached Ready in 230.178 seconds. Mac Ready occurred between about 21m11s and 22m30s after the Start capture. The provider still reported downloading at 15 minutes. No transfer-byte progress or cache-hit evidence was captured.
 - **Observed test rates:** $0.69/h and $0.99/h. Available prices vary. Default shutdown limits are 30 minutes idle and 12 hours maximum life.
 - **Safe to forget:** the pod kills itself. Your account keys never leave your laptop.
@@ -149,6 +150,8 @@ For CLI development only, an explicit image override is available:
 ```sh
 lobo up --image ghcr.io/1905/lobocode@sha256:<digest>
 ```
+
+The agent starts `llama-server` with speculative decoding: the MTP head of the GGUF plus n-gram lookup in the context (`LOBO_SPEC`, default `mtp-ngram`; see [speculative decoding](docs/speculative-decoding.md)).
 
 Normal starts ignore old `LOBO_POD_IMAGE`, bucket and model-source settings. The obsolete `--release`, `--source` and debug `--ssh` options return an error before rental.
 

@@ -4,6 +4,12 @@
 
 User decision: support only `qwen38-q6`, only on RunPod or Vast GPUs. No model choice (no `q6`/`q8`) and no local runs. The authorized cleanup is complete: one catalog entry, no local inference/provider/commands, no full-image model packaging. Legacy saved configs migrate; explicit retired choices fail validation. Cloud ownership safety remains. Keep user model files, the installed app and optional CLI unchanged. Historical Go source is outside this cleanup.
 
+## Image 0.2.5 speculative decoding — 2026-10-31
+
+The pod agent starts `llama-server` with `--spec-type draft-mtp,ngram-mod --spec-draft-n-max 5` (`LOBO_SPEC`, default `mtp-ngram`). Public `latest-qwen38-q6` digest: `sha256:7b53f3158c91042cf8ce6375c9a4f24918f894db7b353d32025e574aa8a51604`, built from `548ac7aee405c9996c22b9f8ce82effd158b5406`. Through `lobo up` on an RTX 5090: prose 55.6 → 102.2 tok/s, code 54.5 → 147.9, 25k-token document 50.4 → 212.4, code edit 54.4 → 504.4. VRAM +1.5 GB. The app and optional CLI are unchanged. Rollback: re-tag `sha256:3d64617400c59420f0aea21a0bb6c0ac83376a8ee377dd2710ef63d5fc41fc0a` as `latest-qwen38-q6`. See [speculative decoding](docs/speculative-decoding.md) and [results](plans/done/2026-10-31-spec-decoding/results.html).
+
+While a paid bench pod is up, check it every minute (`tools/pod_watch.py`) and terminate it when its work ends.
+
 ## App 0.2.4 cleanup delivery — 2026-10-31
 
 Cleanup and review fixes are merged and pushed to `master`. App `0.2.4` and the public GPU image are published from `240989574fbc1c9029e229864e2182b74368dbb1`. All 575 build-source files matched the source archive. DMG SHA-256: `9b1907e66878625d140b8b6f857e5f42ee5518f206264fdb86a657822bec5bf8`. Public `latest-qwen38-q6` digest: `sha256:3d64617400c59420f0aea21a0bb6c0ac83376a8ee377dd2710ef63d5fc41fc0a`. Anonymous downloads, asset checksums, image source and mounted DMG checks pass.

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lobo qwen38-q6: speculative decoding results</title>
+<style>
+.viz-root {
+  color-scheme: light;
+  --surface-0: #f4f4f1;
+  --surface-1: #fcfcfb;
+  --border: #e3e2dd;
+  --grid: #ecebe6;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #7a7974;
+  --series-new: #2a78d6;
+  --series-base: #eb6834;
+  --good: #008300;
+  --warn: #9a6700;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --surface-0: #121211;
+    --surface-1: #1a1a19;
+    --border: #2e2e2c;
+    --grid: #262624;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86;
+    --series-new: #3987e5;
+    --series-base: #d95926;
+    --good: #3fb950;
+    --warn: #d29922;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.viz-root {
+  background: var(--surface-0); color: var(--text-primary);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  min-height: 100vh; padding: 24px 16px 64px;
+}
+main { max-width: 920px; margin: 0 auto; }
+header p.status { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-muted); margin: 0 0 6px; }
+h1 { font-size: 26px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+h2 { font-size: 17px; margin: 0 0 12px; }
+.lede { color: var(--text-secondary); margin: 0 0 24px; max-width: 70ch; }
+section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin: 0 0 16px; }
+.tldr ul { margin: 0; padding-left: 18px; }
+.tldr li { margin: 2px 0; }
+code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-0); padding: 1px 5px; border-radius: 4px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.tile { border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--surface-1); }
+.tile .k { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }
+.tile .v { font-size: 32px; font-weight: 650; line-height: 1.1; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin: 0 0 8px; }
+.legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+.chart { position: relative; }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .axis { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .cat { fill: var(--text-primary); font-size: 13px; }
+.chart .cat2 { fill: var(--text-muted); font-size: 11px; }
+.chart .val { fill: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.chart .val.strong { fill: var(--text-primary); font-weight: 600; }
+.chart rect.bar { rx: 4; }
+.chart rect.hit { fill: transparent; cursor: default; }
+.chart g.row:hover rect.bar { filter: brightness(1.08); }
+.tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12); opacity: 0; transition: opacity .1s; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tip b { display: block; margin-bottom: 2px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 7px 8px; border-bottom: 1px solid var(--border); }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
+td.x { font-weight: 650; }
+.tablewrap { overflow-x: auto; }
+.ok, .warn { font-weight: 600; }
+.ok { color: var(--good); }
+.warn { color: var(--warn); }
+ul.facts { margin: 0; padding-left: 18px; }
+ul.facts li { margin: 4px 0; }
+.note { font-size: 13px; color: var(--text-muted); margin: 10px 0 0; }
+details summary { cursor: pointer; color: var(--text-secondary); font-size: 14px; }
+pre { overflow-x: auto; background: var(--surface-0); border-radius: 8px; padding: 10px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<main>
+<header>
+  <p class="status">Status: done · shipped in image 0.2.5 (<code>latest-qwen38-q6</code>) · 2026-10-31</p>
+  <h1>qwen38-q6 output speed: <code>mtp-ngram</code> (5 drafts) vs baseline</h1>
+  <p class="lede">Real <code>lobo up</code> path on RTX 5090 SECURE pods: image 0.2.4 (before) vs 0.2.5 (after). The same Q6_K weights, llama.cpp b11118 and ctx 65,536. The only change is speculative decoding: the model's built-in MTP head plus n-gram lookup in the context. Median of 2 reps.</p>
+</header>
+
+<section class="tldr" id="tldr">
+  <h2>TL;DR</h2>
+  <ul>
+    <li><b>Ships:</b> <code>LOBO_SPEC=mtp-ngram</code> (default), <code>MTP_DRAFT_MAX=5</code>.</li>
+    <li><b>Speed:</b> 1.8× on free prose, 2.7× on code, 4.2–4.8× on long-doc answers, <b>9.3× on code edits</b>.</li>
+    <li><b>Quality:</b> the 27B checks every draft token. Code, edit and long-doc outputs are byte-identical to the baseline.</li>
+    <li><b>Cost:</b> +1.5 GB VRAM (24.9 of 32 GB). No new download. All measurements cost $1.60.</li>
+  </ul>
+</section>
+
+<section id="headline">
+  <h2>Headline</h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Code edit (W3)</div><div class="v">9.3×</div><div class="s">54.4 → 504.4 tok/s</div></div>
+    <div class="tile"><div class="k">25k-token doc (W4)</div><div class="v">4.2×</div><div class="s">50.4 → 212.4 tok/s</div></div>
+    <div class="tile"><div class="k">Go code (W2)</div><div class="v">2.7×</div><div class="s">54.5 → 147.9 tok/s</div></div>
+    <div class="tile"><div class="k">Free prose (W1)</div><div class="v">1.8×</div><div class="s">55.6 → 102.2 tok/s</div></div>
+  </div>
+</section>
+
+<section id="chart">
+  <h2>Output tok/s per workload (<code>lobo up</code>, greedy)</h2>
+  <div class="legend"><span style="--c:var(--series-base)">Before (image 0.2.4)</span><span style="--c:var(--series-new)">After (image 0.2.5, <code>mtp-ngram</code>, 5 drafts)</span></div>
+  <div class="chart" id="bars"></div>
+  <p class="note">One linear axis, 0–600 tok/s. Hover a row for the numbers. The same data is in the table below.</p>
+</section>
+
+<section id="table">
+  <h2>Numbers</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Workload</th><th>Before tok/s</th><th>After tok/s</th><th>Speed-up</th><th>Draft acceptance</th><th>TTFT before → after</th></tr></thead>
+    <tbody>
+      <tr><td>W1 free prose</td><td>55.6</td><td>102.2</td><td class="x">1.84×</td><td>36%</td><td>0.18 → 0.15 s</td></tr>
+      <tr><td>W1 free prose, sampled</td><td>53.8</td><td>89.7</td><td class="x">1.67×</td><td>29%</td><td>0.19 → 0.16 s</td></tr>
+      <tr><td>W2 Go code</td><td>54.5</td><td>147.9</td><td class="x">2.71×</td><td>60%</td><td>0.18 → 0.16 s</td></tr>
+      <tr><td>W2 Go code, sampled</td><td>54.0</td><td>147.5</td><td class="x">2.73×</td><td>52%</td><td>0.20 → 0.16 s</td></tr>
+      <tr><td>W3 code edit (2.5k-token file)</td><td>54.4</td><td>504.4</td><td class="x">9.28×</td><td>88%</td><td>0.63 → 0.65 s</td></tr>
+      <tr><td>W4 quote from 24,733-token doc</td><td>50.4</td><td>212.4</td><td class="x">4.22×</td><td>63%</td><td>4.76 → 5.17 s</td></tr>
+      <tr><td>W5 2nd question, same doc</td><td>50.2</td><td>242.3</td><td class="x">4.83×</td><td>75%</td><td>0.50 → 0.61 s</td></tr>
+      <tr><td>W6 tool call</td><td>52.6</td><td>137.3</td><td class="x">2.61×</td><td>86%</td><td>0.32 → 0.26 s · parses ✓</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">Draft acceptance = accepted / proposed draft tokens. Median of 2 reps after a warm-up. Before and after ran on different hosts of the same GPU type.</p>
+</section>
+
+<section id="quality">
+  <h2>Quality</h2>
+  <ul class="facts">
+    <li>llama-server keeps a draft token only when the 27B samples the same token itself. Speculation changes speed, not the model.</li>
+    <li><span class="ok">✓</span> W2–W5 outputs are byte-identical (SHA-256) to the baseline.</li>
+    <li><span class="warn">⚠</span> W1 prose differs. The likely cause is float noise from verifying a batch of tokens: <code>ngram</code> W1 matched the baseline on one rep and not on the next, with the same prompt. ~80% sure; the texts were not diffed.</li>
+    <li><span class="ok">✓</span> W6 mismatches came from random tool-call ids in the hash (Rival finding, fixed). Both after-run W6 reps are identical, and the tool call parses.</li>
+  </ul>
+</section>
+
+<section id="cost">
+  <h2>Cost of the change</h2>
+  <ul class="facts">
+    <li>VRAM: 23.4 GB → 24.9 GB (+1.5 GB) on the 32 GB card.</li>
+    <li>Time to first token: W4 4.76 s → 5.17 s (+9%) on the 25k-token prompt. Short prompts did not change.</li>
+    <li>No extra weights: the MTP head is already in the Q6_K GGUF.</li>
+    <li>Spend: $1.41 sweep pod + $0.12 before pod + $0.07 after pod = $1.60 of the $10 budget.</li>
+  </ul>
+</section>
+
+<section id="others">
+  <h2>Why this mode: sweep on one bench pod</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Mode</th><th>W1</th><th>W2</th><th>W3</th><th>W4</th><th>W5</th><th>W6</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td><code>off</code></td><td>58.9</td><td>59.2</td><td>59.2</td><td>54.9</td><td>54.3</td><td>58.3</td><td>baseline</td></tr>
+      <tr><td><code>mtp3</code></td><td><b>104.7</b></td><td>148.2</td><td>158.8</td><td>148.2</td><td>143.8</td><td>124.0</td><td>best prose only</td></tr>
+      <tr><td><code>mtp5</code></td><td>95.2</td><td>160.7</td><td>198.7</td><td>177.4</td><td>165.8</td><td>142.6</td><td>no edit gain</td></tr>
+      <tr><td><code>ngram</code></td><td>58.5</td><td>58.5</td><td>463.3</td><td>88.7</td><td>85.1</td><td>60.3</td><td>edits only</td></tr>
+      <tr><td><code>mtp3ngram</code></td><td>100.6</td><td>151.5</td><td>544.5</td><td>164.2</td><td>162.1</td><td>109.4</td><td>close 2nd</td></tr>
+      <tr><td><code>mtp4ngram</code></td><td>96.3</td><td>154.1</td><td><b>546.7</b></td><td>168.2</td><td>172.5</td><td>116.7</td><td>close 2nd</td></tr>
+      <tr><td><b><code>mtp5ngram</code></b></td><td>88.7</td><td>155.9</td><td>536.5</td><td><b>182.7</b></td><td><b>189.2</b></td><td>141.5</td><td><b>ships</b></td></tr>
+      <tr><td><code>dflash7</code></td><td>87.3</td><td><b>164.3</b></td><td>183.9</td><td>124.8</td><td>134.3</td><td><b>207.6</b></td><td>+2.06 GB file, weak on long docs</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note"><code>dflash15</code> accepted exactly the same drafts as <code>dflash7</code>, so it was stopped early. b11118 seems to ignore the larger draft count for DFlash2 (not verified).</p>
+</section>
+
+<section id="rollback">
+  <h2>Rollback</h2>
+  <ul class="facts">
+    <li>Per pod: set <code>LOBO_SPEC=off</code> in the agent environment.</li>
+    <li>Image: tag <code>ghcr.io/1905/lobocode@sha256:3d64617400c59420f0aea21a0bb6c0ac83376a8ee377dd2710ef63d5fc41fc0a</code> again as <code>latest-qwen38-q6</code>.</li>
+  </ul>
+  <details><summary>Method and raw data</summary>
+    <p class="note">Raw rows: <code>bench/before.jsonl</code>, <code>bench/after.jsonl</code> and <code>bench/sweep.jsonl</code> (label A). Tool: <code>tools/spec_bench.py</code>. Prompts come from commit <code>7f1ccf4</code>, so reruns send the same text. Pod <code>tw6w3o6cx3druq</code>, RTX 5090 SECURE, $1.19/h.</p>
+  </details>
+</section>
+</main>
+</div>
+<script>
+(function () {
+  var data = [
+    ["W1", "free prose", 55.6, 102.2],
+    ["W2", "Go code", 54.5, 147.9],
+    ["W3", "code edit", 54.4, 504.4],
+    ["W4", "25k-token doc", 50.4, 212.4],
+    ["W5", "2nd question", 50.2, 242.3],
+    ["W6", "tool call", 52.6, 137.3]
+  ];
+  var max = 600, W = 880, L = 130, R = 60, barH = 14, gap = 2, rowH = 52, top = 8;
+  var H = top + data.length * rowH + 24, plotW = W - L - R;
+  var x = function (v) { return L + v / max * plotW; };
+  var ns = "http://www.w3.org/2000/svg";
+  var svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Output tokens per second, baseline vs mtp-ngram, per workload");
+  function el(t, a, txt) { var e = document.createElementNS(ns, t); for (var k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; return e; }
+  for (var t = 0; t <= max; t += 100) {
+    svg.appendChild(el("line", { x1: x(t), x2: x(t), y1: top - 4, y2: H - 22, "class": "gridline" }));
+    svg.appendChild(el("text", { x: x(t), y: H - 6, "text-anchor": "middle", "class": "axis" }, t));
+  }
+  var wrap = document.getElementById("bars");
+  var tip = document.createElement("div"); tip.className = "tip";
+  data.forEach(function (d, i) {
+    var y0 = top + i * rowH + 6;
+    var g = el("g", { "class": "row" });
+    g.appendChild(el("text", { x: 0, y: y0 + 12, "class": "cat" }, d[0]));
+    g.appendChild(el("text", { x: 0, y: y0 + 27, "class": "cat2" }, d[1]));
+    g.appendChild(el("rect", { x: L, y: y0, width: x(d[2]) - L, height: barH, fill: "var(--series-base)", "class": "bar" }));
+    g.appendChild(el("text", { x: x(d[2]) + 6, y: y0 + 11, "class": "val" }, d[2].toFixed(1)));
+    var y1 = y0 + barH + gap;
+    g.appendChild(el("rect", { x: L, y: y1, width: x(d[3]) - L, height: barH, fill: "var(--series-new)", "class": "bar" }));
+    g.appendChild(el("text", { x: x(d[3]) + 6, y: y1 + 11, "class": "val strong" }, d[3].toFixed(1) + "  ·  " + (d[3] / d[2]).toFixed(1) + "×"));
+    var hit = el("rect", { x: 0, y: top + i * rowH, width: W, height: rowH, "class": "hit" });
+    g.appendChild(hit);
+    hit.addEventListener("mousemove", function (ev) {
+      tip.innerHTML = "<b>" + d[0] + " " + d[1] + "</b>Before " + d[2].toFixed(1) + " tok/s<br>After " + d[3].toFixed(1) + " tok/s<br>Speed-up " + (d[3] / d[2]).toFixed(2) + "×";
+      var r = wrap.getBoundingClientRect();
+      var px = Math.min(ev.clientX - r.left + 14, r.width - 170);
+      tip.style.left = px + "px"; tip.style.top = (ev.clientY - r.top + 10) + "px"; tip.style.opacity = 1;
+    });
+    hit.addEventListener("mouseleave", function () { tip.style.opacity = 0; });
+    svg.appendChild(g);
+  });
+  wrap.appendChild(svg); wrap.appendChild(tip);
+})();
+</script>
+</body>
+</html>

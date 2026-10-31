@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan v1.0: faster qwen38-q6 output with speculative decoding</title>
+<style>
+:root { --paper:#e9edf1; --sheet:#fbfcfd; --ink:#18202c; --muted:#566173; --rule:#c9d1da; --accept:#13756a; --accept-bg:#e2f2ef; --draft:#a86c12; --draft-bg:#fbf0dc; --reject:#a23b3b; --reject-bg:#f8e4e4; --link:#24508f;
+  --sans:"Avenir Next","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+* { box-sizing:border-box; }
+html { background:var(--paper); color:var(--ink); font:16px/1.55 var(--sans); }
+body { margin:0; }
+a { color:var(--link); }
+a:focus-visible, summary:focus-visible { outline:3px solid var(--link); outline-offset:2px; }
+code { font:0.86em var(--mono); background:#e4e9ef; padding:0.08em 0.3em; border-radius:3px; overflow-wrap:anywhere; }
+pre { font:0.8rem/1.5 var(--mono); background:#1d2532; color:#e6ebf2; padding:0.8rem 1rem; border-radius:6px; overflow-x:auto; }
+pre code { background:none; padding:0; color:inherit; }
+main { max-width:60rem; margin:0 auto; background:var(--sheet); border:1px solid var(--rule); border-radius:8px; padding:1.2rem 1.1rem 2.5rem; }
+@media (min-width:62rem) { main { margin:1.5rem auto; padding:1.6rem 2.4rem 3rem; } }
+h1 { font-size:clamp(1.5rem,4vw,2.2rem); line-height:1.15; margin:0.4rem 0 0.8rem; }
+h2 { font-size:1.3rem; margin:2.2rem 0 0.6rem; padding-top:0.3rem; border-top:2px solid var(--ink); }
+h3 { font-size:1.05rem; margin:1.4rem 0 0.4rem; }
+p, li { max-width:48rem; }
+.meta { display:grid; grid-template-columns:max-content 1fr; gap:0.15rem 0.9rem; font-size:0.92rem; margin:0 0 1rem; }
+.meta dt { color:var(--muted); } .meta dd { margin:0; }
+.status { display:inline-block; background:var(--draft-bg); color:var(--draft); border:1px solid #e3c486; padding:0 0.5rem; border-radius:999px; font-weight:600; }
+.banner { background:#eef2f6; border-left:4px solid var(--ink); padding:0.6rem 0.9rem; font-size:0.93rem; }
+.note { border-radius:6px; padding:0.7rem 0.9rem; margin:1rem 0; font-size:0.95rem; }
+.note.risk { background:var(--reject-bg); border:1px solid #e2b4b4; }
+.note.money { background:var(--draft-bg); border:1px solid #e3c486; }
+.table-wrap { overflow-x:auto; margin:0.8rem 0 1rem; border:1px solid var(--rule); border-radius:6px; }
+table { border-collapse:collapse; width:100%; font-size:0.9rem; background:#fff; }
+th, td { text-align:left; vertical-align:top; padding:0.45rem 0.6rem; border-bottom:1px solid var(--rule); }
+th { background:#eef2f6; white-space:nowrap; } tr:last-child td { border-bottom:0; }
+td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+ol.tasks { list-style:none; padding:0; margin:0; }
+ol.tasks > li { border:1px solid var(--rule); border-left:5px solid #5b6b86; border-radius:6px; background:#fff; padding:0.65rem 0.85rem; margin:0.6rem 0; }
+ol.tasks > li.heavy { border-left-color:#2b3a52; }
+ol.tasks > li.light { border-left-color:var(--accept); }
+ol.tasks > li.gate { border-left-color:var(--draft); }
+.tid { font:600 0.9rem var(--mono); margin-right:0.35rem; }
+.tag { font-size:0.74rem; font-weight:700; padding:0 0.4rem; border-radius:3px; margin-left:0.25rem; vertical-align:1px; }
+.tag.heavy { background:#dde3ec; color:#2b3a52; } .tag.light { background:var(--accept-bg); color:var(--accept); } .tag.gate { background:var(--draft-bg); color:var(--draft); }
+ol.tasks ul { margin:0.4rem 0 0; padding-left:1.1rem; font-size:0.94rem; }
+ol.tasks ul li { margin:0.15rem 0; }
+.who { font-size:0.85rem; color:var(--muted); }
+details { border:1px solid var(--rule); border-radius:6px; padding:0.5rem 0.8rem; margin:0.8rem 0; background:#fff; }
+summary { cursor:pointer; font-weight:600; }
+figure svg { width:100%; height:auto; max-width:56rem; display:block; }
+figcaption { font-size:0.86rem; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+<h1>Faster qwen38-q6 output with speculative decoding: implementation plan v1.0</h1>
+<dl class="meta">
+  <dt>Date</dt><dd>2026-10-31</dd>
+  <dt>Status</dt><dd><span class="status">done 2026-10-31 · image 0.2.5 published</span></dd>
+  <dt>Spec</dt><dd><a href="./spec.html">./spec.html</a> (with approval, fullsend)</dd>
+  <dt>Task</dt><dd>Measure qwen38-q6 output tok/s on a rented RTX 5090. Activate the fastest lossless speculation mode from llama.cpp in the pod agent. Measure again through the <code>lobo up</code> cloud operation. Then publish the image.</dd>
+  <dt>System</dt><dd>A Python bench (<code>tools/spec_bench.py</code>) controls llama-server on a bench pod and on <code>lobo up</code> pods. The Rust agent reads a new <code>Spec</code> mode from <code>LOBO_SPEC</code>. This mode adds <code>--spec-type …</code> flags to the end of the llama-server argv. Tests use the new image digest through <code>lobo up --image</code> before the change to <code>latest-qwen38-q6</code>.</dd>
+  <dt>Software</dt><dd>Rust (lobo-agent, tokio), llama.cpp b11118 llama-server, Python 3 stdlib (bench, unittest), RunPod REST v1, Docker on feesh9, GHCR</dd>
+  <dt>Cost limit</dt><dd>Total RunPod cost ≤ $10 (user, 2026-10-31). Cost in the plan: ~$3–4.</dd>
+</dl>
+<p class="banner">For agents: use superpowers:subagent-driven-development to do one task at a time. Subagents that change Rust code use Opus 5.5. No subagent can rent, publish or deploy an item. Only the orchestrator can do these operations.</p>
+
+<section id="deviations">
+<h2>Changes from the specification</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Specification</th><th>Plan</th><th>Cause of the change</th></tr></thead>
+<tbody>
+<tr><td><code>LlamaArgs</code> connection in <code>runner.rs:74,99</code></td><td>Connect it in <code>crates/lobo-agent/src/pod.rs:449</code></td><td>The pod makes <code>LlamaArgs</code> in this file. <code>runner.rs</code> only holds <code>ctx</code> for status.</td></tr>
+<tr><td><code>results.md</code> in the plan directory, committed</td><td><code>docs/speculative-decoding.md</code> (in version control), JSONL data kept without changes in <code>plans/…/bench/</code></td><td><code>/plans/</code> is gitignored (<code>.gitignore:26</code>).</td></tr>
+<tr><td><code>tools/spec_bench_prompts/</code> fixture files</td><td>Make prompts from repository files at the specified commit <code>7f1ccf4</code> through <code>git show</code>. Record the prompt SHA-256.</td><td>There is no second copy of the 95 KB fixture in git. The prompts stay the same for subsequent tests.</td></tr>
+<tr><td>Cloud check: <code>LOBO_SPEC=off</code> starts on a pod</td><td>The bench pod <code>off</code> config and unit tests do this check.</td><td><code>lobo up</code> cannot set environment variables on the pod. This plan does not add that function.</td></tr>
+<tr><td>Manual OpenCode session</td><td>Workload W6: a tool-call HTTP request from a script. The parser must accept the <code>tool_calls</code> JSON.</td><td>Fullsend operates without a user.</td></tr>
+<tr><td>Checks after release</td><td><code>/rival review</code> + <code>/simplify</code> on the code before the image build</td><td>If a code review finds a necessary correction after publication, a second image and a second e2e with a cost are necessary.</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="flow">
+<h2>Task sequence</h2>
+<figure>
+<svg viewBox="0 0 900 250" role="img" aria-labelledby="ft fd">
+<title id="ft">Execution order</title>
+<desc id="fd">Bench tool first. The bench pod sweep, the before e2e and the Rust implementation then run in parallel. Next come the default choice, review, the image, the after e2e and publication.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#18202c"/></marker></defs>
+<g font-family="Avenir Next, system-ui, sans-serif" font-size="12" fill="#18202c">
+<rect x="5" y="95" width="120" height="50" rx="6" fill="#dfe5ec"/><text x="65" y="117" text-anchor="middle">S0 branch</text><text x="65" y="133" text-anchor="middle">S1 bench tool</text>
+<rect x="170" y="10" width="150" height="50" rx="6" fill="#fbf0dc" stroke="#a86c12"/><text x="245" y="32" text-anchor="middle">S2 bench pod sweep</text><text x="245" y="48" text-anchor="middle" font-size="11" fill="#566173">~$1.5</text>
+<rect x="170" y="95" width="150" height="50" rx="6" fill="#fbf0dc" stroke="#a86c12"/><text x="245" y="117" text-anchor="middle">S3 before e2e</text><text x="245" y="133" text-anchor="middle" font-size="11" fill="#566173">lobo up, latest ~$0.7</text>
+<rect x="170" y="180" width="150" height="50" rx="6" fill="#dde3ec"/><text x="245" y="202" text-anchor="middle">S4 Rust LOBO_SPEC</text><text x="245" y="218" text-anchor="middle" font-size="11" fill="#566173">Opus implementer</text>
+<rect x="370" y="95" width="120" height="50" rx="6" fill="#e2f2ef" stroke="#13756a"/><text x="430" y="117" text-anchor="middle">S5 default +</text><text x="430" y="133" text-anchor="middle">review gates</text>
+<rect x="530" y="95" width="110" height="50" rx="6" fill="#dde3ec"/><text x="585" y="117" text-anchor="middle">S6 image</text><text x="585" y="133" text-anchor="middle" font-size="11" fill="#566173">sha tag only</text>
+<rect x="680" y="95" width="100" height="50" rx="6" fill="#fbf0dc" stroke="#a86c12"/><text x="730" y="117" text-anchor="middle">S7 after e2e</text><text x="730" y="133" text-anchor="middle" font-size="11" fill="#566173">~$0.7</text>
+<rect x="800" y="95" width="95" height="50" rx="6" fill="#e2f2ef" stroke="#13756a"/><text x="847" y="117" text-anchor="middle">S8 publish</text><text x="847" y="133" text-anchor="middle">+ docs</text>
+<path d="M125 110 L166 40" stroke="#18202c" marker-end="url(#a)"/><path d="M125 120 H166" stroke="#18202c" marker-end="url(#a)"/><path d="M125 130 L166 200" stroke="#18202c" marker-end="url(#a)"/>
+<path d="M320 35 L366 110" stroke="#18202c" marker-end="url(#a)"/><path d="M320 205 L366 132" stroke="#18202c" marker-end="url(#a)"/>
+<path d="M490 120 H526" stroke="#18202c" marker-end="url(#a)"/><path d="M640 120 H676" stroke="#18202c" marker-end="url(#a)"/><path d="M780 120 H796" stroke="#18202c" marker-end="url(#a)"/>
+<path d="M320 120 C 600 200, 700 200, 730 148" stroke="#18202c" stroke-dasharray="4 3" fill="none" marker-end="url(#a)"/>
+<text x="560" y="205" font-size="11" fill="#566173">before numbers → comparison</text>
+</g></svg>
+<figcaption>S2, S3 and S4 operate at the same time. Selection of the default mode (S5) must use the S2 results.</figcaption>
+</figure>
+</section>
+
+<section id="file-map">
+<h2>File changes</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Change</th><th>Path</th><th>Function</th></tr></thead>
+<tbody>
+<tr><td>Make</td><td><code>tools/spec_bench.py</code></td><td>Bench CLI: <code>sweep</code>, <code>endpoint</code>, <code>report</code>. Pure functions for result summaries and config selection. RunPod REST helper functions for the bench pod only.</td></tr>
+<tr><td>Make</td><td><code>tools/test_spec_bench.py</code></td><td>unittest for the pure functions, with no network.</td></tr>
+<tr><td>Make</td><td><code>docs/speculative-decoding.md</code></td><td>A table of measured before/after results, the selected mode, the method and rollback.</td></tr>
+<tr><td>Change</td><td><code>crates/lobo-agent/src/process.rs</code></td><td><code>Spec</code> enum, <code>LlamaArgs.spec</code>, the mapping to flags and tests.</td></tr>
+<tr><td>Change</td><td><code>crates/lobo-agent/src/config.rs</code></td><td><code>spec: Spec</code> field, <code>LOBO_SPEC</code> parsing and tests.</td></tr>
+<tr><td>Change</td><td><code>crates/lobo-agent/src/pod.rs</code></td><td>Give <code>cfg.spec</code> to <code>LlamaArgs</code> (line 449).</td></tr>
+<tr><td>Change</td><td><code>crates/lobo-agent/src/testutil.rs</code></td><td>If necessary for the struct literal, add <code>spec</code> to the test config (line 623).</td></tr>
+<tr><td>Change</td><td><code>README.md</code>, <code>CHANGELOG.md</code>, <code>AGENTS.md</code></td><td>Measured speed, new default, image digest.</td></tr>
+<tr><td>Local only</td><td><code>plans/2026-10-31-spec-decoding/bench/*.jsonl</code></td><td>Bench data rows without changes (gitignored directory).</td></tr>
+<tr><td>No changes in this plan</td><td>App, CLI, <code>lobo-core</code>, catalog, Dockerfile, <code>start.sh</code></td><td>No change. llama.cpp stays at b11118. A subsequent plan revision can include DFlash2 (spec P2) only if the gate result is satisfactory.</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="interfaces">
+<h2>Interfaces that must not change</h2>
+<details open><summary>Rust (lobo-agent)</summary>
+<pre><code>// process.rs
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Spec { Off, Mtp, Ngram, #[default] MtpNgram }   // default variant = S5 winner
+impl Spec {
+    pub const VALID: &'static str = "off, mtp, ngram, mtp-ngram";
+    pub fn parse(s: &str) -> Result&lt;Spec, String&gt;;         // "" =&gt; Spec::default(); unknown =&gt; Err naming VALID
+    pub fn as_str(self) -&gt; &amp;'static str;                    // "off" | "mtp" | "ngram" | "mtp-ngram"
+    pub fn args(self) -&gt; Vec&lt;String&gt;;                       // flags appended after "--no-webui"
+}
+pub const MTP_DRAFT_MAX: u32;          // from S2, e.g. 2
+pub const NGRAM_MATCH: u32;            // from S2 (llama.cpp default 24)
+pub const NGRAM_MIN: u32;              // from S2 (default 48)
+pub const NGRAM_MAX: u32;              // from S2 (default 64)
+pub struct LlamaArgs { /* existing fields */ pub spec: Spec }
+
+// config.rs
+pub struct Config { /* existing */ pub spec: Spec }     // from LOBO_SPEC; error text: "config: LOBO_SPEC: want one of off, mtp, ngram, mtp-ngram, got {v:?}"</code></pre>
+</details>
+<details open><summary>Flag mapping (argv suffix without changes)</summary>
+<div class="table-wrap"><table>
+<thead><tr><th><code>Spec</code></th><th>Arguments added to the end of argv</th></tr></thead>
+<tbody>
+<tr><td><code>Off</code></td><td>(nothing)</td></tr>
+<tr><td><code>Mtp</code></td><td><code>--spec-type draft-mtp --spec-draft-n-max {MTP_DRAFT_MAX}</code></td></tr>
+<tr><td><code>Ngram</code></td><td><code>--spec-type ngram-mod --spec-ngram-mod-n-match {NGRAM_MATCH} --spec-ngram-mod-n-min {NGRAM_MIN} --spec-ngram-mod-n-max {NGRAM_MAX}</code></td></tr>
+<tr><td><code>MtpNgram</code></td><td><code>--spec-type draft-mtp,ngram-mod --spec-draft-n-max {MTP_DRAFT_MAX} --spec-ngram-mod-n-match {NGRAM_MATCH} --spec-ngram-mod-n-min {NGRAM_MIN} --spec-ngram-mod-n-max {NGRAM_MAX}</code></td></tr>
+</tbody></table></div>
+<p>If S2 shows that W5 must use a <code>--checkpoint-min-step</code> value, add that value to each non-<code>Off</code> mode. Use the constant <code>CHECKPOINT_MIN_STEP</code>. If this condition does not apply, do not add the constant.</p>
+</details>
+<details open><summary>Python (tools/spec_bench.py)</summary>
+<pre><code>BASE_ARGS: list[str]       # mirrors LlamaArgs::to_args() for Spec::Off, ctx 65536, port 8080
+CONFIGS: dict[str, list[str]]   # name -&gt; extra argv: off, mtp1, mtp2, mtp3, ngram, ngram-small, mtp-ngram, dflash7, dflash15, dflash-ngram, cms1024, cms0
+WORKLOADS: list[Workload]       # W1..W6, each: id, messages (built from git show 7f1ccf4:&lt;path&gt;), max_tokens, tools|None
+def median(xs) -&gt; float
+def summarize(rows) -&gt; dict[(config, workload, mode), Summary]   # Summary: tok_s, prompt_tok_s, ttft_s, accept_rate, n
+def gain(summary, base="off") -&gt; dict
+def gate(summary, chat=("W1","W2"), min_gain=0.10, max_loss=0.05) -&gt; tuple[str|None, list[str]]  # (winner or None, reasons)
+def greedy_matches(rows, base="off") -&gt; dict[config, (matched, total)]
+def report_md(summary, matches, meta) -&gt; str
+CLI: spec_bench.py sweep --configs a,b --out FILE [--keep-pod POD_ID]
+     spec_bench.py endpoint --url URL --key-env VAR --label NAME --out FILE [--sampled]
+     spec_bench.py report FILE... --out docs/speculative-decoding.md</code></pre>
+</details>
+</section>
+
+<section id="tasks">
+<h2>Tasks</h2>
+
+<h3>S0: baseline</h3>
+<ol class="tasks">
+<li id="T0.1" class="gate"><span class="tid">T0.1</span>Branch and baseline <span class="tag gate">gate</span> <span class="who">orchestrator</span>
+<ul>
+<li>On a clean <code>master</code> at <code>7f1ccf4</code>, start <code>git checkout -b feat/spec-decoding master</code>. Then start <code>git push -u origin feat/spec-decoding</code>.</li>
+<li>First, examine the load on feesh9. Then start <code>cd /root/dev/lobocode &amp;&amp; git fetch &amp;&amp; git checkout feat/spec-decoding &amp;&amp; cargo test -p lobo-agent</code>. Result to get: all tests are satisfactory. Record the number of tests.</li>
+</ul></li>
+</ol>
+
+<h3>S1: bench tool</h3>
+<ol class="tasks">
+<li id="T1.1" class="heavy"><span class="tid">T1.1</span>Pure functions, tests first <span class="tag heavy">heavy</span> <span class="who">orchestrator</span>
+<ul>
+<li>First, write <code>tools/test_spec_bench.py</code> for these test cases:
+<ul>
+<li><code>median</code> for lists with an odd or even number of items, and for one-item lists</li>
+<li><code>summarize</code> removes warm-up rows</li>
+<li><code>gate</code> selects the config that increases chat speed the most</li>
+<li><code>gate</code> rejects a config if chat output is &lt;10% faster</li>
+<li><code>gate</code> rejects a config if a workload is &gt;5% slower</li>
+<li><code>gate</code> rejects a config if its greedy match rate is below 18/20 (adjusted for the number of test runs)</li>
+<li><code>greedy_matches</code> gives the correct totals</li>
+</ul></li>
+<li>Start <code>python3 tools/test_spec_bench.py</code>. Result to get: failure because there is no module.</li>
+<li>Write the pure functions. Do the tests again. Result to get: <code>OK</code>.</li>
+</ul></li>
+<li id="T1.2" class="heavy"><span class="tid">T1.2</span>I/O layer: workloads, sweep, endpoint, report <span class="tag heavy">heavy</span> <span class="who">orchestrator</span>
+<ul>
+<li>Workloads, all prompts from <code>git show 7f1ccf4:…</code>:
+<ul>
+<li>W1: prose, 512 tokens</li>
+<li>W2: new Go function, 512 tokens</li>
+<li>W3: <code>crates/lobo-agent/src/process.rs</code>, "rename <code>last_line</code> to <code>last_error_line</code>, return the complete file", 3,072 tokens</li>
+<li>W4: <code>docs/implementation-mistakes.md</code> + <code>docs/idea.md</code> + <code>README.md</code> + <code>crates/lobo-core/src/control/up.rs</code> (~25k tokens), "quote verbatim every paragraph that mentions RunPod", 512 tokens</li>
+<li>W5: the same document, a second prompt for text without changes, 256 tokens</li>
+<li>W6: a tool-call HTTP request with one <code>read_file</code> tool</li>
+</ul></li>
+<li>The HTTP requests use <code>POST /v1/chat/completions</code> without streaming. Record these data from the response:
+<ul>
+<li><code>timings.predicted_per_second</code></li>
+<li><code>prompt_per_second</code></li>
+<li><code>prompt_ms</code> (server-side TTFT)</li>
+<li><code>draft_n</code> and <code>draft_n_accepted</code></li>
+<li>the SHA-256 of the text</li>
+</ul></li>
+<li>Greedy decoding: <code>temperature 0</code>. Sampling (<code>--sampled</code>): <code>temperature 0.7, top_p 0.8, top_k 20</code>. We think that Qwen recommends these sampling parameters for non-thinking mode because the GGUF has no generation config. The seed is 42.</li>
+<li>For each config, do these sweep steps:
+<ul>
+<li>Through ssh, start <code>pkill -x llama-server</code>.</li>
+<li>Start <code>/app/llama-server BASE_ARGS + CONFIGS[c]</code> with <code>nohup</code>.</li>
+<li>Wait for <code>/health</code> through an <code>ssh -L</code> tunnel (timeout 300 s).</li>
+<li>Do one W1 warm-up. Then do W1–W6 two times each.</li>
+<li>Record <code>nvidia-smi --query-gpu=memory.used</code>.</li>
+<li>If a failure occurs, keep the last lines of the server log.</li>
+</ul></li>
+<li>Helper functions for the bench pod:
+<ul>
+<li><code>rent()</code>: RunPod REST <code>POST /pods</code>
+<ul>
+<li>image <code>ghcr.io/1905/lobocode@sha256:3d6461…fc0a</code></li>
+<li><code>dockerEntrypoint</code> = bash script that writes <code>$PUBLIC_KEY</code> to <code>/root/.ssh/authorized_keys</code>. The script starts <code>ssh-keygen -A</code>. Then the script starts <code>/usr/sbin/sshd</code>. Then the script starts <code>sleep infinity</code>.</li>
+<li>RTX 5090, COMMUNITY, <code>volumeInGb 0</code>, <code>containerDiskInGb 80</code>, <code>ports ["22/tcp"]</code></li>
+</ul></li>
+<li><code>terminate()</code> in <code>finally</code></li>
+<li>Cost log: <code>costPerHr</code> × time between start and stop. Write the cost to the JSONL metadata line.</li>
+</ul></li>
+<li>Start <code>python3 tools/spec_bench.py --help</code>. Do the unit tests. Result to get: the command and the tests are satisfactory.</li>
+</ul></li>
+</ol>
+
+<h3>S2: bench pod sweep (at the same time as S3, S4)</h3>
+<ol class="tasks">
+<li id="T2.1" class="gate"><span class="tid">T2.1</span>Rent the pod and prepare the weights <span class="tag gate">gate: cost</span> <span class="who">orchestrator</span>
+<ul>
+<li>Rent the pod. Wait for SSH.</li>
+<li>Download on the pod:
+<ul>
+<li><code>apt-get install -y aria2</code></li>
+<li>Use <code>aria2c -x16 -s16</code> to download the catalog <code>hf_url()</code> to <code>/models/</code>. Then start <code>sha256sum</code>. The digest must be equal to <code>a5c15951…2492</code>.</li>
+<li>Download <code>Qwen3.8-27B-DFlash2-Q8_0.gguf</code> from <code>z-lab/Qwen3.8-27B-DFlash2-GGUF</code>. Make sure that the file digest is equal to its HF LFS sha256 (from <code>/api/models/…?blobs=true</code>).</li>
+</ul></li>
+<li>If SSH is not available on the pod in 15 min, remove the pod. Then retry one time in a different data center.</li>
+</ul></li>
+<li id="T2.2" class="heavy"><span class="tid">T2.2</span>Batch A <span class="tag heavy">heavy</span> <span class="who">orchestrator</span>
+<ul>
+<li>Start <code>sweep --configs off,mtp1,mtp2,mtp3,ngram,ngram-small,dflash7,dflash15</code>.</li>
+<li>If the model load for <code>off</code> does not complete at ctx 65,536, stop the sweep. Write a report of this baseline bug.</li>
+<li>If a speculation mode config does not start, record the last lines of the log. Then continue.</li>
+</ul></li>
+<li id="T2.3" class="heavy"><span class="tid">T2.3</span>Batch B: modes together <span class="tag heavy">heavy</span> <span class="who">orchestrator</span>
+<ul>
+<li>Use <code>mtp-ngram</code> (the best MTP n plus the best ngram set) and <code>dflash-ngram</code>.</li>
+<li>Only if W5 TTFT &gt; 2 s, use <code>cms1024</code> and <code>cms0</code>.</li>
+<li>Do <code>--sampled</code> W1/W2 tests for <code>off</code> and the best two configs.</li>
+</ul></li>
+<li id="T2.4" class="gate"><span class="tid">T2.4</span>Remove the pod and do the check <span class="tag gate">gate</span> <span class="who">orchestrator</span>
+<ul>
+<li>Remove the pod. Make sure that <code>GET /pods</code> shows no bench pod.</li>
+<li>Write the cost in the metadata line.</li>
+<li>Start <code>report</code> to make a draft table.</li>
+</ul></li>
+</ol>
+
+<h3>S3: before e2e through lobo up (at the same time as S2, S4)</h3>
+<ol class="tasks">
+<li id="T3.1" class="light"><span class="tid">T3.1</span>CLI binary <span class="tag light">light</span> <span class="who">orchestrator</span>
+<ul>
+<li>On Air, start <code>git fetch</code>. Then checkout <code>7f1ccf4</code>. Then start <code>cargo build --release -p lobo-cli</code>.</li>
+<li>Make a copy of the binary at <code>/tmp/lobo-bench/lobo</code> on this Mac (results only, no target directory).</li>
+</ul></li>
+<li id="T3.2" class="gate"><span class="tid">T3.2</span>Before test <span class="tag gate">gate: cost</span> <span class="who">orchestrator</span>
+<ul>
+<li>Make an isolated config: <code>XDG_CONFIG_HOME=/tmp/lobo-bench/cfg</code> (directory mode 0700). Make a copy of only <code>RUNPOD_API_KEY</code> and <code>LOBO_API_KEY</code> from <code>~/.config/lobo/config.env</code>. Do not change the user's config.</li>
+<li>Start <code>lobo up --plain --idle-min 20</code>. This command gets the digest of the current <code>latest-qwen38-q6</code>. Record the digest.</li>
+<li>Start <code>spec_bench.py endpoint --label before --url http://127.0.0.1:8933/v1</code>. Then start the same command again with <code>--sampled</code>.</li>
+<li>Start <code>lobo down</code>. Then make sure that RunPod has no lobo pod.</li>
+</ul></li>
+</ol>
+
+<h3>S4: Rust LOBO_SPEC (at the same time as S2, S3)</h3>
+<ol class="tasks">
+<li id="T4.1" class="heavy"><span class="tid">T4.1</span><code>Spec</code> in process.rs, tests first <span class="tag heavy">heavy</span> <span class="who">Opus implementer</span>
+<ul>
+<li>First, write these tests:
+<ul>
+<li>A table test <code>spec_args</code> for all four variants. Use the argv from the mapping above without changes.</li>
+<li><code>Spec::parse</code>: <code>""</code> gives the default. The four names stay the same after conversion through <code>as_str</code> and back. <code>"MTP"</code> and <code>"bogus"</code> give an error that contains <code>Spec::VALID</code>.</li>
+<li>Change <code>llama_args</code> to use <code>spec: Spec::Off</code> and the same argv as before the change.</li>
+<li>Add <code>llama_args_with_spec</code>. The <code>MtpNgram</code> argv must be equal to the argv before the change plus <code>Spec::MtpNgram.args()</code>.</li>
+</ul></li>
+<li>Initially, the constants use the llama.cpp defaults (<code>MTP_DRAFT_MAX 3</code>, <code>24/48/64</code>). T5.1 sets the measured values.</li>
+</ul></li>
+<li id="T4.2" class="heavy"><span class="tid">T4.2</span><code>LOBO_SPEC</code> in config.rs <span class="tag heavy">heavy</span> <span class="who">Opus implementer</span>
+<ul>
+<li>Next to <code>LOBO_CTX</code> (<code>config.rs:125</code>), use <code>Spec::parse</code>. Change an error to <code>Error::msg("config: LOBO_SPEC: …")</code>.</li>
+<li>Tests: an unset variable gives the default. <code>off</code> gives <code>Spec::Off</code>. <code>bogus</code> gives the error message.</li>
+</ul></li>
+<li id="T4.3" class="light"><span class="tid">T4.3</span>Connect pod.rs and testutil <span class="tag light">light</span> <span class="who">Opus implementer</span>
+<ul><li><code>pod.rs:449</code>: set <code>spec: cfg.spec</code>. Correct each <code>LlamaArgs { … }</code> and <code>Config { … }</code> literal (<code>rg -n "LlamaArgs \{|Config \{" crates/lobo-agent</code>).</li></ul></li>
+<li id="T4.4" class="gate"><span class="tid">T4.4</span>Do checks on feesh9 <span class="tag gate">gate</span> <span class="who">orchestrator</span>
+<ul>
+<li>Push the branch.</li>
+<li>On feesh9:
+<ul>
+<li><code>cargo fmt --check</code></li>
+<li><code>cargo clippy -p lobo-agent --all-targets -- -D warnings</code></li>
+<li><code>cargo test -p lobo-agent</code></li>
+</ul></li>
+<li>All checks must be satisfactory. The number of tests is equal to the T0.1 total plus the new tests.</li>
+</ul></li>
+</ol>
+
+<h3>S5: select the default, then do the code review checks</h3>
+<ol class="tasks">
+<li id="T5.1" class="heavy"><span class="tid">T5.1</span>Apply the selected S2 config <span class="tag heavy">heavy</span> <span class="who">orchestrator</span>
+<ul>
+<li>Use <code>gate()</code> on the sweep. Then use the result as follows:
+<ul>
+<li>If the selected config is in {<code>mtp</code>, <code>ngram</code>, <code>mtp-ngram</code>}, set <code>#[default]</code> and the constants. Only if the S2 results show that a change is necessary, change the <code>CHECKPOINT_MIN_STEP</code> rule.</li>
+<li>If no config is satisfactory, use <code>#[default] Off</code>. The feature then stays off. Only a developer can turn it on with <code>LOBO_SPEC</code>; users have no control for it. Record this in the report.</li>
+<li>If the selected <code>dflash*</code> config is ≥15% faster than the best MTP, keep the best non-DFlash default. Include P2 as a plan v2.0 proposal in the report at the end of the work.</li>
+</ul></li>
+<li>Do T4.4 again.</li>
+</ul></li>
+<li id="T5.2" class="gate"><span class="tid">T5.2</span><code>/rival review</code> on <code>master..feat/spec-decoding</code> <span class="tag gate">gate</span> <span class="who">orchestrator</span>
+<ul>
+<li>Show the full output without changes.</li>
+<li>Examine each code review result. If a result is correct, correct the error. Do T4.4 again.</li>
+<li>If rival does not operate correctly, do a self-review with <code>code-review</code>. Record that you used this method.</li>
+</ul></li>
+<li id="T5.3" class="gate"><span class="tid">T5.3</span><code>/simplify</code> <span class="tag gate">gate</span> <span class="who">orchestrator</span>
+<ul><li>Apply the cleanup changes. Do T4.4 again. Push the branch.</li></ul></li>
+</ol>
+
+<h3>S6: candidate image</h3>
+<ol class="tasks">
+<li id="T6.1" class="heavy"><span class="tid">T6.1</span>Make the image and push only the sha tag <span class="tag heavy">heavy</span> <span class="who">orchestrator</span>
+<ul>
+<li>On feesh9, at branch head <code>$SHA</code>:
+<pre><code>docker build -f docker/pod/Dockerfile --target thin \
+  --build-arg LLAMA_IMAGE=ghcr.io/ggml-org/llama.cpp:server-cuda-b11118 \
+  --build-arg VERSION=0.2.5 --build-arg GIT_SHA=$SHA \
+  --label org.opencontainers.image.revision=$SHA \
+  --label org.opencontainers.image.source=https://github.com/1905/lobocode \
+  --label io.lobocode.model=qwen38-q6 \
+  -t ghcr.io/1905/lobocode:sha-${SHA:0:12}-qwen38-q6 .</code></pre></li>
+<li>Smoke test: the output of <code>docker run --rm --entrypoint /app/llama-server IMAGE --help | grep -c draft-mtp</code> must be ≥1. <code>/lobo/lobo-agent version</code> must operate.</li>
+<li>Push only the <code>sha-…</code> tag. Record the digest. <code>latest-qwen38-q6</code> does not change.</li>
+<li>Get the manifest and config blob without authentication. Make sure that the registry config labels are the same as the three labels above.</li>
+</ul></li>
+</ol>
+
+<h3>S7: after e2e through lobo up</h3>
+<ol class="tasks">
+<li id="T7.1" class="gate"><span class="tid">T7.1</span>After test <span class="tag gate">gate: cost</span> <span class="who">orchestrator</span>
+<ul>
+<li>Start <code>lobo up --plain --idle-min 20 --image ghcr.io/1905/lobocode@&lt;candidate digest&gt;</code>. Use the same CLI binary and isolated config as T3.2.</li>
+<li>Make sure that the pod log shows <code>--spec-type</code> in the llama-server command line.</li>
+<li>Start <code>endpoint --label after</code> in plain mode. Then start the same command with <code>--sampled</code>.</li>
+<li>Start <code>lobo down</code>. Then make sure that RunPod has no lobo pod.</li>
+<li>All these conditions are necessary to accept the result:
+<ul>
+<li>The system reaches Ready at ctx 65,536.</li>
+<li>The parser accepts the W6 tool call.</li>
+<li>The median chat speed in tok/s is ≥ before × 1.10 (or the T5.1 "no winner" path applies).</li>
+<li>W1–W6 complete.</li>
+</ul></li>
+<li>If a failure occurs, do not publish. Correct the error. Then do S6–S7 one more time without a total cost above the limit.</li>
+</ul></li>
+</ol>
+
+<h3>S8: publish and write the documents</h3>
+<ol class="tasks">
+<li id="T8.1" class="heavy"><span class="tid">T8.1</span>Documents <span class="tag heavy">heavy</span> <span class="who">orchestrator</span>
+<ul>
+<li>Start <code>report</code> to write <code>docs/speculative-decoding.md</code>:
+<ul>
+<li>the before/after table (from <code>lobo up</code>)</li>
+<li>the sweep table</li>
+<li>acceptance rates</li>
+<li>VRAM</li>
+<li>the number of greedy matches</li>
+<li>the cost</li>
+<li>the rollback command</li>
+</ul></li>
+<li>Change the README TL;DR speed line. Change the CHANGELOG entry. Change the AGENTS.md note about the completed work.</li>
+<li>Commit the changes. Push the branch.</li>
+</ul></li>
+<li id="T8.2" class="gate"><span class="tid">T8.2</span>Merge and publish <span class="tag gate">gate</span> <span class="who">orchestrator</span>
+<ul>
+<li>Start <code>git checkout master &amp;&amp; git merge --ff-only feat/spec-decoding &amp;&amp; git push</code>.</li>
+<li>On feesh9, use <code>docker tag</code> to tag the candidate from the tests (the same digest) as <code>latest-qwen38-q6</code>. Then start <code>docker push</code>.</li>
+<li>Get the digest without authentication (the same HTTP request as <code>PublicImages::latest</code>). The digest must be equal to the candidate digest.</li>
+<li>If rollback is necessary, tag <code>ghcr.io/1905/lobocode@sha256:3d64617400c59420f0aea21a0bb6c0ac83376a8ee377dd2710ef63d5fc41fc0a</code> again as <code>latest-qwen38-q6</code>.</li>
+</ul></li>
+<li id="T8.3" class="light"><span class="tid">T8.3</span>Complete the work <span class="tag light">light</span> <span class="who">orchestrator</span>
+<ul>
+<li>Add notes about the completed changes to the specification.</li>
+<li>Set the plan status to <code>done</code>. Move the feature directory to <code>plans/done/</code>.</li>
+<li>Move <code>/tmp/lobo-bench</code> to the trash.</li>
+<li>Remove the watchdog cron.</li>
+<li>Send the report at the end of the work. Use <code>/notify</code>.</li>
+</ul></li>
+</ol>
+</section>
+
+<section id="money">
+<h2>Cost control</h2>
+<div class="note money">Cost limit: $10. Cost in the plan: S2 ~1.5 h + S3 ~0.7 h + S7 ~0.7 h at $0.69–0.99/h ≈ $2–3.5. For each rental, record <code>costPerHr</code> and the start and stop times. Before each new rental, compare the total cost plus the cost in the plan for that rental with $8. If the sum is above this limit, do not get more rental pods. Write a report.</div>
+<div class="note risk">
+<strong>Risks</strong>
+<ul>
+<li>It is possible that llama.cpp rejects speculative decoding on this hybrid recurrent model. Batch A shows this in minutes. The T5.1 "no winner" path applies to this result.</li>
+<li>A slow download of weights on a community host. Use the T2.1 stop rule and <code>aria2c</code> to control this risk.</li>
+<li>The host for the T3/T7 data is different from the S2 host. Compare the before/after pair only with each other. Use the sweep only to select the config.</li>
+</ul>
+</div>
+</section>
+
+<section id="selfcheck">
+<h2>Self-check</h2>
+<ul>
+<li>Spec goal 1 (baseline): T2.2 <code>off</code> and T3.2. Goal 2 (≥10% chat): T5.1 and T7.1. Goal 3 (quoting report): W3/W4 in T8.1. Goal 4 (greedy 18/20): <code>gate()</code>. Goal 5 (start at 65,536 ctx): T2.2 and T7.1. Goal 6 (<code>LOBO_SPEC</code>): T4.1–T4.3.</li>
+<li>The names stay the same in all tasks: <code>Spec</code>, <code>Spec::parse</code>, <code>Spec::args</code>, <code>MTP_DRAFT_MAX</code>, <code>NGRAM_MATCH/MIN/MAX</code>, <code>LOBO_SPEC</code>, <code>spec_bench.py</code> subcommands <code>sweep</code>, <code>endpoint</code> and <code>report</code>.</li>
+<li>No subagent rents a pod. No task writes secrets into files in version control.</li>
+</ul>
+</section>
+</main>
+</body>
+</html>

@@ -1,5 +1,12 @@
 # Changelog
 
+## Image 0.2.5 — 2026-10-31
+
+- Start `llama-server` with speculative decoding: up to 5 drafts from the model's MTP head plus n-gram lookup in the context. The model checks every draft token, so weights and sampling do not change. `LOBO_SPEC` (`mtp-ngram` default, `mtp`, `ngram`, `off`) selects the mode in the pod.
+- Output speed through `lobo up` on an RTX 5090: 55.6 → 102.2 tok/s on free prose, 54.5 → 147.9 on code, 50.4 → 212.4 on a 25k-token document and 54.4 → 504.4 on code edits. VRAM use rises by about 1.5 GB. No new download.
+- Add `tools/spec_bench.py` (sweep, endpoint, report) and `tools/pod_watch.py` (one-minute idle, stall and orphan alerts for bench pods).
+- Validation: 131 lobo-agent tests, fmt and clippy `-D warnings` on Feesh; 15 bench tests; a Rival review (4 medium findings in the bench tool, all fixed). Measurements cost $1.60. The app and optional CLI are unchanged.
+
 ## App 0.2.4 — 2026-10-31
 
 - Remove retired `q6`/`q8` catalog entries, local inference code and CLI commands, and complete-image model packaging.

@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spec: faster qwen38-q6 output with speculative decoding</title>
+<style>
+:root {
+  --paper: #e9edf1;
+  --sheet: #fbfcfd;
+  --ink: #18202c;
+  --muted: #566173;
+  --rule: #c9d1da;
+  --accept: #13756a;
+  --accept-bg: #e2f2ef;
+  --draft: #a86c12;
+  --draft-bg: #fbf0dc;
+  --reject: #a23b3b;
+  --reject-bg: #f8e4e4;
+  --link: #24508f;
+  --p0: #5b6b86;
+  --p1: #13756a;
+  --p2: #a86c12;
+  --sans: "Avenir Next", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); color: var(--ink); font: 16px/1.55 var(--sans); }
+body { margin: 0; }
+a { color: var(--link); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; border-radius: 2px; }
+code { font: 0.86em var(--mono); background: #e4e9ef; padding: 0.08em 0.3em; border-radius: 3px; overflow-wrap: anywhere; }
+pre { font: 0.82rem/1.5 var(--mono); background: #1d2532; color: #e6ebf2; padding: 0.9rem 1rem; border-radius: 6px; overflow-x: auto; }
+pre code { background: none; padding: 0; color: inherit; }
+
+.layout { max-width: 76rem; margin: 0 auto; padding: 0 1rem 4rem; }
+.toc { display: none; }
+main { background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; padding: 1.25rem 1.1rem 2rem; }
+main > section { max-width: 46rem; }
+
+header.hero { padding: 1.5rem 0 1rem; max-width: 46rem; }
+.hero h1 { font-size: clamp(1.7rem, 4.5vw, 2.6rem); line-height: 1.12; letter-spacing: -0.015em; margin: 0 0 0.6rem; font-weight: 650; }
+.hero p.lede { font-size: 1.08rem; color: var(--muted); margin: 0 0 1rem; max-width: 40rem; }
+.meta { display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 0.9rem; font-size: 0.9rem; margin: 0; }
+.meta dt { color: var(--muted); }
+.meta dd { margin: 0; }
+.status { display: inline-block; background: var(--draft-bg); color: var(--draft); border: 1px solid #e3c486; padding: 0 0.5rem; border-radius: 999px; font-weight: 600; }
+
+figure.strip { margin: 1.4rem 0 0.4rem; }
+figure.strip svg { width: 100%; height: auto; display: block; }
+figure.strip figcaption { font-size: 0.86rem; color: var(--muted); margin-top: 0.4rem; }
+
+h2 { font-size: 1.35rem; letter-spacing: -0.01em; margin: 2.4rem 0 0.7rem; padding-top: 0.3rem; border-top: 2px solid var(--ink); }
+h3 { font-size: 1.05rem; margin: 1.6rem 0 0.4rem; }
+p, li { max-width: 44rem; }
+ol.problems > li, ol.goals > li { margin-bottom: 0.7rem; }
+.cite { font-size: 0.85rem; color: var(--muted); }
+
+.tldr { display: grid; gap: 0.8rem; }
+.phase { border: 1px solid var(--rule); border-left: 6px solid var(--p0); border-radius: 6px; padding: 0.75rem 0.9rem; background: #fff; }
+.phase.p1 { border-left-color: var(--p1); }
+.phase.p2 { border-left-color: var(--p2); }
+.phase h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+.phase dl { display: grid; grid-template-columns: 6.2rem 1fr; gap: 0.2rem 0.6rem; margin: 0; font-size: 0.94rem; }
+.phase dt { color: var(--muted); }
+.phase dd { margin: 0; }
+.note { border-radius: 6px; padding: 0.7rem 0.9rem; margin: 1rem 0; font-size: 0.95rem; }
+.note.quality { background: var(--accept-bg); border: 1px solid #a9d6cd; }
+.note.risk { background: var(--reject-bg); border: 1px solid #e2b4b4; }
+.note.guess { background: var(--draft-bg); border: 1px solid #e3c486; }
+.note strong:first-child { display: block; margin-bottom: 0.2rem; }
+
+.table-wrap { overflow-x: auto; margin: 0.8rem 0 1rem; border: 1px solid var(--rule); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; background: #fff; }
+th, td { text-align: left; vertical-align: top; padding: 0.5rem 0.65rem; border-bottom: 1px solid var(--rule); }
+th { background: #eef2f6; font-weight: 600; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.score { font-weight: 700; white-space: nowrap; }
+.score.hi { color: var(--accept); }
+.score.mid { color: var(--draft); }
+.score.lo { color: var(--reject); }
+tr.pick td { background: var(--accept-bg); }
+
+details { border: 1px solid var(--rule); border-radius: 6px; padding: 0.5rem 0.8rem; margin: 0.8rem 0; background: #fff; }
+summary { cursor: pointer; font-weight: 600; }
+details[open] summary { margin-bottom: 0.5rem; }
+
+figure.flow svg { width: 100%; height: auto; max-width: 44rem; display: block; }
+figure.flow figcaption { font-size: 0.86rem; color: var(--muted); }
+
+ul.tasks { padding-left: 1.2rem; }
+.tag { font-size: 0.75rem; font-weight: 700; padding: 0 0.4rem; border-radius: 3px; margin-left: 0.3rem; vertical-align: 1px; }
+.tag.heavy { background: #dde3ec; color: #2b3a52; }
+.tag.light { background: var(--accept-bg); color: var(--accept); }
+.tag.gate { background: var(--draft-bg); color: var(--draft); }
+
+@media (min-width: 62rem) {
+  .layout { display: grid; grid-template-columns: 13rem 1fr; gap: 1.5rem; padding-top: 1.5rem; }
+  .toc { display: block; position: sticky; top: 1rem; align-self: start; font-size: 0.88rem; }
+  .toc ol { list-style: none; padding: 0; margin: 0; }
+  .toc li { margin: 0.2rem 0; }
+  .toc a { color: var(--muted); text-decoration: none; }
+  .toc a:hover { color: var(--ink); text-decoration: underline; }
+  main { padding: 1.5rem 2.4rem 3rem; }
+}
+@media print { .toc { display: none; } html { background: #fff; } main { border: 0; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="Sections">
+  <ol>
+    <li><a href="#tldr">TL;DR</a></li>
+    <li><a href="#problems">Problems</a></li>
+    <li><a href="#goals">Goals</a></li>
+    <li><a href="#non-goals">Non-goals</a></li>
+    <li><a href="#source">What HyperQwen does</a></li>
+    <li><a href="#options">Options</a></li>
+    <li><a href="#speculation">Speculation in llama.cpp</a></li>
+    <li><a href="#quality">Quality</a></li>
+    <li><a href="#memory">VRAM budget</a></li>
+    <li><a href="#bench">Benchmark (P0)</a></li>
+    <li><a href="#switch">LOBO_SPEC switch (P1)</a></li>
+    <li><a href="#dflash">DFlash2 drafter (P2)</a></li>
+    <li><a href="#files">File-level changes</a></li>
+    <li><a href="#tests">Tests</a></li>
+    <li><a href="#failures">Failure modes</a></li>
+    <li><a href="#out-of-scope">Out of scope</a></li>
+    <li><a href="#rollout">Rollout</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>Faster qwen38-q6 output, same answers</h1>
+  <p class="lede">Let the 27B model check several guessed tokens in one pass instead of writing one token per pass. The guesses come from the MTP head already inside our Q6_K file and from text already in the prompt.</p>
+  <dl class="meta">
+    <dt>Date</dt><dd>2026-10-31</dd>
+    <dt>Scope</dt><dd><code>/Users/kass/dev/lobocode</code>, cloud pod agent (<code>crates/lobo-agent</code>), bench tool (<code>tools/</code>)</dd>
+    <dt>Assumes</dt><dd>The qwen38-q6-only PR (<code>review/pr-2</code>) is merged: one model, RTX 5090 only, llama.cpp <code>b11118</code></dd>
+    <dt>Source</dt><dd><a href="https://github.com/syv-ai/HyperQwen">syv-ai/HyperQwen</a> (renamed from <code>syv-ai/qwen38-27b-rtx3090</code>)</dd>
+    <dt>Status</dt><dd><span class="status">done 2026-10-31 · shipped in image 0.2.5</span></dd>
+    <dt>Shipped</dt><dd>Option A with <code>MTP_DRAFT_MAX=5</code> (the spec assumed 3; the sweep picked 5). DFlash2 (option B) is not shipped: slower on long documents and needs a 2.06 GB file. The ≥90% greedy-match gate was replaced by: W2–W5 identical, tool calls parse. See <a href="results.html">results.html</a>.</dd>
+  </dl>
+
+  <figure class="strip">
+    <svg viewBox="0 0 720 150" role="img" aria-labelledby="strip-title strip-desc">
+      <title id="strip-title">One verify pass of the 27B model</title>
+      <desc id="strip-desc">Five accepted tokens come from one pass. The draft offers six tokens; the model accepts four, rejects the fifth and writes its own token there.</desc>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="12">
+        <text x="0" y="16" fill="#566173">already written</text>
+        <rect x="0" y="26" width="64" height="34" rx="4" fill="#dfe5ec"/><text x="32" y="48" text-anchor="middle" fill="#18202c">fn</text>
+        <rect x="70" y="26" width="64" height="34" rx="4" fill="#dfe5ec"/><text x="102" y="48" text-anchor="middle" fill="#18202c">parse</text>
+        <rect x="140" y="26" width="64" height="34" rx="4" fill="#dfe5ec"/><text x="172" y="48" text-anchor="middle" fill="#18202c">(</text>
+
+        <text x="230" y="16" fill="#a86c12">drafted by MTP head or prompt lookup</text>
+        <rect x="230" y="26" width="64" height="34" rx="4" fill="#e2f2ef" stroke="#13756a"/><text x="262" y="48" text-anchor="middle" fill="#13756a">input</text>
+        <rect x="300" y="26" width="64" height="34" rx="4" fill="#e2f2ef" stroke="#13756a"/><text x="332" y="48" text-anchor="middle" fill="#13756a">:</text>
+        <rect x="370" y="26" width="64" height="34" rx="4" fill="#e2f2ef" stroke="#13756a"/><text x="402" y="48" text-anchor="middle" fill="#13756a">&amp;str</text>
+        <rect x="440" y="26" width="64" height="34" rx="4" fill="#e2f2ef" stroke="#13756a"/><text x="472" y="48" text-anchor="middle" fill="#13756a">)</text>
+        <rect x="510" y="26" width="64" height="34" rx="4" fill="#f8e4e4" stroke="#a23b3b" stroke-dasharray="4 3"/><text x="542" y="48" text-anchor="middle" fill="#a23b3b">{</text>
+        <rect x="580" y="26" width="64" height="34" rx="4" fill="#fbf0dc" stroke="#a86c12" stroke-dasharray="4 3" opacity="0.5"/><text x="612" y="48" text-anchor="middle" fill="#a86c12" opacity="0.6">let</text>
+
+        <rect x="510" y="72" width="64" height="34" rx="4" fill="#13756a"/><text x="542" y="94" text-anchor="middle" fill="#fff">-&gt;</text>
+        <path d="M542 62 v8" stroke="#a23b3b" stroke-width="2"/>
+
+        <path d="M230 120 h344" stroke="#18202c" stroke-width="1.5"/>
+        <path d="M230 114 v12 M574 114 v12" stroke="#18202c" stroke-width="1.5"/>
+        <text x="402" y="142" text-anchor="middle" fill="#18202c" font-family="Avenir Next, system-ui, sans-serif" font-size="13">one pass of the 27B model = 5 tokens out, not 1</text>
+      </g>
+    </svg>
+    <figcaption>Green: draft token equals what the 27B model samples, so we keep it. Red: first mismatch. The 27B model writes its own token there (<code>-&gt;</code>), and the rest of the draft is thrown away.</figcaption>
+  </figure>
+</header>
+
+<section id="tldr">
+<h2>TL;DR</h2>
+<div class="tldr">
+  <article class="phase p0">
+    <h3>P0: measure before we change anything</h3>
+    <dl>
+      <dt>What</dt><dd>A new <code>tools/spec_bench.py</code> measures output tok/s, draft acceptance and time to first token on one rented 5090. It compares speculation off against MTP, prompt lookup and DFlash2.</dd>
+      <dt>Why</dt><dd>We have no real output speed today. The only number is 45.271 tok/s over 2 tokens.</dd>
+      <dt>You do</dt><dd>Approve ~1–2 h of 5090 rental (~$1–2 at the $0.69–0.99/h we saw).</dd>
+      <dt>Not</dt><dd>No change to the app, the agent or the image.</dd>
+    </dl>
+  </article>
+  <article class="phase p1">
+    <h3>P1: turn on MTP + prompt lookup in llama-server</h3>
+    <dl>
+      <dt>What</dt><dd>The pod agent starts <code>llama-server</code> with <code>--spec-type draft-mtp,ngram-mod</code> (or the P0 winner). The MTP head is already inside our Q6_K file, so nothing new to download. <code>LOBO_SPEC=off</code> switches it off.</dd>
+      <dt>Why</dt><dd>Today every output token costs one full pass over 22.4 GB of weights.</dd>
+      <dt>You do</dt><dd>Nothing. If P0 shows less than +10% on chat, I drop P1 and tell you.</dd>
+      <dt>Not</dt><dd>Same model file, same Q6_K, same llama.cpp b11118, same output quality. No vLLM, no 4-bit, no UI change.</dd>
+    </dl>
+  </article>
+  <article class="phase p2">
+    <h3>P2: DFlash2 drafter, only if P0 says so</h3>
+    <dl>
+      <dt>What</dt><dd>Add the 2.06 GB <code>Qwen3.8-27B-DFlash2-Q8_0.gguf</code> drafter as a second verified weight file and use <code>--spec-type draft-dflash,ngram-mod</code>.</dd>
+      <dt>Why</dt><dd>Only worth it if P0 shows DFlash2 is at least 15% faster than MTP on chat.</dd>
+      <dt>You do</dt><dd>Go/no-go on the P0 table. Go means a plan revision; the weight pipeline gets a second file.</dd>
+      <dt>Not</dt><dd>Not built when the gain is below 15%.</dd>
+    </dl>
+  </article>
+</div>
+<div class="note quality">
+  <strong>Quality stays the same.</strong>
+  llama.cpp keeps a draft token only when the 27B model's own sample at that position is the same token (<code>common/sampling.cpp:678-695</code> at b11118). Output comes from the same Q6_K model as today. The quality loss in HyperQwen comes from its 4-bit weights, and we do not take those.
+</div>
+</section>
+
+<section id="problems">
+<h2>Problems</h2>
+<ol class="problems">
+  <li><strong>One token per full pass.</strong> <code>llama-server</code> starts with no speculation flags, so each output token reads all 22,430,999,840 bytes of weights once. On a 5090 (~1.79 TB/s) that caps output near 80 tok/s, before any overhead (estimate, not measured).
+    <div class="cite"><code>crates/lobo-agent/src/process.rs:37-70</code>, <code>crates/lobo-proto/catalog.json</code> (<code>qwen38-q6</code> size)</div></li>
+  <li><strong>The MTP head ships but stays unused.</strong> Our Q6_K GGUF has the <code>qwen35.nextn_predict_layers</code> key and a <code>blk.N.nextn.*</code> block. llama.cpp loads that block only when MTP is on (<code>mtp_flags = !ml.load_mtp ? TENSOR_SKIP : 0</code>).
+    <div class="cite">GGUF header of <code>Huihui-Qwen3.8-27B-abliterated-Q6_K.gguf</code>; llama.cpp <code>src/models/qwen35.cpp:36-38, 93-107</code> at b11118</div></li>
+  <li><strong>Coding-agent answers repeat the prompt, and we generate those tokens from scratch.</strong> OpenCode edits re-emit large parts of files that are already in the context. Prompt lookup (<code>ngram-mod</code>) can draft those tokens for free. HyperQwen got 260 → 382 tok/s on a 25k-token quoting task on a 3090 this way.
+    <div class="cite"><code>docs/idea.md:660</code> (OpenCode is the target client); HyperQwen README</div></li>
+  <li><strong>No sustained output speed number exists.</strong> The only cloud receipt is 2,186.677 tok/s prompt processing and 45.271 tok/s output over 2 tokens. That cannot judge any speed change.
+    <div class="cite"><code>docs/implementation-mistakes.md:334-337</code></div></li>
+</ol>
+</section>
+
+<section id="goals">
+<h2>Goals</h2>
+<ol class="goals">
+  <li>Measure baseline output tok/s, prompt tok/s and repeat-prefix time to first token on the 5090 with the shipped flags. <span class="cite">(problem 4)</span></li>
+  <li>Raise median chat output tok/s by at least 10% over baseline, with no workload more than 5% slower. <span class="cite">(problems 1, 2)</span></li>
+  <li>Report the speed-up on quoting workloads (code edit, document Q&amp;A). Target 2× or more; this is a guess, not a ship gate. <span class="cite">(problem 3)</span></li>
+  <li>Keep output quality: same model file and quant. Greedy outputs match speculation-off on at least 18 of 20 prompts, and every mismatch gets a manual check. <span class="cite">(problem 1)</span></li>
+  <li>Keep the 65,536-token default context booting on a 5090 with the new flags. <span class="cite">(problem 1)</span></li>
+  <li>One env switch (<code>LOBO_SPEC</code>) to turn speculation off on a pod without a code change. <span class="cite">(problem 1)</span></li>
+</ol>
+</section>
+
+<section id="non-goals">
+<h2>Non-goals</h2>
+<ul>
+  <li>Switching the engine to vLLM or HyperQwen.</li>
+  <li>4-bit weights (W4A16, AWQ, AutoRound) or any other quant change.</li>
+  <li>Porting HyperQwen's vLLM patches (15-token fused lookup block) into a llama.cpp fork.</li>
+  <li>A settings control in the Mac app or CLI for speculation.</li>
+  <li>Multi-user batching (<code>--parallel</code> stays 1).</li>
+  <li>Upgrading llama.cpp past b11118 (it already has MTP, DFlash2 and <code>ngram-mod</code>).</li>
+</ul>
+</section>
+
+<section id="source">
+<h2>What HyperQwen does, and what we take from it</h2>
+<p>HyperQwen is a vLLM 0.32.0 patch series plus a model preparation pipeline. It was measured on one RTX 3090 at 250 W. Three parts give the speed:</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Part</th><th>Their result</th><th>Changes quality?</th><th>We take it?</th></tr></thead>
+  <tbody>
+    <tr><td>4-bit W4A16 weights, int8 heads</td><td>Fits 27B in 24 GB, faster reads</td><td>Yes: IFBench 78.3 against 79.5 for the full model</td><td>No. We keep Q6_K.</td></tr>
+    <tr><td>MTP speculation (tuned)</td><td>82 → 114 tok/s</td><td>No</td><td>Yes, llama.cpp <code>draft-mtp</code></td></tr>
+    <tr><td>DFlash2 block drafter</td><td>→ 127 tok/s chat</td><td>No</td><td>P2, gated on P0</td></tr>
+    <tr><td>Prompt lookup inside the verify block</td><td>260 → 382 tok/s on 25k quoting</td><td>No</td><td>Partly: llama.cpp <code>ngram-mod</code>, not their fused 15-token block</td></tr>
+    <tr><td>Prefix cache</td><td>TTFT 22.4 s → 0.56 s on repeat</td><td>No</td><td>Already on in llama-server (<code>--cache-prompt</code> default). P0 measures it.</td></tr>
+  </tbody>
+</table></div>
+<p>One 5090 field report (HyperQwen issue #35, 500 W cap, the owner's own client, not their harness) saw 410–449 tok/s on code and 198 tok/s on prose with DFlash2. That is vLLM at 4-bit. Our Q6_K reads ~1.5× more bytes per pass, so expect lower absolute numbers.</p>
+</section>
+
+<section id="options">
+<h2>Options</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Option</th><th>Score</th><th>What costs the missing points</th></tr></thead>
+  <tbody>
+    <tr class="pick"><td><strong>A. llama.cpp built-in: MTP + <code>ngram-mod</code>, flags only</strong> (P0 + P1)</td><td class="score hi">8/10</td><td>No new weights, same quality, ~50 lines of Rust. Misses DFlash2's possibly higher acceptance and HyperQwen's fused long block.</td></tr>
+    <tr><td><strong>B. A, then the DFlash2 Q8_0 drafter</strong> (P2)</td><td class="score mid">6/10</td><td>Adds a second 2.06 GB verified file to catalog, download, split and image. Trained on base Qwen3.8, not the abliterated weights, so acceptance is unknown. Worth it only on a measured win.</td></tr>
+    <tr><td><strong>C. Port HyperQwen's lookup-fill patch to llama.cpp</strong></td><td class="score lo">4/10</td><td>We would own a llama.cpp fork and rebuild CUDA images. <code>ngram-mod</code> gets most of the quoting win upstream.</td></tr>
+    <tr><td><strong>D. Switch to HyperQwen (vLLM + abliterated W4A16)</strong></td><td class="score lo">3/10</td><td>Highest raw speed, but 4-bit loses quality against Q6_K. It replaces the engine, the 9.5 GB image, the ~20 GB requant step and our verified-weights pipeline. Only one 5090 field report exists.</td></tr>
+  </tbody>
+</table></div>
+<p>Recommendation: <strong>A</strong> now. <strong>B</strong> only when the P0 table shows DFlash2 ≥ 15% faster than MTP on chat.</p>
+</section>
+
+<section id="speculation">
+<h2>Speculation in llama.cpp b11118</h2>
+<figure class="flow">
+<svg viewBox="0 0 700 300" role="img" aria-labelledby="flow-title flow-desc">
+  <title id="flow-title">One decode step with draft-mtp,ngram-mod</title>
+  <desc id="flow-desc">If the n-gram pool has a match for the recent tokens, it supplies the draft. If not, the MTP head drafts. The 27B model verifies the draft in one batch, keeps the matching prefix and adds one token of its own.</desc>
+  <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#18202c"/></marker></defs>
+  <g font-family="Avenir Next, system-ui, sans-serif" font-size="13" fill="#18202c">
+    <rect x="10" y="20" width="170" height="54" rx="6" fill="#dfe5ec"/>
+    <text x="95" y="43" text-anchor="middle">last tokens</text>
+    <text x="95" y="61" text-anchor="middle" font-size="11" fill="#566173">prompt + output so far</text>
+
+    <rect x="250" y="20" width="200" height="54" rx="6" fill="#fbf0dc" stroke="#a86c12"/>
+    <text x="350" y="43" text-anchor="middle">ngram-mod hash pool</text>
+    <text x="350" y="61" text-anchor="middle" font-size="11" fill="#566173">match? draft up to n-max tokens</text>
+
+    <rect x="250" y="120" width="200" height="54" rx="6" fill="#fbf0dc" stroke="#a86c12"/>
+    <text x="350" y="143" text-anchor="middle">MTP head (nextn block)</text>
+    <text x="350" y="161" text-anchor="middle" font-size="11" fill="#566173">no match: draft n-max tokens</text>
+
+    <rect x="510" y="70" width="180" height="54" rx="6" fill="#e2f2ef" stroke="#13756a"/>
+    <text x="600" y="93" text-anchor="middle">27B Q6_K verify</text>
+    <text x="600" y="111" text-anchor="middle" font-size="11" fill="#566173">one batched pass</text>
+
+    <rect x="510" y="200" width="180" height="70" rx="6" fill="#fff" stroke="#18202c"/>
+    <text x="600" y="223" text-anchor="middle">keep matching prefix</text>
+    <text x="600" y="241" text-anchor="middle">+ 1 own token</text>
+    <text x="600" y="259" text-anchor="middle" font-size="11" fill="#566173">timings.draft_n_accepted</text>
+
+    <path d="M180 47 H246" stroke="#18202c" marker-end="url(#arr)"/>
+    <path d="M350 74 V116" stroke="#18202c" marker-end="url(#arr)"/>
+    <text x="358" y="100" font-size="11" fill="#566173">no match</text>
+    <path d="M450 47 H480 V85 H506" stroke="#18202c" fill="none" marker-end="url(#arr)"/>
+    <path d="M450 147 H480 V110 H506" stroke="#18202c" fill="none" marker-end="url(#arr)"/>
+    <path d="M600 124 V196" stroke="#18202c" marker-end="url(#arr)"/>
+    <path d="M510 235 H95 V78" stroke="#18202c" fill="none" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+    <text x="300" y="252" text-anchor="middle" font-size="11" fill="#566173">next step</text>
+  </g>
+</svg>
+<figcaption>When a draft model and a draftless method are combined, the draftless method has precedence (llama.cpp <code>docs/speculative.md</code> at b11118).</figcaption>
+</figure>
+
+<div class="table-wrap"><table>
+  <thead><tr><th><code>--spec-type</code></th><th>Draft source</th><th>Extra weights</th><th>Good for</th></tr></thead>
+  <tbody>
+    <tr><td><code>draft-mtp</code></td><td>MTP block inside our Q6_K</td><td>None to download. Loads the nextn block (estimate ~0.35 GB)</td><td>All output</td></tr>
+    <tr><td><code>ngram-mod</code></td><td>Rolling hash of past tokens, ~16 MB pool</td><td>None</td><td>Code edits, quoting, summaries</td></tr>
+    <tr><td><code>draft-dflash</code></td><td>DFlash2 block drafter, a separate GGUF</td><td>Q8_0 2.06 GB (Q4_K_M 1.14 GB, BF16 3.86 GB)</td><td>All output, maybe more than MTP</td></tr>
+  </tbody>
+</table></div>
+<p>Source facts, checked on 2026-10-31:</p>
+<ul>
+  <li>b11118 was published 2026-09-23 02:10 UTC (10:10 WITA). We pin it at <code>crates/lobo-proto/src/release.rs:49</code>.</li>
+  <li>DFlash2 support (llama.cpp PR #27342) merged 2026-08-27 17:05 UTC (01:05 WITA). The b11118 <code>src/models/dflash.cpp:132-133</code> checks DFlash2 metadata.</li>
+  <li>The server reports <code>draft_n</code> and <code>draft_n_accepted</code> in response timings (<code>tools/server/server-common.cpp:100-101</code>).</li>
+</ul>
+</section>
+
+<section id="quality">
+<h2>Quality</h2>
+<div class="note quality">
+  <strong>Speculation does not change which tokens the model can output.</strong>
+  At every draft position, llama.cpp samples from the 27B model with the normal sampler chain, then compares. It keeps the draft token only when it is equal to that sample, and it stops at the first mismatch:
+</div>
+<details>
+  <summary>common/sampling.cpp:678-695 at b11118</summary>
+<pre><code>for (; i &lt; draft.size(); i++) {
+    const llama_token id = common_sampler_sample(gsmpl, ctx, idxs[i], grammar_first);
+    common_sampler_accept(gsmpl, id, true);
+    result.push_back(id);
+    if (draft[i] != id) {
+        break;
+    }
+}</code></pre>
+</details>
+<ul>
+  <li>Every output token is a 27B Q6_K sample. A bad draft costs speed, never correctness.</li>
+  <li>One small difference remains. The verify pass runs several tokens in one batch, and batched GPU math can round differently from single-token math. Greedy output can then diverge late in a long answer. That is noise, not a quality loss. Goal 4 measures it.</li>
+  <li>The MTP block comes from huihui-ai's abliterated file. I didn't verify whether abliteration touched it. A mismatch would lower acceptance (speed), not quality.</li>
+</ul>
+</section>
+
+<section id="memory">
+<h2>VRAM budget on the 5090 (32 GB)</h2>
+<div class="note guess"><strong>Estimates, not measured.</strong> KV: 16 full-attention layers × 4 KV heads × 256 dims × 2 (K and V) × ~1.06 B (q8_0) ≈ 34.8 KB per token. Head counts come from HyperQwen's kernel gate for this checkpoint. The other 48 layers are recurrent (fixed-size state).</div>
+<div class="table-wrap"><table>
+  <thead><tr><th>Item</th><th class="num">Today</th><th class="num">P1 (MTP)</th><th class="num">P2 (DFlash2 Q8_0)</th></tr></thead>
+  <tbody>
+    <tr><td>Target weights Q6_K</td><td class="num">22.43 GB</td><td class="num">22.43 GB</td><td class="num">22.43 GB</td></tr>
+    <tr><td>MTP block</td><td class="num">0</td><td class="num">~0.35 GB</td><td class="num">0</td></tr>
+    <tr><td>Drafter weights</td><td class="num">0</td><td class="num">0</td><td class="num">2.06 GB</td></tr>
+    <tr><td>KV at 65,536 ctx, q8_0</td><td class="num">~2.3 GB</td><td class="num">~2.4 GB</td><td class="num">~2.3 GB + drafter KV</td></tr>
+    <tr><td>Recurrent state, compute buffers</td><td class="num">~1–2 GB</td><td class="num">~1–2 GB</td><td class="num">~1.5–2.5 GB</td></tr>
+    <tr><td><strong>Total</strong></td><td class="num"><strong>~26–27 GB</strong></td><td class="num"><strong>~26–27 GB</strong></td><td class="num"><strong>~28–30 GB</strong></td></tr>
+  </tbody>
+</table></div>
+<p>P0 records real <code>nvidia-smi</code> use per config. The download free-disk check (<code>min_free_mib</code> = model MiB + 2,560, <code>crates/lobo-proto/src/catalog.rs:68-70</code>) is about disk, not VRAM. It changes only in P2, when a second file is downloaded.</p>
+</section>
+
+<section id="bench">
+<h2>Benchmark harness (P0)</h2>
+<p><code>tools/spec_bench.py</code> runs on the Mac or feesh9. It drives a rented 5090 pod over SSH: it starts <code>/app/llama-server</code> with one flag set, waits for <code>/health</code>, sends the workloads over a forwarded port, records the response <code>timings</code> and stops the server. Then it moves to the next flag set. One weight download serves every config.</p>
+<ul>
+  <li>The pod runs our published <code>latest-qwen38-q6</code> image, with the entrypoint replaced by <code>sleep infinity</code>, so the agent does not manage llama-server.</li>
+  <li>Weights come from the catalog <code>hf_url()</code> and are checked against the catalog <code>sha256</code>. The DFlash2 Q8_0 file comes from <code>z-lab/Qwen3.8-27B-DFlash2-GGUF</code>.</li>
+  <li>The pod is rented with the runpod skill and terminated at the end, also on failure.</li>
+</ul>
+
+<h3>Workloads</h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Id</th><th>Prompt</th><th class="num">Output</th><th>Shows</th></tr></thead>
+  <tbody>
+    <tr><td>W1 chat</td><td>Short question, prose answer</td><td class="num">512</td><td>Plain decode speed</td></tr>
+    <tr><td>W2 code new</td><td>Write a new Go function from a spec</td><td class="num">512</td><td>Decode speed on code</td></tr>
+    <tr><td>W3 code edit</td><td>~8k-token Rust file from this repo, "return the file with one change"</td><td class="num">up to 8k</td><td>Prompt-lookup speed-up</td></tr>
+    <tr><td>W4 doc Q&amp;A</td><td>~25k-token document, "quote the sections about X"</td><td class="num">1,024</td><td>Prompt lookup at long context</td></tr>
+    <tr><td>W5 repeat</td><td>W4 document, a second different question</td><td class="num">256</td><td>Prefix-cache TTFT on this hybrid model</td></tr>
+  </tbody>
+</table></div>
+<p>Each workload runs at temperature 0 (greedy) and at the model's default sampling. Each run happens 3 times after one discarded warm-up. The report uses the median.</p>
+
+<h3>Configs</h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Config</th><th>Extra flags on top of today's</th></tr></thead>
+  <tbody>
+    <tr><td>off</td><td>none (baseline)</td></tr>
+    <tr><td>mtp-n1 / n2 / n3</td><td><code>--spec-type draft-mtp --spec-draft-n-max 1|2|3</code></td></tr>
+    <tr><td>ngram</td><td><code>--spec-type ngram-mod</code>, defaults (n-match 24, n-min 48, n-max 64); one smaller dense-model set (e.g. 12/16/32)</td></tr>
+    <tr><td>mtp+ngram</td><td><code>--spec-type draft-mtp,ngram-mod</code> with the best MTP n-max</td></tr>
+    <tr><td>dflash-n7 / n15</td><td><code>-md Qwen3.8-27B-DFlash2-Q8_0.gguf --spec-type draft-dflash --spec-draft-n-max 7|15</code></td></tr>
+    <tr><td>dflash+ngram</td><td><code>--spec-type draft-dflash,ngram-mod</code> with the best DFlash n-max</td></tr>
+    <tr><td>cms</td><td>Only if W5 TTFT &gt; 2 s: <code>--checkpoint-min-step 1024</code> and <code>0</code></td></tr>
+  </tbody>
+</table></div>
+
+<h3>Output</h3>
+<details>
+  <summary>Result row shape (one JSON line per config × workload × run)</summary>
+<pre><code>{"config": "mtp+ngram", "workload": "W3", "temp": 0, "run": 2,
+ "prompt_n": &lt;int&gt;, "prompt_per_second": &lt;float&gt;,
+ "predicted_n": &lt;int&gt;, "predicted_per_second": &lt;float&gt;,
+ "draft_n": &lt;int&gt;, "draft_n_accepted": &lt;int&gt;,
+ "ttft_s": &lt;float&gt;, "vram_used_mb": &lt;int&gt;, "text_sha256": &lt;hex&gt;}</code></pre>
+</details>
+<p>The tool writes <code>plans/2026-10-31-spec-decoding/results.md</code> with one table: median tok/s and acceptance per config × workload, the gain against <code>off</code>, VRAM, and the greedy text match count against <code>off</code>. The gate (goal 2) is computed by a pure function, not by hand.</p>
+</section>
+
+<section id="switch">
+<h2><code>LOBO_SPEC</code> switch (P1)</h2>
+<p>The pod agent reads <code>LOBO_SPEC</code> the same way it reads <code>LOBO_CTX</code> (<code>crates/lobo-agent/src/config.rs:134</code>). <code>LlamaArgs</code> gets a <code>spec</code> field, and <code>to_args()</code> appends the flags. The default is the P0 winner, as a constant. Nothing in the control plane sets it in P1. It exists for debugging and as an off switch.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th><code>LOBO_SPEC</code></th><th>Flags appended</th></tr></thead>
+  <tbody>
+    <tr><td><code>off</code></td><td>none</td></tr>
+    <tr><td><code>mtp</code></td><td><code>--spec-type draft-mtp --spec-draft-n-max &lt;N_MTP&gt;</code></td></tr>
+    <tr><td><code>ngram</code></td><td><code>--spec-type ngram-mod</code> + the P0 ngram values</td></tr>
+    <tr><td><code>mtp-ngram</code> (expected default)</td><td><code>--spec-type draft-mtp,ngram-mod --spec-draft-n-max &lt;N_MTP&gt;</code> + the P0 ngram values</td></tr>
+    <tr><td>unset or empty</td><td>the default</td></tr>
+    <tr><td>anything else</td><td>agent config error at boot, naming the valid values</td></tr>
+  </tbody>
+</table></div>
+<p>The <code>&lt;N_MTP&gt;</code> and ngram values are constants set from <code>results.md</code>. <code>CleanEnv</code> already strips <code>LOBO_*</code> from the llama-server child env (<code>process.rs:12-18</code>), so the switch does not leak.</p>
+<p>The status panel's tok/s keeps working. llama-server counts accepted tokens as generated tokens.</p>
+</section>
+
+<section id="dflash">
+<h2>DFlash2 drafter (P2, gated)</h2>
+<p>Built only when P0 shows <code>dflash*</code> is at least 15% faster than the best <code>mtp*</code> config on W1+W2 at default sampling. If the gate passes, this section becomes a plan revision. Shape:</p>
+<ul>
+  <li><code>Model</code> gets an optional <code>draft</code> reference: file, sha256, size, chunk_sha, repo (<code>crates/lobo-proto/src/catalog.rs:10-23</code>, <code>catalog.json</code>). ts-rs re-exports the type for the app.</li>
+  <li>The download, the chunk verification and <code>docker/pod/build_model.py</code> handle a second file. The thin image fetches both before Ready.</li>
+  <li><code>LOBO_SPEC</code> gains <code>dflash</code> and <code>dflash-ngram</code>. <code>to_args()</code> adds <code>-md /models/&lt;draft file&gt;</code> and <code>--spec-draft-type-k/-v q8_0</code>.</li>
+  <li>Disk check: <code>min_free_mib</code> counts both files.</li>
+</ul>
+<div class="note risk"><strong>Risk.</strong> The DFlash2 drafter was trained for base <code>Qwen/Qwen3.8-27B</code>, not huihui-ai's abliterated weights. Acceptance can be lower than the vendor's figures. P0 measures it on our file.</div>
+</section>
+
+<section id="files">
+<h2>File-level changes</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Phase</th><th>File</th><th>Change</th></tr></thead>
+  <tbody>
+    <tr><td>P0</td><td><code>tools/spec_bench.py</code> (new)</td><td>SSH-driven bench: per config, start llama-server, run W1–W5, collect timings and VRAM, write JSONL and <code>results.md</code>. Pure functions for medians, gains and the gate.</td></tr>
+    <tr><td>P0</td><td><code>tools/test_spec_bench.py</code> (new)</td><td>Unit tests for the pure functions, in the style of <code>tools/test_cloud_candidate_transfer.py</code>.</td></tr>
+    <tr><td>P0</td><td><code>tools/spec_bench_prompts/</code> (new)</td><td>Fixed W1–W5 prompt files, so reruns compare.</td></tr>
+    <tr><td>P0</td><td><code>plans/2026-10-31-spec-decoding/results.md</code> (new)</td><td>Measured table and the chosen default.</td></tr>
+    <tr><td>P1</td><td><code>crates/lobo-agent/src/process.rs</code></td><td><code>Spec</code> enum, a <code>spec</code> field on <code>LlamaArgs</code>, flag mapping in <code>to_args()</code>, constants from P0. Update the <code>llama_args</code> test; add a table test per variant.</td></tr>
+    <tr><td>P1</td><td><code>crates/lobo-agent/src/config.rs</code></td><td>Parse <code>LOBO_SPEC</code> next to <code>LOBO_CTX</code>; unknown value → error. Tests.</td></tr>
+    <tr><td>P1</td><td><code>crates/lobo-agent/src/runner.rs</code></td><td>Pass <code>cfg.spec</code> into <code>LlamaArgs</code> (next to <code>ctx</code>, lines 74 and 99).</td></tr>
+    <tr><td>P1</td><td><code>crates/lobo-agent/src/testutil.rs</code></td><td>Add <code>spec</code> to the test config (line 623).</td></tr>
+    <tr><td>P1</td><td><code>README.md</code>, <code>CHANGELOG.md</code></td><td>Replace "sustained output speed remains unmeasured" with the measured numbers. Changelog entry.</td></tr>
+    <tr><td>P2</td><td>catalog, download, <code>build_model.py</code>, <code>process.rs</code>, <code>config.rs</code></td><td>Second verified weight file and the <code>dflash*</code> modes. Detailed in a plan revision only if the gate passes.</td></tr>
+  </tbody>
+</table></div>
+</section>
+
+<section id="tests">
+<h2>Tests</h2>
+<h3>Unit (Rust on feesh9, Python anywhere)</h3>
+<ul>
+  <li><code>process.rs</code>: table test, one row per <code>Spec</code> variant, exact argv. The existing <code>llama_args</code> test stays green with <code>Spec::Off</code>.</li>
+  <li><code>config.rs</code>: <code>LOBO_SPEC</code> unset → default, empty → default, each valid value, <code>bogus</code> → error that lists valid values.</li>
+  <li><code>tools/test_spec_bench.py</code>: median, gain, the gate function (pass, fail on chat gain, fail on a &gt;5% slower workload), greedy match count.</li>
+</ul>
+<h3>Integration (rented 5090)</h3>
+<ul>
+  <li>P0: the full bench run, raw JSONL kept beside <code>results.md</code>.</li>
+  <li>P1: build the image with the new agent, start it with <code>lobo up --q6</code>, then:
+    <ul>
+      <li>Ready reached with ctx 65,536</li>
+      <li><code>tools/same_prompt_runtime_e2e.py</code> passes</li>
+      <li>W1 and W3 rerun through the SSH endpoint and land within 5% of the P0 numbers</li>
+      <li><code>LOBO_SPEC=off</code> boots and matches baseline speed</li>
+    </ul>
+  </li>
+</ul>
+<h3>Manual</h3>
+<ul>
+  <li>One OpenCode session against the pod: a multi-file edit with tool calls. Every tool call parses, and the edit applies.</li>
+  <li>The app Ready panel shows tok/s during that session.</li>
+</ul>
+</section>
+
+<section id="failures">
+<h2>Failure modes &amp; decisions</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Failure</th><th>Behaviour / decision</th></tr></thead>
+  <tbody>
+    <tr><td>MTP on this hybrid (recurrent + attention) model is slower than off</td><td>P0 shows it. The default stays <code>off</code> or <code>ngram</code>, and P1 ships only what wins.</td></tr>
+    <tr><td>No config reaches +10% on chat</td><td>Drop P1 and report the table. No code change.</td></tr>
+    <tr><td>A config wins on quoting but loses &gt;5% on chat</td><td>Not the default. The gate treats chat as the main workload.</td></tr>
+    <tr><td>Rejected drafts break recurrent-state rollback and the output is garbled</td><td>The greedy match check catches it. That config is disqualified, whatever its speed.</td></tr>
+    <tr><td>VRAM OOM at 65,536 ctx with the chosen config</td><td>Seen in P0 first. Pick a smaller n-max or another config. Do not lower the default ctx for speed.</td></tr>
+    <tr><td>llama-server rejects a flag on a pod</td><td>Boot fails with the llama-server error (<code>last_line</code>, <code>process.rs:72</code>). Fix: new image, or <code>LOBO_SPEC=off</code> for debugging. No automatic fallback in P1 (keeps boot logic simple).</td></tr>
+    <tr><td>Greedy outputs diverge late in a long answer</td><td>Expected from batched math. Accept when ≥18/20 match exactly and a manual read finds no quality difference.</td></tr>
+    <tr><td>W5 repeat TTFT is slow on the hybrid model</td><td>Test <code>--checkpoint-min-step</code> values in P0 and pin the winner in P1. If no value helps, report it and leave it.</td></tr>
+    <tr><td>Bench pod is left running</td><td>The tool terminates the pod in a <code>finally</code> path. The runpod skill pattern ends with terminate.</td></tr>
+  </tbody>
+</table></div>
+</section>
+
+<section id="out-of-scope">
+<h2>Out of scope</h2>
+<ul>
+  <li>vLLM, HyperQwen images, 4-bit checkpoints (including <code>leminkozey/Qwen3.8-27B-Uncensored-W4A16-AutoRound</code>).</li>
+  <li>A llama.cpp fork or custom CUDA kernels.</li>
+  <li>App or CLI settings UI for speculation; control-plane plumbing of <code>LOBO_SPEC</code>.</li>
+  <li>GPUs other than the RTX 5090 (the only one offered: <code>provider/runpod.rs:14</code>, <code>provider/vast.rs:258</code>).</li>
+  <li>Local Mac inference.</li>
+  <li>Bumping llama.cpp past b11118.</li>
+  <li>P2 implementation details, unless the gate passes.</li>
+</ul>
+</section>
+
+<section id="rollout">
+<h2>Rollout</h2>
+<ul class="tasks">
+  <li id="P0"><strong>P0</strong> <code>tools/spec_bench.py</code> + tests + prompts, one bench run on a rented 5090, <code>results.md</code> committed. <span class="tag heavy">heavy</span> <span class="tag gate">gate: you approve the spend; the results pick the P1 default or stop</span></li>
+  <li id="P1"><strong>P1</strong> <code>LOBO_SPEC</code> + default flags in the agent, README and changelog numbers, image build, cloud recheck, publish <code>latest-qwen38-q6</code>. <span class="tag heavy">heavy</span> <span class="tag gate">gate: build + tests green on feesh9, cloud recheck within 5% of P0</span></li>
+  <li id="P2"><strong>P2</strong> DFlash2 drafter, as a plan revision. <span class="tag light">light until the gate</span> <span class="tag gate">gate: P0 shows ≥15% over MTP and you say go</span></li>
+</ul>
+<p>Each phase is one commit on its own branch from <code>master</code>, after the qwen38-q6 PR merges. Each is gated on a clean review.</p>
+</section>
+</main>
+</div>
+</body>
+</html>
