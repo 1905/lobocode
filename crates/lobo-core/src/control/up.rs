@@ -495,6 +495,9 @@ async fn run(
     }
     unreachable!()
 }
+pub(super) fn instance_gone(e: &Error) -> bool {
+    matches!(e, Error::Other(m) if m == crate::connection::INSTANCE_GONE)
+}
 /// One startup attempt. `Retry` means the pod (if any) is already deleted;
 /// `logs` holds the agent's last lines when it could still answer.
 enum Boot {
@@ -707,6 +710,19 @@ async fn boot(
             }
         {
             scope.cleanup(d, ownership).await?;
+            // The SSH helper can see a deleted pod before the provider check does.
+            // Other connection errors (host key, local port) stay fatal.
+            if instance_gone(&e) && p.replaceable() {
+                let phase = if seen { last_phase.as_str() } else { "image" };
+                return Ok(Boot::Retry {
+                    reason: format!(
+                        "pod {} disappeared in phase {phase} before it reported a reason",
+                        pod.id
+                    ),
+                    wait: false,
+                    logs: String::new(),
+                });
+            }
             return Err(e);
         }
         let (mut status, mut agent_check) = match probe(cancel, agent.status()).await {

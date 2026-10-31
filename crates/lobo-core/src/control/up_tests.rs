@@ -1185,3 +1185,14 @@ async fn up_rejects_retired_models_before_renting() {
         assert!(rp.state.lock().unwrap().created.is_empty());
     }
 }
+
+#[test]
+fn ssh_helper_gone_error_is_retried_but_other_connection_errors_are_not() {
+    assert!(super::up::instance_gone(&Error::Other(
+        crate::connection::INSTANCE_GONE.into()
+    )));
+    assert!(!super::up::instance_gone(&Error::Other(
+        "Host key verification failed".into()
+    )));
+    assert!(!super::up::instance_gone(&Error::NotFound));
+}
