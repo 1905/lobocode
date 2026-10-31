@@ -847,7 +847,10 @@ async fn boot(
                     if p.replaceable() {
                         events.phase(&phase, why.clone());
                         scope.cleanup(d, ownership).await?;
-                        return Ok(Boot::Retry { reason: why, wait: false });
+                        return Ok(Boot::Retry {
+                            reason: why,
+                            wait: false,
+                        });
                     }
                     let logs = probe(cancel, agent.logs(20)).await.unwrap_or_default();
                     check_cancel(cancel)?;
@@ -877,7 +880,10 @@ async fn boot(
             let reason = "host: container not started after 30m0s".to_owned();
             events.phase("image", reason.clone());
             scope.cleanup(d, ownership).await?;
-            return Ok(Boot::Retry { reason, wait: false });
+            return Ok(Boot::Retry {
+                reason,
+                wait: false,
+            });
         }
         if (d.clock.now() - progress).to_std().unwrap_or_default() > o.timeout
             || (d.clock.now() - start).to_std().unwrap_or_default() > o.timeout
@@ -899,4 +905,3 @@ async fn boot(
         tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),_=tokio::time::sleep(poll)=>{}}
     }
 }
-

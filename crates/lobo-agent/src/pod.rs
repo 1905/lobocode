@@ -540,7 +540,12 @@ impl FailReport {
             "/api/status",
             axum::routing::get(move || {
                 let body = body.clone();
-                async move { ([(axum::http::header::CONTENT_TYPE, "application/json")], body) }
+                async move {
+                    (
+                        [(axum::http::header::CONTENT_TYPE, "application/json")],
+                        body,
+                    )
+                }
             }),
         );
         let _ = tokio::time::timeout(self.grace, axum::serve(listener, router)).await;
