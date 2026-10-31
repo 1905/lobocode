@@ -1,6 +1,6 @@
 # Public GPU image. Target full (the default): complete image with runtime, agent,
-# SSH and selected model weights, built by pod-image.yml. Target thin: the same
-# runtime without weights, built by thin-image.yml.
+# SSH and selected model weights. Target thin: the same runtime without weights.
+# Build and verify images on the authorized Linux build host.
 # LLAMA_IMAGE comes from lobo-proto DEFAULT_LLAMA_IMAGE.
 ARG LLAMA_IMAGE
 ARG SPLIT_IMAGE=ghcr.io/ggml-org/llama.cpp:full-cuda-b11118
@@ -28,7 +28,7 @@ COPY crates ./crates
 RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \
     LOBO_VERSION="$VERSION" cargo build -j 3 --release --locked -p lobo-agent --target x86_64-unknown-linux-musl && \
     mkdir -p /out && cp target/x86_64-unknown-linux-musl/release/lobo-agent /out/lobo-agent
-RUN printf '{"version":"%s","git_sha":"%s","built_by":"github-actions","llama_image":"%s"}\n' \
+RUN printf '{"version":"%s","git_sha":"%s","built_by":"manual","llama_image":"%s"}\n' \
       "$VERSION" "$GIT_SHA" "$LLAMA_IMAGE" > /out/release.json
 
 FROM ${LLAMA_IMAGE} AS thin

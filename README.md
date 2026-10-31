@@ -146,7 +146,7 @@ Model weights use native GGUF shards in separate image layers. Startup verifies 
 
 `qwen38-q6` is the exception. It runs from a thin image (Dockerfile target `thin`) without weights and downloads its 22,430,999,840-byte GGUF as 84 content-addressed 256 MiB chunks from `{LOBO_MODEL_BASE_URL}/models/{sha256}/{nnn}`, by default `https://models.stealthcopilot.io`. A project contributor operates that CDN. If the CDN fails or is too slow, the agent downloads the same byte ranges from the original file on Hugging Face (`https://huggingface.co/<repo>/resolve/main/<file>`). The agent verifies the SHA-256 of every chunk from either source against the table pinned in the catalog. That table was checked against the complete Hugging Face file on October 26, 2026. It starts 4 parallel streams, adds 4 per 5 s window while aggregate throughput rises by at least 10 %, and stops at the cap from the control plane (default 32). A stream that is far slower than the rest restarts once per chunk. The hidden `--conns` option overrides the cap; values below 2 are rejected. The slow-host check (`LOBO_MIN_MBPS`) uses the rate over the last 5 s before the 20 s check. No user needs a token to download. `q6` and `q8` keep their complete images (Dockerfile target `full`, the default build).
 
-Chunked models are published in two steps. Push the tag `publish-model/<id>`: the workflow `.github/workflows/publish-model.yml` uploads the chunks with an R2 token held in the repository secrets `R2_ACCOUNT_ID`, `R2_ACCESS_KEY` and `R2_SECRET_KEY`, and produces the artifact `chunk-sha-<id>`. Pin the chunk hashes in `crates/lobo-proto/catalog.json`. Then push the tag `thin-image/<id>`: `.github/workflows/thin-image.yml` checks that every chunk answers 200, builds and smoke-tests the thin image and promotes `latest-<id>`. It refuses `q6` and `q8`. The hidden command `lobo publish-model <ID> --file <PATH>` does the upload. The `qwen38-q6` chunks were published by the contributor; this repository holds no R2 secrets for them.
+Chunk publication uses the hidden command `lobo publish-model <ID> --file <PATH>` on the authorized Linux build host with the owner's R2 credentials. Pin the resulting hashes in `crates/lobo-proto/catalog.json`. Before publishing a thin image, check that all chunks are available and verify the first and last chunk hashes. Build Dockerfile target `thin`, smoke-test its agent and SSH runtime, then promote its verified digest to `latest-<id>`. Never promote a thin image to the legacy `latest-q6` or `latest-q8` tags. The `qwen38-q6` chunks were published by the contributor; this repository holds no R2 secrets for them.
 
 For CLI development only, an explicit complete-image override is available:
 
@@ -196,19 +196,19 @@ Cloud and local port pairs must not overlap. SSH mode selects RunPod hosts with 
 | Area | Source | Checks |
 |---|---|---|
 | Shared protocol | `crates/lobo-proto` | `make proto-ts` |
-| Pod agent and shared core | `crates/lobo-agent`, `crates/lobo-core` | `make rust-test rust-lint` on CI or a test host |
+| Pod agent and shared core | `crates/lobo-agent`, `crates/lobo-core` | `make rust-test rust-lint` on Feesh |
 | Rust CLI and TUI | `crates/lobo-cli` | `cargo test -p lobo-cli --test tui_parity` |
 | Native app | `app/src-tauri`, `app/ui` | `make app-lint`, `pnpm -C app/ui test` |
 | Native UI smoke | `app/e2e` | `make app-e2e` (cloud setup, legacy migration and removed IPC) |
 
 The app calls the shared Rust core directly and does not bundle the CLI. Go source and frozen compatibility fixtures remain until cutover.
 
-On the development Mac, run UI checks only. Run model inference and backend/lifecycle suites on an authorized remote host. Live checks can rent GPUs. `make release` publishes an agent; it is not a local build command.
+Use the development Mac for source edits and orchestration. Run Linux builds and backend/lifecycle checks on Feesh. Build and test the macOS app on Air. GitHub Actions is disabled; this repository has no build or release workflows. Live GPU checks require authorization. `make release` publishes an agent; it is not a local build command.
 
-Complete-image builds need substantial disk space. The image workflow checks for 200 GiB free Docker storage per concurrent build. Set `POD_IMAGE_RUNNER` to a suitable Linux AMD64 runner. Standard hosted runners do not meet that capacity check. This is a maintainer build requirement, not a user installation requirement.
+Complete-image builds need substantial disk space. Reserve 200 GiB of free Docker storage per concurrent build on the Linux AMD64 build host. This is a maintainer build requirement, not a user installation requirement.
 
-The app-only `App release` workflow accepts an `app-vX.Y.Z` tag at the exact tested `master` commit. It requires successful Rust CI and native UI smoke, checks anonymous public Q6 access, and publishes a DMG, checksums and source receipt. It does not rebuild GPU images or release the CLI.
+App releases use an `app-vX.Y.Z` tag at the exact tested `master` commit. Run workspace tests on Feesh and app tests plus native fresh/legacy setup smoke on Air. Check anonymous access to `latest-qwen38-q6` before publishing the DMG, checksums and source receipt. Build the standalone DMG on Air with `make dmg`; do not bundle or replace the optional CLI.
 
-The legacy `v*` release workflow still builds Q6 and Q8 before publishing CLI assets. Image publication is separate from normal app startup. End users always resolve the current public image at each new start.
+CLI releases require separate authorization. Image publication is separate from normal app startup. End users always resolve the current public image at each new start.
 
 Maintainers must make the `1905/lobocode` container package public before release acceptance. New GHCR packages default to private. The anonymous-access check deliberately fails until visibility is public. End users do not need a GitHub account or registry credentials. See [GitHub's container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
