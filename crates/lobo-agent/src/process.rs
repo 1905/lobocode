@@ -26,12 +26,73 @@ pub fn clean_env() -> Vec<(String, String)> {
     CleanEnv::filter(std::env::vars())
 }
 
+// Speculative decoding: drafts come from the model's MTP head and from n-grams
+// already in the context. llama-server keeps a draft token only when the target
+// samples the same token, so output quality does not change.
+pub const MTP_DRAFT_MAX: u32 = 3;
+pub const NGRAM_MATCH: u32 = 24;
+pub const NGRAM_MIN: u32 = 48;
+pub const NGRAM_MAX: u32 = 64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Spec {
+    Off,
+    Mtp,
+    Ngram,
+    #[default]
+    MtpNgram,
+}
+impl Spec {
+    pub const VALID: &'static str = "off, mtp, ngram, mtp-ngram";
+    pub fn parse(s: &str) -> std::result::Result<Self, String> {
+        match s {
+            "" => Ok(Self::default()),
+            "off" => Ok(Self::Off),
+            "mtp" => Ok(Self::Mtp),
+            "ngram" => Ok(Self::Ngram),
+            "mtp-ngram" => Ok(Self::MtpNgram),
+            _ => Err(format!("want one of {}, got {s:?}", Self::VALID)),
+        }
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Mtp => "mtp",
+            Self::Ngram => "ngram",
+            Self::MtpNgram => "mtp-ngram",
+        }
+    }
+    pub fn args(self) -> Vec<String> {
+        let (kind, mtp, ngram) = match self {
+            Self::Off => return Vec::new(),
+            Self::Mtp => ("draft-mtp", true, false),
+            Self::Ngram => ("ngram-mod", false, true),
+            Self::MtpNgram => ("draft-mtp,ngram-mod", true, true),
+        };
+        let mut args = vec!["--spec-type".to_owned(), kind.to_owned()];
+        if mtp {
+            args.extend(["--spec-draft-n-max".to_owned(), MTP_DRAFT_MAX.to_string()]);
+        }
+        if ngram {
+            for (flag, n) in [
+                ("--spec-ngram-mod-n-match", NGRAM_MATCH),
+                ("--spec-ngram-mod-n-min", NGRAM_MIN),
+                ("--spec-ngram-mod-n-max", NGRAM_MAX),
+            ] {
+                args.extend([flag.to_owned(), n.to_string()]);
+            }
+        }
+        args
+    }
+}
+
 pub struct LlamaArgs {
     pub model_path: String,
     pub alias: String,
     pub host: String,
     pub port: u16,
     pub ctx: i64,
+    pub spec: Spec,
 }
 impl LlamaArgs {
     pub fn to_args(&self) -> Vec<String> {
@@ -66,6 +127,7 @@ impl LlamaArgs {
         ]
         .into_iter()
         .map(String::from)
+        .chain(self.spec.args())
         .collect()
     }
 }
@@ -201,7 +263,8 @@ mod tests {
                 alias: m.alias.clone(),
                 host: "127.0.0.1".into(),
                 port: 8080,
-                ctx: 65536
+                ctx: 65536,
+                spec: Spec::Off,
             }
             .to_args(),
             [
@@ -232,6 +295,56 @@ mod tests {
                 "--no-webui"
             ]
         );
+    }
+    #[test]
+    fn spec_args() {
+        let ngram = [
+            "--spec-ngram-mod-n-match",
+            &NGRAM_MATCH.to_string(),
+            "--spec-ngram-mod-n-min",
+            &NGRAM_MIN.to_string(),
+            "--spec-ngram-mod-n-max",
+            &NGRAM_MAX.to_string(),
+        ]
+        .map(String::from);
+        let mtp = ["--spec-draft-n-max", &MTP_DRAFT_MAX.to_string()].map(String::from);
+        let with = |kind: &str, parts: &[&[String]]| {
+            let mut v = vec!["--spec-type".to_owned(), kind.to_owned()];
+            parts.iter().for_each(|p| v.extend_from_slice(p));
+            v
+        };
+        for (spec, want) in [
+            (Spec::Off, Vec::new()),
+            (Spec::Mtp, with("draft-mtp", &[&mtp])),
+            (Spec::Ngram, with("ngram-mod", &[&ngram])),
+            (Spec::MtpNgram, with("draft-mtp,ngram-mod", &[&mtp, &ngram])),
+        ] {
+            assert_eq!(spec.args(), want, "{spec:?}");
+        }
+    }
+    #[test]
+    fn spec_parse() {
+        assert_eq!(Spec::parse(""), Ok(Spec::default()));
+        for spec in [Spec::Off, Spec::Mtp, Spec::Ngram, Spec::MtpNgram] {
+            assert_eq!(Spec::parse(spec.as_str()), Ok(spec));
+        }
+        for bad in ["MTP", "bogus", " off"] {
+            assert!(Spec::parse(bad).unwrap_err().contains(Spec::VALID), "{bad}");
+        }
+    }
+    #[test]
+    fn llama_args_with_spec() {
+        let args = |spec| LlamaArgs {
+            model_path: "/models/m.gguf".into(),
+            alias: "a".into(),
+            host: "127.0.0.1".into(),
+            port: 8080,
+            ctx: 65536,
+            spec,
+        };
+        let mut want = args(Spec::Off).to_args();
+        want.extend(Spec::MtpNgram.args());
+        assert_eq!(args(Spec::MtpNgram).to_args(), want);
     }
     #[test]
     fn last_line() {

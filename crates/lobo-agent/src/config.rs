@@ -1,4 +1,4 @@
-use crate::{Error, Result};
+use crate::{Error, Result, process::Spec};
 use chrono::{DateTime, Utc};
 use std::time::Duration;
 
@@ -15,6 +15,7 @@ pub struct AgentConfig {
     pub vast_api_key: String,
     pub boot_id: String,
     pub ctx: i64,
+    pub spec: Spec,
     pub idle_min: i64,
     pub dl_conns: usize,
     pub min_mbps: i64,
@@ -123,6 +124,8 @@ impl AgentConfig {
             vast_api_key,
             boot_id: value("LOBO_BOOT_ID"),
             ctx: positive("LOBO_CTX", 8192)?,
+            spec: Spec::parse(&value("LOBO_SPEC"))
+                .map_err(|e| Error::msg(format!("config: LOBO_SPEC: {e}")))?,
             idle_min: positive("LOBO_IDLE_MIN", 30)?,
             dl_conns,
             min_mbps: positive("LOBO_MIN_MBPS", 100)?,
@@ -196,6 +199,16 @@ mod tests {
         assert_eq!((a.ctx, a.idle_min, a.dl_conns), (8192, 30, 32));
         assert_eq!(a.expires_at.hour(), 20);
         assert_eq!(a.boot_timeout, Duration::from_secs(2400));
+    }
+    #[test]
+    fn spec_mode() {
+        let mut v = vars();
+        assert_eq!(load(&v).unwrap().spec, Spec::default());
+        v.insert("LOBO_SPEC".into(), "off".into());
+        assert_eq!(load(&v).unwrap().spec, Spec::Off);
+        v.insert("LOBO_SPEC".into(), "bogus".into());
+        let err = load(&v).err().unwrap().to_string();
+        assert!(err.contains("config: LOBO_SPEC: want one of off, mtp, ngram, mtp-ngram"));
     }
     #[test]
     fn min_mbps_default_100() {

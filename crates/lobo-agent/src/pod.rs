@@ -452,6 +452,7 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
                 host: "127.0.0.1".into(),
                 port: 8080,
                 ctx: cfg.ctx,
+                spec: cfg.spec,
             },
             api_key: cfg.lobo_api_key.clone(),
             env: clean,
