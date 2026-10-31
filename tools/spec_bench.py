@@ -534,7 +534,7 @@ def main(argv=None):
     s.add_argument("--sampled", default="", help="comma list of configs that also run sampled W1/W2")
     s.add_argument("--pod", help="attach to this pod instead of renting")
     s.add_argument("--keep", action="store_true", help="do not terminate the pod at the end")
-    s.add_argument("--cloud", default="COMMUNITY")
+    s.add_argument("--cloud", default="SECURE")
     s.set_defaults(func=cmd_sweep)
     e = sub.add_parser("endpoint")
     e.add_argument("--url", required=True)
