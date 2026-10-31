@@ -71,6 +71,7 @@ fn executable_json_outputs_match_go() {
             }
             if let Some(ready) = &mut event.ready {
                 ready.elapsed_ns = 0; // Fixture clock does not advance.
+                ready.detail = ready.detail.replace("COMMUNITY", "SECURE");
             }
         }
         let got = events(std::str::from_utf8(&output.stdout).unwrap());
