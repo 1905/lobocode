@@ -18,7 +18,11 @@
 - Plan pass: Codex through T3, one call, 66/66 lines covered, 49 lines changed, two mechanical findings left.
 - Feesh focused checks passed: 127 agent tests, 31 image verifier checks, 22 image transfer tests, cloud fake HTTP and ownership checks.
 - Air app tests passed: 97 library tests and two fixture tests; app clippy passed. UI: 21 tests, type checks and formatting passed.
-- Workspace final run, native checks, final review, image/app build and publication pending.
+- Full workspace run passed: 452 tests, zero failures; one separate SSH test excluded from the default command.
+- The excluded SSH integration passed in a task-owned Feesh container: authentication, streaming, detached reopen, reconnect, 105-second response, crash recovery, key rejection, port conflict and cleanup.
+- Six Air native setup/migration cases passed with no cleanup errors. All controls fit without scrolling; fixed model text and rounded corners inspected.
+- Final review found two issues: stale local CLI operation intent and outdated example config. Both fixed; two added regression tests and affected core/CLI suites plus clippy pass.
+- Initial image/app candidates built from 3f9a2f9; offline image runtime smoke passed. Final candidate builds/publication pending after the review fix.
 
 ## Decisions
 - Retain historical Go implementation and frozen historical evidence; cleanup targets the active Rust app/CLI/agent.

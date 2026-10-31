@@ -1,4 +1,4 @@
-//! The ignored test runs as root in the `ssh-integration` CI job. No model or GPU is used.
+//! Run the ignored test as root in an isolated Linux container. No model or GPU is used.
 use axum::{
     Router,
     body::{Body, Bytes},

@@ -68,3 +68,10 @@ The GPU image contains the runtime, agent, and SSH server. The agent downloads a
 P1: Remove retired catalog and local paths; commit after focused checks.
 P2: Remove complete-image code and update documentation; commit after focused checks.
 P3: Review the whole branch, run required checks, merge and push directly; publish changed app/image through authorized hosts.
+
+## As-built notes
+- Remove the unused local protocol types and bindings after confirming no runtime consumers remain.
+- Move only the shared operation-directory helper into `crates/lobo-core/src/state.rs`.
+- Remove the retired GitHub Actions upload action and local diagnostic entrypoints. Cloud probe helpers retain their fake coverage.
+- Final review found a stale local CLI intent could block cloud operations. Clear only that retired intent; preserve local ownership files and processes.
+- Unknown operation providers and app-scoped local intents remain blocked. `.env.example` now documents the supported cloud setup.

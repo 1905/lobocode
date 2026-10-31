@@ -1,12 +1,14 @@
 # Changelog
 
-## App 0.2.4 — in progress
+## App 0.2.4 — 2026-10-31
 
 - Remove retired `q6`/`q8` catalog entries, local inference code and CLI commands, and complete-image model packaging.
 - Migrate old saved model and provider choices to the supported cloud configuration. Preserve existing user files and old ownership records.
 - Keep one model, `qwen38-q6`, on RunPod and Vast. Keep verified chunk downloads and the Hugging Face fallback.
 - Remove the unused model picker and retired GitHub Actions upload code.
-- Validation in progress. No live GPU inference or local app installation is part of this cleanup.
+- Clear stale local CLI start intents without touching old local processes or model files. Update the example config.
+- Validation: 452 workspace tests and two review regression tests pass. The separate SSH integration passes reconnect, streaming, key rejection and cleanup checks. App: 99 Rust checks, 21 UI tests and six native setup/migration cases pass. Lint, 31 image-verifier checks, 22 transfer tests and fake cloud probes pass.
+- Limits: no live GPU inference or local app installation. The legacy Homebrew Go CLI remains unchanged. Ad-hoc signing; no notarization.
 
 ## App 0.2.3 — 2026-10-31
 

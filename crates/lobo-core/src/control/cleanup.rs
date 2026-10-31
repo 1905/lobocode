@@ -132,6 +132,11 @@ async fn pending_scoped(d: &Deps, guard: &mut OperationGuard<'_>, owned: bool) -
     let Some(mut pending) = guard.pending().cloned() else {
         return Ok(());
     };
+    // A retired local start cannot own a cloud instance. Drop only its CLI
+    // intent, without inspecting or stopping the old local process or files.
+    if !owned && pending.provider == "local" {
+        return guard.clear();
+    }
     if !matches!(pending.provider.as_str(), "runpod" | "vast") {
         return Err(pending.unresolved("provider is no longer supported"));
     }
@@ -189,6 +194,61 @@ mod tests {
             Arc::new(FakeAgent::default()),
             Arc::new(SystemClock),
         )
+    }
+    #[tokio::test]
+    async fn retired_local_cli_intent_clears_without_touching_providers_or_local_state() {
+        for instance_id in [None, Some("legacy-pid".into())] {
+            let mut d = setup();
+            let provider = Arc::new(RecordingProvider::new("runpod"));
+            d.providers.insert("runpod".into(), provider.clone());
+            let tmp = tempfile::tempdir().unwrap();
+            let path = tmp.path().join("operation.json");
+            let local_path = tmp.path().join("local.json");
+            std::fs::write(&local_path, "preserve old local ownership").unwrap();
+            let state = OperationState::persistent(path.clone());
+            let cancel = CancellationToken::new();
+            {
+                let mut guard = state.acquire(&cancel).await.unwrap();
+                guard
+                    .record(PendingCreate {
+                        provider: "local".into(),
+                        boot_id: "old-local-boot".into(),
+                        before: vec![],
+                        instance_id,
+                    })
+                    .unwrap();
+            }
+            let mut guard = state.acquire(&cancel).await.unwrap();
+            pending(&d, &mut guard).await.unwrap();
+            assert!(guard.pending().is_none());
+            assert!(!path.exists());
+            assert_eq!(
+                std::fs::read_to_string(&local_path).unwrap(),
+                "preserve old local ownership"
+            );
+            assert!(provider.calls().is_empty());
+        }
+    }
+    #[tokio::test]
+    async fn unknown_pending_provider_and_app_local_intent_remain_blocked() {
+        let d = setup();
+        for (name, owned) in [("unknown", false), ("local", true)] {
+            let mut guard = d
+                .operations
+                .acquire(&CancellationToken::new())
+                .await
+                .unwrap();
+            guard
+                .record(PendingCreate {
+                    provider: name.into(),
+                    boot_id: "unresolved".into(),
+                    before: vec![],
+                    instance_id: None,
+                })
+                .unwrap();
+            assert!(pending_scoped(&d, &mut guard, owned).await.is_err());
+            assert_eq!(guard.pending().unwrap().provider, name);
+        }
     }
     #[tokio::test(start_paused = true)]
     async fn empty_listing_keeps_uncertain_record() {
