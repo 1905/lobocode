@@ -9,6 +9,7 @@
 - Clear stale local CLI start intents without touching old local processes or model files. Update the example config.
 - Validation: 452 workspace tests and two review regression tests pass. The separate SSH integration passes reconnect, streaming, key rejection and cleanup checks. App: 99 Rust checks, 21 UI tests and six native setup/migration cases pass. Lint, 31 image-verifier checks, 22 transfer tests and fake cloud probes pass.
 - Limits: no live GPU inference or local app installation. The legacy Homebrew Go CLI remains unchanged. Ad-hoc signing; no notarization.
+- Published app `0.2.4` and the public `latest-qwen38-q6` image from `2409895`. Anonymous asset checksums and image source/digest checks pass.
 
 ## App 0.2.3 — 2026-10-31
 

@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "tag": "app-v0.2.4",
+  "version": "0.2.4",
+  "source_sha": "240989574fbc1c9029e229864e2182b74368dbb1",
+  "build_host": "Air",
+  "source_identity_basis": "All 575 build-source files matched the Git archive. The app binary does not embed the source commit.",
+  "validation": {
+    "workspace_tests_before_review_fixes": 452,
+    "added_review_regression_tests": 2,
+    "affected_core_cli_tests_rerun": true,
+    "separate_ssh_integration": "passed",
+    "app_library_tests": 97,
+    "app_fixture_tests": 2,
+    "ui_tests": 21,
+    "native_setup_checks": 6,
+    "image_verifier_checks": 31,
+    "image_transfer_tests": 22,
+    "github_actions": false,
+    "live_gpu_inference": false
+  },
+  "platform": "macos-arm64",
+  "signature": "ad-hoc",
+  "notarized": false,
+  "dmg_sha256": "9b1907e66878625d140b8b6f857e5f42ee5518f206264fdb86a657822bec5bf8",
+  "gpu_image_digest": "sha256:3d64617400c59420f0aea21a0bb6c0ac83376a8ee377dd2710ef63d5fc41fc0a"
+}

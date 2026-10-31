@@ -1,7 +1,7 @@
 # Retired model cleanup
 **Date:** 2026-10-31
 **Scope:** /Users/kass/dev/lobocode
-**Status:** approved — user requested cleanup under the existing fullsend instruction
+**Status:** done — approved cleanup delivered under the existing fullsend instruction
 
 ## TL;DR
 Remove retired `q6`/`q8` models, local inference code, and the old complete-image build.

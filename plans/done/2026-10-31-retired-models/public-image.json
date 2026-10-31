@@ -1,0 +1,8 @@
+{
+  "image": "ghcr.io/1905/lobocode:latest-qwen38-q6",
+  "digest": "sha256:3d64617400c59420f0aea21a0bb6c0ac83376a8ee377dd2710ef63d5fc41fc0a",
+  "source_sha": "240989574fbc1c9029e229864e2182b74368dbb1",
+  "platform": "linux/amd64",
+  "anonymous_pull_metadata": true,
+  "layers": 18
+}

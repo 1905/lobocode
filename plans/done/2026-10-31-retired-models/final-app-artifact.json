@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "source_sha": "240989574fbc1c9029e229864e2182b74368dbb1",
+  "source_identity_basis": "575 build-source files matched the Git archive; commit is not embedded in the app binary",
+  "version": "0.2.4",
+  "architecture": "arm64",
+  "signature": "ad-hoc",
+  "notarized": false,
+  "bundled_cli": false,
+  "mounted_contents": [
+    "Applications",
+    "lobocode.app"
+  ],
+  "dmg_sha256": "9b1907e66878625d140b8b6f857e5f42ee5518f206264fdb86a657822bec5bf8",
+  "dmg_bytes": 6107978
+}

@@ -1,0 +1,21 @@
+{
+  "release_id": 429734447,
+  "url": "https://github.com/1905/lobocode/releases/tag/app-v0.2.4",
+  "published_at": "2026-10-31T05:05:18Z",
+  "source_sha": "240989574fbc1c9029e229864e2182b74368dbb1",
+  "anonymous_download": true,
+  "assets": {
+    "app-release.json": {
+      "sha256": "95211cdb300986aef032d45b542eee9802ef53b9270dec296781dde890aafa8f",
+      "bytes": 963
+    },
+    "lobocode.dmg": {
+      "sha256": "9b1907e66878625d140b8b6f857e5f42ee5518f206264fdb86a657822bec5bf8",
+      "bytes": 6107978
+    },
+    "SHA256SUMS": {
+      "sha256": "babb9bec528ea593ee874817b9b74739e3c79c1533cd96c0884cc3c4124f5d77",
+      "bytes": 162
+    }
+  }
+}

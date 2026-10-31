@@ -2,7 +2,7 @@
 
 Run **Qwen3.8-27B abliterated** (huihui-ai, Q6_K) on a rented RunPod or Vast GPU from the standalone Mac app. Get an OpenAI-compatible API through a private SSH connection. Local inference is not supported.
 
-**Mac app 0.2.3:** cloud-only, standalone, Apple Silicon. [Download the DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.3/lobocode.dmg). Homebrew installs the legacy Go CLI, which cannot use `qwen38-q6`; the Rust CLI rewrite remains unreleased. Screenshots with performance numbers show sample data, not benchmark results.
+**Mac app 0.2.4:** cloud-only, standalone, Apple Silicon. [Download the DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.4/lobocode.dmg). Homebrew installs the legacy Go CLI, which cannot use `qwen38-q6`; the Rust CLI rewrite remains unreleased. Screenshots with performance numbers show sample data, not benchmark results.
 
 The only supported model is `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). It runs only on a rented RunPod or Vast GPU. The app, the Rust CLI and its configuration form accept no other model and no local run. Each new start resolves the latest public `latest-qwen38-q6` image. The thin image downloads verified weights at boot. Broader telemetry acceptance remains pending.
 
@@ -32,7 +32,7 @@ The app's Stop button targets its recorded runtime. The CLI's `down` command ret
 
 ## Install
 
-The desktop app installs from its DMG and does not require the CLI. Install the optional CLI separately through Homebrew. [Download Mac app 0.2.3](https://github.com/1905/lobocode/releases/download/app-v0.2.3/lobocode.dmg), open the DMG, and drag **lobocode** to **Applications**. Requires Apple Silicon and macOS 13 or later. The app is ad-hoc signed and is not notarized.
+The desktop app installs from its DMG and does not require the CLI. Install the optional CLI separately through Homebrew. [Download Mac app 0.2.4](https://github.com/1905/lobocode/releases/download/app-v0.2.4/lobocode.dmg), open the DMG, and drag **lobocode** to **Applications**. Requires Apple Silicon and macOS 13 or later. The app is ad-hoc signed and is not notarized.
 
 **Published CLI through Homebrew** (macOS, Linux):
 
@@ -102,7 +102,7 @@ Windows use native macOS title bars and rounded corners. Each view fits without 
 
 The Mac cloud request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds. Ready displayed 22.8 / 31.8 GB of GPU memory. The idle gauges showed `0 / 0` after the reply; live rate updates were not verified. Owned pod/tunnel cleanup, native Quit and preference restoration passed. Loading-memory progression remains unfinished. Live OpenCode integration remains unverified. These measurements used the historical Qwen3.5 model, not the current model.
 
-The [standalone DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.3/lobocode.dmg) contains only the app. For development, `make install-mac` builds the app and `make dmg` creates `bin/lobocode.dmg`.
+The [standalone DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.4/lobocode.dmg) contains only the app. For development, `make install-mac` builds the app and `make dmg` creates `bin/lobocode.dmg`.
 
 - The app is not notarized. If macOS blocks the first open, go to System Settings → Privacy & Security → **Open Anyway**. Or run `xattr -dr com.apple.quarantine /Applications/lobocode.app`.
 

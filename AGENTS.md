@@ -2,7 +2,13 @@
 
 ## Supported scope — 2026-10-29
 
-User decision: support only `qwen38-q6`, only on RunPod or Vast GPUs. No model choice (no `q6`/`q8`) and no local runs. The user authorized removal of the retired code on 2026-10-31. Cleanup is in progress on `cleanup/retired-models`: one catalog entry, no local inference/provider/commands, no full-image model packaging. Keep legacy config migration and cloud ownership safety. Do not remove user model files or change the installed app or optional CLI.
+User decision: support only `qwen38-q6`, only on RunPod or Vast GPUs. No model choice (no `q6`/`q8`) and no local runs. The authorized cleanup is complete: one catalog entry, no local inference/provider/commands, no full-image model packaging. Legacy saved configs migrate; explicit retired choices fail validation. Cloud ownership safety remains. Keep user model files, the installed app and optional CLI unchanged. Historical Go source is outside this cleanup.
+
+## App 0.2.4 cleanup delivery — 2026-10-31
+
+Cleanup and review fixes are merged and pushed to `master`. App `0.2.4` and the public GPU image are published from `240989574fbc1c9029e229864e2182b74368dbb1`. All 575 build-source files matched the source archive. DMG SHA-256: `9b1907e66878625d140b8b6f857e5f42ee5518f206264fdb86a657822bec5bf8`. Public `latest-qwen38-q6` digest: `sha256:3d64617400c59420f0aea21a0bb6c0ac83376a8ee377dd2710ef63d5fc41fc0a`. Anonymous downloads, asset checksums, image source and mounted DMG checks pass.
+
+Validation: 452 workspace tests, two added review regression tests, the separately run SSH integration, 99 app checks, 21 UI tests and six native setup/migration cases passed. Core/CLI and app suites passed again after review fixes. No live GPU inference or local installation ran. App signing remains ad-hoc, without notarization. GitHub Actions remains disabled; the optional CLI latest release remains `v0.1.0`. See [cleanup results](plans/done/2026-10-31-retired-models/results.md).
 
 ## App 0.2.3 delivery — 2026-10-31
 
