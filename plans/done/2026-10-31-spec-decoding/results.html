@@ -40,9 +40,11 @@ body { margin: 0; }
 .viz-root {
   background: var(--surface-0); color: var(--text-primary);
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
-  min-height: 100vh; padding: 24px 16px 64px;
+  padding: 24px 16px 64px;
 }
-main { max-width: 920px; margin: 0 auto; }
+main { max-width: 920px; margin: 0 auto; min-width: 0; }
+section, .tile { min-width: 0; }
+h1 { overflow-wrap: anywhere; }
 header p.status { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-muted); margin: 0 0 6px; }
 h1 { font-size: 26px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
 h2 { font-size: 17px; margin: 0 0 12px; }
@@ -50,7 +52,7 @@ h2 { font-size: 17px; margin: 0 0 12px; }
 section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin: 0 0 16px; }
 .tldr ul { margin: 0; padding-left: 18px; }
 .tldr li { margin: 2px 0; }
-code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-0); padding: 1px 5px; border-radius: 4px; }
+code { overflow-wrap: anywhere; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-0); padding: 1px 5px; border-radius: 4px; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 .tile { border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--surface-1); }
 .tile .k { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }
@@ -59,7 +61,9 @@ code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: va
 .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin: 0 0 8px; }
 .legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
 .chart { position: relative; }
-.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart { overflow-x: auto; }
+.chart svg { width: 100%; min-width: 620px; height: auto; display: block; }
+td code { white-space: nowrap; overflow-wrap: normal; }
 .chart .gridline { stroke: var(--grid); stroke-width: 1; }
 .chart .axis { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .chart .cat { fill: var(--text-primary); font-size: 13px; }
@@ -119,8 +123,8 @@ pre { overflow-x: auto; background: var(--surface-0); border-radius: 8px; paddin
 <section id="chart">
   <h2>Output tok/s per workload (<code>lobo up</code>, greedy)</h2>
   <div class="legend"><span style="--c:var(--series-base)">Before (image 0.2.4)</span><span style="--c:var(--series-new)">After (image 0.2.5, <code>mtp-ngram</code>, 5 drafts)</span></div>
-  <div class="chart" id="bars"></div>
-  <p class="note">One linear axis, 0–600 tok/s. Hover a row for the numbers. The same data is in the table below.</p>
+  <div class="chart" id="bars"><svg viewBox="0 0 880 344" role="img" aria-label="Output tokens per second, before vs after, per workload"><line x1="130.0" x2="130.0" y1="4" y2="322" class="gridline"/><text x="130.0" y="338" text-anchor="middle" class="axis">0</text><line x1="240.0" x2="240.0" y1="4" y2="322" class="gridline"/><text x="240.0" y="338" text-anchor="middle" class="axis">100</text><line x1="350.0" x2="350.0" y1="4" y2="322" class="gridline"/><text x="350.0" y="338" text-anchor="middle" class="axis">200</text><line x1="460.0" x2="460.0" y1="4" y2="322" class="gridline"/><text x="460.0" y="338" text-anchor="middle" class="axis">300</text><line x1="570.0" x2="570.0" y1="4" y2="322" class="gridline"/><text x="570.0" y="338" text-anchor="middle" class="axis">400</text><line x1="680.0" x2="680.0" y1="4" y2="322" class="gridline"/><text x="680.0" y="338" text-anchor="middle" class="axis">500</text><line x1="790.0" x2="790.0" y1="4" y2="322" class="gridline"/><text x="790.0" y="338" text-anchor="middle" class="axis">600</text><g><title>W1 free prose: before 55.6 tok/s, after 102.2 tok/s, 1.84×</title><text x="0" y="26" class="cat">W1</text><text x="0" y="41" class="cat2">free prose</text><rect x="130" y="14" width="61.2" height="14" rx="4" fill="var(--series-base)"/><text x="197.2" y="25" class="val">55.6</text><rect x="130" y="30" width="112.4" height="14" rx="4" fill="var(--series-new)"/><text x="248.4" y="41" class="val strong">102.2 · 1.8×</text><rect x="0" y="8" width="880" height="52" fill="transparent"/></g><g><title>W2 Go code: before 54.5 tok/s, after 147.9 tok/s, 2.71×</title><text x="0" y="78" class="cat">W2</text><text x="0" y="93" class="cat2">Go code</text><rect x="130" y="66" width="59.9" height="14" rx="4" fill="var(--series-base)"/><text x="195.9" y="77" class="val">54.5</text><rect x="130" y="82" width="162.7" height="14" rx="4" fill="var(--series-new)"/><text x="298.7" y="93" class="val strong">147.9 · 2.7×</text><rect x="0" y="60" width="880" height="52" fill="transparent"/></g><g><title>W3 code edit: before 54.4 tok/s, after 504.4 tok/s, 9.27×</title><text x="0" y="130" class="cat">W3</text><text x="0" y="145" class="cat2">code edit</text><rect x="130" y="118" width="59.8" height="14" rx="4" fill="var(--series-base)"/><text x="195.8" y="129" class="val">54.4</text><rect x="130" y="134" width="554.8" height="14" rx="4" fill="var(--series-new)"/><text x="690.8" y="145" class="val strong">504.4 · 9.3×</text><rect x="0" y="112" width="880" height="52" fill="transparent"/></g><g><title>W4 25k-token doc: before 50.4 tok/s, after 212.4 tok/s, 4.21×</title><text x="0" y="182" class="cat">W4</text><text x="0" y="197" class="cat2">25k-token doc</text><rect x="130" y="170" width="55.4" height="14" rx="4" fill="var(--series-base)"/><text x="191.4" y="181" class="val">50.4</text><rect x="130" y="186" width="233.6" height="14" rx="4" fill="var(--series-new)"/><text x="369.6" y="197" class="val strong">212.4 · 4.2×</text><rect x="0" y="164" width="880" height="52" fill="transparent"/></g><g><title>W5 2nd question: before 50.2 tok/s, after 242.3 tok/s, 4.83×</title><text x="0" y="234" class="cat">W5</text><text x="0" y="249" class="cat2">2nd question</text><rect x="130" y="222" width="55.2" height="14" rx="4" fill="var(--series-base)"/><text x="191.2" y="233" class="val">50.2</text><rect x="130" y="238" width="266.5" height="14" rx="4" fill="var(--series-new)"/><text x="402.5" y="249" class="val strong">242.3 · 4.8×</text><rect x="0" y="216" width="880" height="52" fill="transparent"/></g><g><title>W6 tool call: before 52.6 tok/s, after 137.3 tok/s, 2.61×</title><text x="0" y="286" class="cat">W6</text><text x="0" y="301" class="cat2">tool call</text><rect x="130" y="274" width="57.9" height="14" rx="4" fill="var(--series-base)"/><text x="193.9" y="285" class="val">52.6</text><rect x="130" y="290" width="151.0" height="14" rx="4" fill="var(--series-new)"/><text x="287.0" y="301" class="val strong">137.3 · 2.6×</text><rect x="0" y="268" width="880" height="52" fill="transparent"/></g></svg></div>
+  <p class="note">One linear axis, 0–600 tok/s. On a phone, scroll the chart sideways. The same data is in the table below.</p>
 </section>
 
 <section id="table">
@@ -195,54 +199,5 @@ pre { overflow-x: auto; background: var(--surface-0); border-radius: 8px; paddin
 </section>
 </main>
 </div>
-<script>
-(function () {
-  var data = [
-    ["W1", "free prose", 55.6, 102.2],
-    ["W2", "Go code", 54.5, 147.9],
-    ["W3", "code edit", 54.4, 504.4],
-    ["W4", "25k-token doc", 50.4, 212.4],
-    ["W5", "2nd question", 50.2, 242.3],
-    ["W6", "tool call", 52.6, 137.3]
-  ];
-  var max = 600, W = 880, L = 130, R = 60, barH = 14, gap = 2, rowH = 52, top = 8;
-  var H = top + data.length * rowH + 24, plotW = W - L - R;
-  var x = function (v) { return L + v / max * plotW; };
-  var ns = "http://www.w3.org/2000/svg";
-  var svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", "Output tokens per second, baseline vs mtp-ngram, per workload");
-  function el(t, a, txt) { var e = document.createElementNS(ns, t); for (var k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; return e; }
-  for (var t = 0; t <= max; t += 100) {
-    svg.appendChild(el("line", { x1: x(t), x2: x(t), y1: top - 4, y2: H - 22, "class": "gridline" }));
-    svg.appendChild(el("text", { x: x(t), y: H - 6, "text-anchor": "middle", "class": "axis" }, t));
-  }
-  var wrap = document.getElementById("bars");
-  var tip = document.createElement("div"); tip.className = "tip";
-  data.forEach(function (d, i) {
-    var y0 = top + i * rowH + 6;
-    var g = el("g", { "class": "row" });
-    g.appendChild(el("text", { x: 0, y: y0 + 12, "class": "cat" }, d[0]));
-    g.appendChild(el("text", { x: 0, y: y0 + 27, "class": "cat2" }, d[1]));
-    g.appendChild(el("rect", { x: L, y: y0, width: x(d[2]) - L, height: barH, fill: "var(--series-base)", "class": "bar" }));
-    g.appendChild(el("text", { x: x(d[2]) + 6, y: y0 + 11, "class": "val" }, d[2].toFixed(1)));
-    var y1 = y0 + barH + gap;
-    g.appendChild(el("rect", { x: L, y: y1, width: x(d[3]) - L, height: barH, fill: "var(--series-new)", "class": "bar" }));
-    g.appendChild(el("text", { x: x(d[3]) + 6, y: y1 + 11, "class": "val strong" }, d[3].toFixed(1) + "  ·  " + (d[3] / d[2]).toFixed(1) + "×"));
-    var hit = el("rect", { x: 0, y: top + i * rowH, width: W, height: rowH, "class": "hit" });
-    g.appendChild(hit);
-    hit.addEventListener("mousemove", function (ev) {
-      tip.innerHTML = "<b>" + d[0] + " " + d[1] + "</b>Before " + d[2].toFixed(1) + " tok/s<br>After " + d[3].toFixed(1) + " tok/s<br>Speed-up " + (d[3] / d[2]).toFixed(2) + "×";
-      var r = wrap.getBoundingClientRect();
-      var px = Math.min(ev.clientX - r.left + 14, r.width - 170);
-      tip.style.left = px + "px"; tip.style.top = (ev.clientY - r.top + 10) + "px"; tip.style.opacity = 1;
-    });
-    hit.addEventListener("mouseleave", function () { tip.style.opacity = 0; });
-    svg.appendChild(g);
-  });
-  wrap.appendChild(svg); wrap.appendChild(tip);
-})();
-</script>
 </body>
 </html>
