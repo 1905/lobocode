@@ -7,7 +7,8 @@
 - Persist the supported model when Settings saves a legacy configuration. Fix Vast provisioning fields that temporarily contain null.
 - Remove GitHub Actions workflows. Build and test on Feesh and Air.
 - Validation: 548 workspace tests, 97 app library tests, two binary tests, 21 UI tests and six native fresh/legacy setup checks pass. Lint and 25 image-verifier checks pass. Two workspace integration tests remain ignored.
-- Limits: no new live GPU inference test. The contributor CDN returned HTTP 403; fresh Hugging Face first/last chunk hashes matched. The legacy Homebrew Go CLI cannot use the new model. Ad-hoc signing; no notarization. Publication is pending.
+- Publication: the public GPU image and standalone DMG passed anonymous digest/checksum checks. The DMG source receipt, arm64 architecture, contents and ad-hoc signature passed verification.
+- Limits: no new live GPU inference test. The contributor CDN returned HTTP 403; fresh Hugging Face first/last chunk hashes matched. The legacy Homebrew Go CLI cannot use the new model. Ad-hoc signing; no notarization.
 
 ## App 0.2.2 — 2026-10-05
 

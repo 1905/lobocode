@@ -4,11 +4,15 @@
 
 User decision: support only `qwen38-q6`, only on RunPod or Vast GPUs. No model choice (no `q6`/`q8`) and no local runs. Enforced by the catalog `gpu` flag in the app selector and admission, the CLI config form and `lobo up`. Unused `q6`/`q8` entries and local code stay until a separate cleanup.
 
+## App 0.2.3 delivery — 2026-10-31
+
+PR #2's cleaned review branch is merged and pushed to `master` at `13aa8d64bd3874dcf61464050cdc6150b87d1304`. The original PR is closed because its commits were rewritten before integration. App 0.2.3 is published from that exact source. Feesh passed 548 workspace tests, 21 UI tests and 25 image-verifier checks; Air passed 97 app library tests, two binary tests and six native setup checks. Two workspace integration tests remain ignored. No new GPU inference ran. Public image and DMG checks passed. DMG SHA-256: `309f3581ca23b365e2954616ad3e12153e6766f6ca35c5003a8d3231401dcede`. The installed app and optional CLI remain unchanged. GitHub Actions remains disabled. See [review results](docs/pr2-review-results.md).
+
 ## Contributor PRs #2 and #3 — review resumed 2026-10-31
 
 The user asked to review, fix, merge and release PRs #2 and #3 from SandQuattro (fullsend). Reviews: self, China and Rival on each PR. Session trailers were stripped from the contributor commit messages before merge.
 
-PR #3 merged on October 26. PR #2 remained on `review/pr-2` after a failed native migration test; the earlier heading incorrectly claimed both were merged. The resumed review fixed the persisted model at the backend save boundary. Workspace, app and native setup checks pass on Feesh and Air. GitHub Actions is disabled and workflow files are removed. The public `latest-qwen38-q6` image is verified at `sha256:0491a075ad2c7f2c3f29cd2dffb0d58a8139ed1963905ccbd4378fa3ae9a5637`. See [review results](docs/pr2-review-results.md) for validation and remaining limits. App 0.2.3 publication is pending.
+PR #3 merged on October 26. PR #2 remained on `review/pr-2` after a failed native migration test; the earlier heading incorrectly claimed both were merged. The resumed review fixed the persisted model at the backend save boundary. Workspace, app and native setup checks pass on Feesh and Air. GitHub Actions is disabled and workflow files are removed. The public `latest-qwen38-q6` image is verified at `sha256:0491a075ad2c7f2c3f29cd2dffb0d58a8139ed1963905ccbd4378fa3ae9a5637`. See [review results](docs/pr2-review-results.md) for validation and remaining limits. App 0.2.3 publication is complete.
 
 PR #3 opens the SSH control socket as `ssh.sock` relative to the cloud directory, so long config paths no longer fail preflight. Review fix: `dtolnay/rust-toolchain` is pinned to a commit.
 

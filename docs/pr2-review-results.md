@@ -1,7 +1,9 @@
 # PR #2 review and validation
 
 **Date:** 2026-10-31
-**Status:** review complete; app publication pending
+**Status:** merged and released as app 0.2.3
+
+The reviewed branch merged into `master` at `13aa8d64bd3874dcf61464050cdc6150b87d1304`. [App 0.2.3](https://github.com/1905/lobocode/releases/tag/app-v0.2.3) was built from that exact source on Air. Mounted DMG contents, arm64 architecture, ad-hoc signature, source receipt and anonymous asset downloads passed. DMG SHA-256: `309f3581ca23b365e2954616ad3e12153e6766f6ca35c5003a8d3231401dcede`. The installed app and optional CLI were not replaced.
 
 PR #2 adds the Qwen3.8 model catalog and verified chunk delivery. The final scope supports only `qwen38-q6`, on RunPod or Vast. The app has no model picker or local execution path.
 
