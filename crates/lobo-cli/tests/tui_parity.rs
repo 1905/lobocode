@@ -103,9 +103,11 @@ async fn up_goldens() {
             ..Default::default()
         }),
     ];
-    golden(
+    // Go stopped at the first failed pod; Rust retries, so this screen has no Go
+    // capture. The snapshot pins the final view after the last attempt.
+    insta::assert_snapshot!(
         "up_failed",
-        to_plain(&render_up(&up_until(failed, "failed").await, "*")),
+        to_plain(&render_up(&up_until(failed, "failed").await, "*"))
     );
 }
 #[tokio::test]
