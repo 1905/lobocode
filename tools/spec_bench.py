@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import shlex
+import socket
 import statistics
 import subprocess
 import sys
@@ -33,7 +34,6 @@ RUNPOD = "https://rest.runpod.io/v1"
 SSH_KEY = Path.home() / "ssh/runpod2"
 DRAFT_REPO = "z-lab/Qwen3.8-27B-DFlash2-GGUF"
 DRAFT_FILE = "Qwen3.8-27B-DFlash2-Q8_0.gguf"
-LOCAL_PORT = 18080
 CTX = 65536
 
 CATALOG = {m["id"]: m for m in json.loads((ROOT / "crates/lobo-proto/catalog.json").read_text())}
@@ -115,6 +115,12 @@ def workloads():
 
 # ---------- pure functions ----------
 
+def output_sha(msg):
+    # llama-server gives each tool call a random id; only the call itself is output.
+    calls = [{k: v for k, v in c.items() if k != "id"} for c in msg.get("tool_calls") or []]
+    return hashlib.sha256(((msg.get("content") or "") + json.dumps(calls, sort_keys=True)).encode()).hexdigest()
+
+
 def median(xs):
     xs = [x for x in xs if x is not None]
     if not xs:
@@ -134,7 +140,8 @@ def summarize(rows):
         cold = [r["prompt_ms"] / 1000 for r in rs if r["rep"] == 1]
         out[key] = {
             "tok_s": median(r["predicted_per_second"] for r in rs),
-            "prompt_tok_s": median(r["prompt_per_second"] for r in rs),
+            "prompt_tok_s": median(rates) if (rates := [r["prompt_per_second"] for r in rs
+                                                         if r["prompt_per_second"] is not None]) else None,
             "ttft_s": median(r["prompt_ms"] / 1000 for r in rs),
             "cold_ttft_s": cold[0] if cold else None,
             "predicted_n": median(r["predicted_n"] for r in rs),
@@ -251,7 +258,7 @@ def report_md(rows):
         lines += ["| Config | W4 cold TTFT s | W4 prompt tok/s | W5 TTFT s (cached prefix) |", "|---|---:|---:|---:|"]
         for c, w4, w5 in ttft:
             if w4:
-                lines.append(f"| {c} | {fmt(w4['cold_ttft_s'], '{:.2f}')} | {w4['prompt_tok_s']:.0f} | "
+                lines.append(f"| {c} | {fmt(w4['cold_ttft_s'], '{:.2f}')} | {fmt(w4['prompt_tok_s'], '{:.0f}')} | "
                              f"{fmt(w5['ttft_s'] if w5 else None, '{:.2f}')} |")
         vram = [r for r in rows if r.get("kind") == "vram" and r["label"] == label]
         if vram:
@@ -286,13 +293,12 @@ def complete(base, w, sampling, key=None):
     wall = time.monotonic() - t0
     t = resp.get("timings") or {}
     msg = resp["choices"][0]["message"]
-    text = (msg.get("content") or "") + json.dumps(msg.get("tool_calls") or [], sort_keys=True)
     row = {"prompt_n": t.get("prompt_n"), "prompt_ms": t.get("prompt_ms"),
            "prompt_per_second": t.get("prompt_per_second"), "predicted_n": t.get("predicted_n"),
            "predicted_ms": t.get("predicted_ms"), "predicted_per_second": t.get("predicted_per_second"),
            "draft_n": t.get("draft_n"), "draft_n_accepted": t.get("draft_n_accepted"),
            "finish_reason": resp["choices"][0].get("finish_reason"), "wall_s": round(wall, 3),
-           "text_sha256": hashlib.sha256(text.encode()).hexdigest()}
+           "text_sha256": output_sha(msg)}
     if row["predicted_per_second"] is None:
         usage = resp.get("usage") or {}
         row["predicted_n"] = usage.get("completion_tokens")
@@ -388,6 +394,9 @@ class Pod:
                        "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
                        "-o", "ServerAliveInterval=15", "-o", "ConnectTimeout=15", f"root@{ip}"]
         self.tunnel = None
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            self.local_port = s.getsockname()[1]
 
     def sh(self, script, timeout=3600, check=True):
         r = subprocess.run(["ssh", *self.target, "bash", "-s"], input=script, text=True,
@@ -405,7 +414,18 @@ class Pod:
         raise TimeoutError("SSH never answered")
 
     def forward(self):
-        self.tunnel = subprocess.Popen(["ssh", "-N", "-L", f"{LOCAL_PORT}:127.0.0.1:8080", *self.target])
+        self.tunnel = subprocess.Popen(["ssh", "-N", "-o", "ExitOnForwardFailure=yes",
+                                        "-L", f"{self.local_port}:127.0.0.1:8080", *self.target])
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if self.tunnel.poll() is not None:
+                raise RuntimeError(f"SSH forward to 127.0.0.1:{self.local_port} exited ({self.tunnel.returncode})")
+            try:
+                socket.create_connection(("127.0.0.1", self.local_port), timeout=2).close()
+                return
+            except OSError:
+                time.sleep(1)
+        raise TimeoutError(f"SSH forward on 127.0.0.1:{self.local_port} never opened")
 
     def close(self):
         if self.tunnel:
@@ -442,7 +462,7 @@ def start_server(pod, extra, timeout=600):
     while time.monotonic() < deadline:
         time.sleep(5)
         try:
-            if http("GET", f"http://127.0.0.1:{LOCAL_PORT}/health", timeout=10)[0] == 200:
+            if http("GET", f"http://127.0.0.1:{pod.local_port}/health", timeout=10)[0] == 200:
                 return None
         except (urllib.error.URLError, OSError):
             pass
@@ -458,16 +478,16 @@ def cmd_sweep(a):
         name, flags = d.split("=", 1)
         configs[name] = shlex.split(flags)
     names = a.configs.split(",")
-    pod_id, started = a.pod, time.time()
-    if not pod_id:
-        p = rp.rent(a.cloud)
-        pod_id = p["id"]
-        out.write(kind="meta", label=a.label, msg=f"rented {pod_id} {p.get('costPerHr')}$/h", pod=pod_id,
-                  cost_per_hr=p.get("costPerHr"), started=started)
-        Path(a.out).with_suffix(".pod").write_text(json.dumps({"id": pod_id, "started": started,
-                                                               "cost_per_hr": p.get("costPerHr")}))
+    pod_id, started, cost = a.pod, time.time(), None
     pod = None
     try:
+        if not pod_id:
+            p = rp.rent(a.cloud)
+            pod_id, cost = p["id"], p.get("costPerHr")
+            out.write(kind="meta", label=a.label, msg=f"rented {pod_id} {cost}$/h", pod=pod_id,
+                      cost_per_hr=cost, started=started)
+            Path(a.out).with_suffix(".pod").write_text(json.dumps({"id": pod_id, "started": started,
+                                                                   "cost_per_hr": cost}))
         ip, port, info = rp.ssh_addr(pod_id)
         pod = Pod(ip, port)
         pod.wait_ssh()
@@ -483,19 +503,19 @@ def cmd_sweep(a):
             used = pod.sh("nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits").strip()
             out.write(kind="vram", label=a.label, config=name, used_mb=int(used.split()[0]),
                       argv=configs[name])
-            run_workloads(out, f"http://127.0.0.1:{LOCAL_PORT}", a.label, name, a.reps,
+            run_workloads(out, f"http://127.0.0.1:{pod.local_port}", a.label, name, a.reps,
                           sampled=name in (a.sampled or "").split(","))
             out.write(kind="vram", label=a.label, config=name + "@end",
                       used_mb=int(pod.sh("nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits").split()[0]))
     finally:
         if pod:
             pod.close()
-        if not a.keep:
+        if pod_id and not a.keep:
             rp.terminate(pod_id)
             meta = json.loads(Path(a.out).with_suffix(".pod").read_text()) if Path(a.out).with_suffix(".pod").exists() else {}
             hours = (time.time() - meta.get("started", started)) / 3600
             out.write(kind="spend", label=a.label, pod=pod_id, hours=round(hours, 3),
-                      usd=round(hours * (meta.get("cost_per_hr") or 0), 2), msg="terminated")
+                      usd=round(hours * (meta.get("cost_per_hr") or cost or 0), 2), msg="terminated")
 
 
 def cmd_endpoint(a):

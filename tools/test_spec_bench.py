@@ -26,6 +26,18 @@ class Pure(unittest.TestCase):
         with self.assertRaises(ValueError):
             sb.median([])
 
+    def test_output_sha_ignores_tool_call_ids(self):
+        call = {"type": "function", "function": {"name": "read_file", "arguments": "{\"path\": \"a\"}"}}
+        a = sb.output_sha({"content": "", "tool_calls": [{**call, "id": "x1"}]})
+        self.assertEqual(a, sb.output_sha({"content": None, "tool_calls": [{**call, "id": "y2"}]}))
+        self.assertNotEqual(a, sb.output_sha({"content": "", "tool_calls": [{**call, "function": {
+            "name": "read_file", "arguments": "{\"path\": \"b\"}"}}]}))
+
+    def test_summarize_without_prompt_rates(self):
+        r = row("off", "W1", 50)
+        r["prompt_per_second"] = None
+        self.assertIsNone(sb.summarize([r])[("sweep", "off", "W1", "greedy")]["prompt_tok_s"])
+
     def test_summarize_drops_warmup_and_errors(self):
         rows = [row("off", "W1", 999, rep=0, warmup=True), row("off", "W1", 50),
                 row("off", "W1", 60, rep=2), row("off", "W1", None, rep=3, error="timeout")]
