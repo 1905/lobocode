@@ -65,11 +65,17 @@ async fn main() -> ExitCode {
                 &value("CONTAINER_ID"),
                 &value("CONTAINER_API_KEY"),
             );
+            // Only a real instance (it can delete itself) waits to report a startup error.
+            let report = api.is_some().then(|| pod::FailReport {
+                addr: lobo_agent::AGENT_ADDR.into(),
+                boot_id: value("LOBO_BOOT_ID"),
+                grace: Duration::from_secs(60),
+            });
             let mut term =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
                     .expect("SIGTERM handler");
             tokio::select! {
-                code=pod::main_flow(async move{pod::run(&env,logs).await},api,Some(pod::FailReport{addr:lobo_agent::AGENT_ADDR.into(),boot_id:value("LOBO_BOOT_ID"),grace:Duration::from_secs(60)}),Duration::from_secs(600))=>code,
+                code=pod::main_flow(async move{pod::run(&env,logs).await},api,report,Duration::from_secs(600))=>code,
                 _=term.recv()=>ExitCode::from(143),
                 _=tokio::signal::ctrl_c()=>ExitCode::from(143),
             }
