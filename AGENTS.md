@@ -2,7 +2,7 @@
 
 ## Supported scope — 2026-10-29
 
-User decision: support only `qwen38-q6`, only on RunPod or Vast GPUs. No model choice (no `q6`/`q8`) and no local runs. Enforced by the catalog `gpu` flag in the app selector and admission, the CLI config form and `lobo up`. Unused `q6`/`q8` entries and local code stay until a separate cleanup.
+User decision: support only `qwen38-q6`, only on RunPod or Vast GPUs. No model choice (no `q6`/`q8`) and no local runs. The user authorized removal of the retired code on 2026-10-31. Cleanup is in progress on `cleanup/retired-models`: one catalog entry, no local inference/provider/commands, no full-image model packaging. Keep legacy config migration and cloud ownership safety. Do not remove user model files or change the installed app or optional CLI.
 
 ## App 0.2.3 delivery — 2026-10-31
 

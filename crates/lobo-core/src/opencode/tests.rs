@@ -7,10 +7,10 @@ use std::{
 
 fn binding() -> Binding {
     Binding {
-        provider: "lobo-local".into(),
-        model_alias: "qwen3.5-27b-q6".into(),
+        provider: "lobo".into(),
+        model_alias: "qwen3.8-27b-abliterated-q6".into(),
         context: 32768,
-        endpoint: "http://127.0.0.1:8931/v1".into(),
+        endpoint: "http://127.0.0.1:8933/v1".into(),
         api_key: "test-secret-never-in-errors".into(),
     }
 }
@@ -23,12 +23,12 @@ fn fixture() -> &'static str {
   "default_agent": "custom",
   "provider": {
     "other": {"options": {"apiKey": "user-secret"}},
-    "lobo-local": {
+    "lobo": {
       "npm": "old-package",
       "options": {"baseURL": "old", "apiKey": "old", "headers" : { "X-User": "é漢" }},
       "models": {"untouched": { "limit" : {"context": 12} }},
     },
-    "lobo": { "options" : { "baseURL" : "https://untouched/v1" } },
+    "lobo-local": { "options" : { "baseURL" : "https://untouched/v1" } },
   },
   "agent": {
     "lobo": {"prompt" : "custom prompt", "tools": {"skill": true}, "permission": { "bash": "ask" }, "model": "old"},
@@ -52,7 +52,7 @@ fn patch_preserves_unrelated_bytes_and_custom_agent() {
             "\"other\": {\"options\": {\"apiKey\": \"user-secret\"}}",
             "\"headers\" : { \"X-User\": \"é漢\" }",
             "\"untouched\": { \"limit\" : {\"context\": 12} }",
-            "\"lobo\": { \"options\" : { \"baseURL\" : \"https://untouched/v1\" } }",
+            "\"lobo-local\": { \"options\" : { \"baseURL\" : \"https://untouched/v1\" } }",
             "\"prompt\" : \"custom prompt\", \"tools\": {\"skill\": true}, \"permission\": { \"bash\": \"ask\" }",
             "\"custom\": { \"model\" : \"other/large\", \"temperature\" : 0.5 }",
             "\"policy\" : [ { \"a\": \"b\" } ]",
@@ -99,9 +99,9 @@ fn patch_rejects_duplicate_decoded_keys_and_wrong_containers_without_secrets() {
         r#"{"agent":{},"\u0061gent":{}}"#,
         r#"{"untouched":[{"a":1,"a":2}]}"#,
         r#"{"provider":[]}"#,
-        r#"{"provider":{"lobo-local":null}}"#,
-        r#"{"provider":{"lobo-local":{"options":false}}}"#,
-        r#"{"provider":{"lobo-local":{"models":{"qwen3.5-27b-q6":[]}}}}"#,
+        r#"{"provider":{"lobo":null}}"#,
+        r#"{"provider":{"lobo":{"options":false}}}"#,
+        r#"{"provider":{"lobo":{"models":{"qwen3.8-27b-abliterated-q6":[]}}}}"#,
         r#"{"agent":{"lobo":"bad"}}"#,
         "[]",
         "null",
@@ -126,11 +126,11 @@ fn contexts_and_output_limits_follow_binding() {
         let mut b = binding();
         b.context = context;
         b.provider = "lobo".into();
-        b.model_alias = "qwen3.5-27b-q8".into();
+        b.model_alias = "qwen3.8-27b-abliterated-q6".into();
         let result = patch_config("{}", &b, "{file:/private/key}", true).unwrap();
         assert!(result.contains(&format!("\"context\":{context}")));
         assert!(result.contains(&format!("\"output\":{}", context.min(8192))));
-        assert!(result.contains("lobo/qwen3.5-27b-q8"));
+        assert!(result.contains("lobo/qwen3.8-27b-abliterated-q6"));
     }
 }
 
@@ -359,7 +359,7 @@ fn arbitrary_or_symlink_key_references_are_never_reused() {
             .contains(&format!("{{file:{}}}", other.display()))
     );
     assert_eq!(fs::read_to_string(&other).unwrap(), binding().api_key);
-    let link = keys.join("lobo-local-abcdef.key");
+    let link = keys.join("lobo-abcdef.key");
     symlink(&other, &link).unwrap();
     let src = patch_config(
         "{}",
@@ -412,4 +412,11 @@ fn fresh_config_has_no_backup_and_failed_noop_stays_unchanged() {
     assert_eq!(fs::read(&path).unwrap(), bytes);
     assert_eq!(fs::read_dir(&keys).unwrap().count(), 1);
     assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
+}
+
+#[test]
+fn retired_local_binding_is_rejected() {
+    let mut b = binding();
+    b.provider = "lobo-local".into();
+    assert!(patch_config("{}", &b, "{file:/private/key}", false).is_err());
 }

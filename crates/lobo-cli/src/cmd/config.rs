@@ -106,13 +106,7 @@ pub fn run(app: &App, args: ConfigArgs, path: &Path, io: &mut Io) -> Result<()> 
         None => {
             let values = config::values(path)?;
             if app.term.stdout_tty && app.term.stdin_tty {
-                let set = crate::wizard::run_wizard(
-                    &mut *(app.prompter)(),
-                    path,
-                    values.clone(),
-                    // Runs are cloud-only (RunPod or Vast); the form offers no local provider.
-                    false,
-                )?;
+                let set = crate::wizard::run_wizard(&mut *(app.prompter)(), path, values.clone())?;
                 if let Some(set) = set {
                     config::save(path, &set)?;
                     writeln!(io.out, "saved {}", path.display())?;

@@ -101,16 +101,16 @@ async fn list_all_keeps_going_on_error() {
     broken.list_error = true;
     d.providers.insert("runpod".into(), Arc::new(broken));
     d.providers
-        .insert("local".into(), Arc::new(ProviderStub::new("local")));
+        .insert("vast".into(), Arc::new(ProviderStub::new("vast")));
     let (items, error) = list_all(&d).await;
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].provider, "local");
+    assert_eq!(items[0].provider, "vast");
     assert_eq!(error.unwrap().to_string(), "runpod: list broke");
 }
 #[test]
 fn lifecycle_limits() {
     assert_eq!(MAX_GPU_RETRIES, 4);
-    // Complete images include 22–29 GB of weights; the old image deadline was 6m.
+    // Host image pulls still have a bounded startup deadline.
     assert_eq!(CONTAINER_TIMEOUT, Duration::from_secs(30 * 60));
     assert_eq!(STALE_SLACK, Duration::from_secs(15));
     assert_eq!(POD_CHECK_EVERY, Duration::from_secs(30));
@@ -164,8 +164,8 @@ async fn down_keeps_going_when_one_provider_fails() {
     }
 }
 #[tokio::test]
-async fn snapshot_no_domain_and_local() {
-    for name in ["runpod", "vast", "local"] {
+async fn snapshot_cloud_agent_without_domain() {
+    for name in ["runpod", "vast"] {
         let mut d = setup();
         d.cfg.domain.clear();
         d.providers.clear();
@@ -186,8 +186,8 @@ async fn snapshot_no_domain_and_local() {
 #[tokio::test]
 async fn target_table() {
     for (running, broken, domain, want) in [
-        ("local", true, "", "http://local/v1"),
-        ("local", false, "cloud", "http://local/v1"),
+        ("vast", true, "", "http://vast/v1"),
+        ("vast", false, "cloud", "http://vast/v1"),
         ("runpod", false, "cloud", "http://runpod/v1"),
         ("vast", false, "cloud", "http://vast/v1"),
         ("", true, "cloud", "list broke"),

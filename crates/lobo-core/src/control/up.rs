@@ -132,8 +132,7 @@ impl OperationScope {
                             .into(),
                     ));
                 }
-                cleanup::pending_owned(d, guard, previous.as_ref().and_then(|t| t.local_start_id))
-                    .await
+                cleanup::pending_owned(d, guard).await
             }
         }
     }
@@ -149,12 +148,7 @@ impl OperationScope {
                             "pending operation belongs to another runtime".into(),
                         ));
                     }
-                    cleanup::pending_owned(
-                        d,
-                        guard,
-                        current.as_ref().and_then(|t| t.local_start_id),
-                    )
-                    .await?;
+                    cleanup::pending_owned(d, guard).await?;
                 }
                 Ok(())
             }
@@ -190,6 +184,11 @@ pub(crate) fn up_scoped(
             } else {
                 &o.provider
             };
+            if !matches!(selected, "runpod" | "vast") {
+                return Err(Error::Config(format!(
+                    "unsupported provider {selected:?}; use runpod or vast"
+                )));
+            }
             scope.recover(&d, &mut ownership, selected).await?;
             let result = AssertUnwindSafe(run(
                 &d,
@@ -376,9 +375,7 @@ async fn run(
         },
         ..Default::default()
     };
-    let rel = if o.provider == "local" {
-        builtin("local".into(), String::new())
-    } else {
+    let rel = {
         if let Some(connection) = &d.connection {
             connection.preflight()?;
         }
@@ -389,8 +386,7 @@ async fn run(
         }
         if !o.source.is_empty() {
             return Err(Error::Config(
-                "cloud models are included in the Docker image; --source is no longer supported"
-                    .into(),
+                "cloud models use verified chunks; --source is no longer supported".into(),
             ));
         }
         if (..2).contains(&o.conns) && o.conns != 0 {
@@ -453,18 +449,7 @@ async fn run(
         )));
     }
     let model = catalog::get(&o.model).map_err(|e| Error::Other(e.to_string()))?;
-    let co = if o.provider == "local" {
-        CreateOpts {
-            lobo_api_key: d.cfg.lobo_api_key.clone(),
-            model: model.id.clone(),
-            ctx: o.ctx,
-            idle_min: o.idle_min,
-            expires_at: expires(start, o.max_life)?,
-            ..Default::default()
-        }
-    } else {
-        read(cancel, cloud_opts(d, &mut o, model, &rel, start)).await?
-    };
+    let co = read(cancel, cloud_opts(d, &mut o, model, &rel, start)).await?;
     for attempt in 1..=MAX_GPU_RETRIES {
         check_cancel(cancel)?;
         let retry = boot(
@@ -558,17 +543,12 @@ async fn boot(
         local_pid: None,
         local_start_id: None,
     })?;
-    let mut prepared = (p.name() != "local")
-        .then(|| d.connection.clone())
-        .flatten()
-        .map(|manager| PreparedConnection {
-            manager,
-            boot_id: co.boot_id.clone(),
-            keep: false,
-        });
-    if p.name() != "local"
-        && let Some(connection) = &d.connection
-    {
+    let mut prepared = d.connection.clone().map(|manager| PreparedConnection {
+        manager,
+        boot_id: co.boot_id.clone(),
+        keep: false,
+    });
+    if let Some(connection) = &d.connection {
         read(cancel, connection.prepare(&mut co)).await?;
     }
     let before = read(cancel, p.list())
@@ -623,7 +603,7 @@ async fn boot(
     if let Err(error) = ownership.record(pending.clone()) {
         // A failed journal update must not abandon the returned instance.
         if scope.owned() {
-            cleanup::delete_owned_verified(p, &pod.id, &co.boot_id, None, d.poll).await
+            cleanup::delete_owned_verified(p, &pod.id, &co.boot_id, d.poll).await
         } else {
             cleanup::delete_verified(p, &pod.id, d.poll).await
         }
@@ -642,20 +622,8 @@ async fn boot(
     };
     // Persist the returned instance before any further fallible setup.
     scope.record_owner(app_target.clone())?;
-    if scope.owned() && p.name() == "local" {
-        let (boot, pid, start) = p.runtime_identity(&pod.id).await?.ok_or_else(|| {
-            Error::Other("created local runtime identity cannot be verified".into())
-        })?;
-        if boot != co.boot_id {
-            return Err(Error::Other("created local runtime boot changed".into()));
-        }
-        app_target.local_pid = Some(pid);
-        app_target.local_start_id = Some(start);
-        scope.record_owner(app_target.clone())?;
-    }
     check_cancel(cancel)?;
-    if p.name() != "local"
-        && let Some(connection) = &d.connection
+    if let Some(connection) = &d.connection
         && let Err(e) = if scope.owned() {
             connection.start_owned(&mut pod, &co).await
         } else {
@@ -705,8 +673,7 @@ async fn boot(
                 Error::Other("maximum lifetime reached during startup; instance deleted".into()),
             ));
         }
-        if p.name() != "local"
-            && let Some(connection) = &d.connection
+        if let Some(connection) = &d.connection
             && let Err(e) = if scope.owned() {
                 connection.attach_owned(&mut pod, &co.boot_id).await
             } else {
@@ -722,7 +689,6 @@ async fn boot(
             Err(error) => (None, format!("unreachable ({})", probe_error(&error))),
         };
         if status.is_none()
-            && (p.name() != "local" || !scope.owned())
             && let Some(connection) = &d.connection
             && let Some(detail) = connection.detail()
         {
@@ -867,7 +833,7 @@ async fn boot(
                     };
                     let error = if !p.replaceable() {
                         scope.cleanup(d, ownership).await?;
-                        format!("local run stopped: {why} (err=none)\n{logs}")
+                        format!("pod stopped: {why} (err=none)\n{logs}")
                     } else {
                         ownership.clear()?;
                         format!("pod stopped: {why} (it deletes itself)\n{logs}")

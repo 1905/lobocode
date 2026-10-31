@@ -133,7 +133,7 @@ mod tests {
                 )
                 .mount(&server)
                 .await;
-            Mock::given(path("/v2/1905/lobocode/manifests/latest-q8"))
+            Mock::given(path("/v2/1905/lobocode/manifests/latest-qwen38-q6"))
                 .and(header("Authorization", "Bearer anonymous"))
                 .and(|r: &wiremock::Request| r.headers.get("cache-control").is_some_and(|h| {
                     h.to_str().is_ok_and(|v| v.contains("no-cache") && v.contains("no-store"))
@@ -148,7 +148,7 @@ mod tests {
                 .expect(1)
                 .mount(&server)
                 .await;
-            let result = client.latest("q8").await;
+            let result = client.latest("qwen38-q6").await;
             if n == 2 {
                 assert!(result.is_err());
             } else {
@@ -172,7 +172,7 @@ mod tests {
             )
             .mount(&server)
             .await;
-        Mock::given(path("/v2/1905/lobocode/manifests/latest-q6"))
+        Mock::given(path("/v2/1905/lobocode/manifests/latest-qwen38-q6"))
             .respond_with(
                 ResponseTemplate::new(200)
                     .insert_header("Docker-Content-Digest", "sha256:bad")
@@ -182,7 +182,7 @@ mod tests {
             .await;
         assert!(
             client
-                .latest("q6")
+                .latest("qwen38-q6")
                 .await
                 .unwrap_err()
                 .to_string()
@@ -204,7 +204,7 @@ mod tests {
             )
             .mount(&server)
             .await;
-        Mock::given(path("/v2/1905/lobocode/manifests/latest-q6"))
+        Mock::given(path("/v2/1905/lobocode/manifests/latest-qwen38-q6"))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_json(serde_json::json!({"schemaVersion":2,"layers":[]})),
@@ -213,7 +213,7 @@ mod tests {
             .await;
         assert!(
             client
-                .latest("q6")
+                .latest("qwen38-q6")
                 .await
                 .unwrap_err()
                 .to_string()
@@ -263,11 +263,11 @@ mod tests {
             )
             .mount(&server)
             .await;
-        Mock::given(path("/v2/1905/lobocode/manifests/latest-q8"))
+        Mock::given(path("/v2/1905/lobocode/manifests/latest-qwen38-q6"))
             .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
-        let err = client.latest("q8").await.unwrap_err().to_string();
+        let err = client.latest("qwen38-q6").await.unwrap_err().to_string();
         assert!(
             err.contains("HTTP 404") && err.contains("no GPU was rented"),
             "{err}"

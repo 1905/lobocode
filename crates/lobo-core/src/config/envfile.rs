@@ -12,7 +12,7 @@ pub struct LayoutGroup {
 }
 pub const LAYOUT: &[LayoutGroup] = &[
     LayoutGroup {
-        title: "providers (at least one, or LOBO_PROVIDER=local)",
+        title: "providers (at least one)",
         keys: &["RUNPOD_API_KEY", "VASTAI_API_KEY"],
     },
     LayoutGroup {
@@ -35,12 +35,10 @@ pub const LAYOUT: &[LayoutGroup] = &[
             "LOBO_MAX_HOURS",
             "LOBO_CLOUD",
             "LOBO_VAST_MAX_DPH",
-            "LOBO_WEIGHTS_DIR",
-            "LOBO_LOCAL_PORT",
         ],
     },
 ];
-pub const HEADER: &str = "# lobo config. Edit by hand or run `lobo config`.\n# Keys here never go into a pod image or a release. Flags on `lobo up` override the defaults.\n# Advanced keys (edit by hand): LOBO_POD_IMAGE (baked pod image, ghcr.io/1905/lobocode@sha256:…), LOBO_MODEL_SOURCE, LOBO_MODEL_SSH_KEY_FILE, LOBO_MODEL_SSH_HOSTKEY,\n# LOBO_FEESH_HTTP_URL; R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_ENDPOINT (fast presigned model\n# download; `lobo release` needs them too).\n";
+pub const HEADER: &str = "# lobo config. Edit by hand or run `lobo config`.\n# Keys here never go into a pod image or a release. Flags on `lobo up` override the defaults.\n# Advanced keys: LOBO_CONNECTION, LOBO_CLOUD_PORT, LOBO_IMAGE_REPO, LOBO_MODEL_BASE_URL.\n";
 pub(crate) fn quote(v: &str) -> String {
     if !v.contains([' ', '\t', '#', '"', '\'', '\\', '$', '\n', '\r']) {
         return v.into();
@@ -79,11 +77,24 @@ pub fn set_env_value(path: &Path, key: &str, value: &str) -> Result<()> {
     save(path, &[(key.to_owned(), value.to_owned())].into())
 }
 pub fn save(path: &Path, set: &BTreeMap<String, String>) -> Result<()> {
+    super::readiness::validate_selection(set).map_err(Error::Config)?;
     let original = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e.into()),
     };
+    let mut set = set.clone();
+    // Read migration must not rewrite files. Persist a retired model on normal save.
+    if !set.contains_key("LOBO_MODEL") {
+        let old = dotenv::parse(&original)
+            .map_err(|e| Error::Config(format!("read {}: {e}", path.display())))?;
+        if old
+            .get("LOBO_MODEL")
+            .is_some_and(|v| matches!(v.as_str(), "q6" | "q8"))
+        {
+            set.insert("LOBO_MODEL".into(), lobo_proto::DEFAULT_MODEL.into());
+        }
+    }
     let mut lines = Vec::new();
     let mut done = BTreeSet::new();
     if original.is_empty() {
@@ -176,10 +187,11 @@ mod tests {
         assert_eq!(keys, ["RUNPOD_API_KEY", "LOBO_CTX", "AA", "ZZ"]);
     }
     #[test]
-    fn header_matches_go() {
-        let fixture = include_str!("../../fixtures/config_save/new_file.after.env");
-        assert!(fixture.starts_with(HEADER));
-        assert_eq!(HEADER.lines().count(), 5);
+    fn header_describes_cloud_settings() {
+        assert!(HEADER.contains("LOBO_CLOUD_PORT"));
+        assert!(HEADER.contains("LOBO_MODEL_BASE_URL"));
+        assert!(!HEADER.contains("LOBO_MODEL_SOURCE"));
+        assert_eq!(HEADER.lines().count(), 3);
     }
     #[test]
     fn set_env_value_replaces_and_appends() {
@@ -236,7 +248,9 @@ mod tests {
         .unwrap();
         assert_eq!(
             std::fs::read_to_string(&p).unwrap(),
-            include_str!("../../fixtures/config_save/new_file.after.env")
+            format!(
+                "{HEADER}\n# providers (at least one)\nVASTAI_API_KEY=vk\n\n# access\n\n# defaults for `lobo up` (flags override; empty or 0 = built-in / release default)\nLOBO_PROVIDER=vast\nR2_ENDPOINT=https://e\n"
+            )
         );
         assert_eq!(
             std::fs::metadata(p.parent().unwrap())
@@ -271,7 +285,7 @@ mod tests {
         assert_eq!(values(&p).unwrap(), vals);
     }
     #[test]
-    fn save_matches_go_bytes() {
+    fn save_existing_files_matches_legacy_go_bytes() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/config_save");
         let mut count = 0;
         for entry in std::fs::read_dir(dir).unwrap() {
@@ -280,13 +294,16 @@ mod tests {
             let Some(base) = text.strip_suffix(".set.json") else {
                 continue;
             };
+            let before = format!("{base}.before.env");
+            if !Path::new(&before).exists()
+                || std::fs::read_to_string(&before).unwrap().trim().is_empty()
+            {
+                continue;
+            }
             count += 1;
             let d = tempfile::tempdir().unwrap();
             let config = d.path().join("config");
-            let before = format!("{base}.before.env");
-            if Path::new(&before).exists() {
-                std::fs::copy(before, &config).unwrap();
-            }
+            std::fs::copy(before, &config).unwrap();
             let set = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
             save(&config, &set).unwrap();
             assert_eq!(
@@ -295,6 +312,58 @@ mod tests {
                 "{base}"
             );
         }
-        assert_eq!(count, 13);
+        assert_eq!(count, 8);
+    }
+
+    #[test]
+    fn empty_and_whitespace_files_preserve_save_behavior() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("config");
+        let set = BTreeMap::from([("LOBO_MODEL".into(), lobo_proto::DEFAULT_MODEL.into())]);
+        std::fs::write(&p, "").unwrap();
+        save(&p, &set).unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.starts_with(HEADER));
+        assert!(text.ends_with("LOBO_MODEL=qwen38-q6\n"));
+        assert!(!text.contains("LOBO_LOCAL_PORT"));
+        assert!(!text.contains("LOBO_WEIGHTS_DIR"));
+        std::fs::write(&p, "\n\n").unwrap();
+        save(&p, &set).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap(),
+            "\nLOBO_MODEL=qwen38-q6\n"
+        );
+    }
+
+    #[test]
+    fn save_migrates_retired_models_and_preserves_legacy_keys() {
+        for model in ["q6", "q8"] {
+            let d = tempfile::tempdir().unwrap();
+            let p = d.path().join("config");
+            let preserved = "# keep\nexport CUSTOM_THING='untouched value'\nLOBO_PROVIDER=local\nLOBO_LOCAL_PORT=invalid\nLOBO_WEIGHTS_DIR=/existing/models\n";
+            std::fs::write(&p, format!("{preserved}LOBO_MODEL={model}\n")).unwrap();
+            save(&p, &BTreeMap::from([("LOBO_CTX".into(), "32768".into())])).unwrap();
+            assert_eq!(
+                std::fs::read_to_string(&p).unwrap(),
+                format!("{preserved}LOBO_MODEL=qwen38-q6\nLOBO_CTX=32768\n")
+            );
+            assert_eq!(values(&p).unwrap()["LOBO_PROVIDER"], "local");
+        }
+    }
+
+    #[test]
+    fn save_rejects_new_retired_selections_without_rewriting_the_file() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("config");
+        let original = "# untouched\nLOBO_MODEL=q6\n";
+        std::fs::write(&p, original).unwrap();
+        for (key, value) in [
+            ("LOBO_MODEL", "q6"),
+            ("LOBO_MODEL", "q8"),
+            ("LOBO_PROVIDER", "local"),
+        ] {
+            assert!(save(&p, &BTreeMap::from([(key.into(), value.into())])).is_err());
+            assert_eq!(std::fs::read_to_string(&p).unwrap(), original);
+        }
     }
 }

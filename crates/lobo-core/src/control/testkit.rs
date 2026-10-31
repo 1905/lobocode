@@ -118,81 +118,6 @@ impl AgentApi for FakeAgent {
         Ok("last log line".into())
     }
 }
-pub const LOCAL_API_URL: &str = "http://127.0.0.1:8931/v1";
-pub const LOCAL_AGENT_URL: &str = "http://127.0.0.1:8932";
-#[derive(Default)]
-pub struct LocalState {
-    pub running: Vec<Instance>,
-    pub created: Vec<CreateOpts>,
-    pub deleted: Vec<String>,
-}
-#[derive(Default)]
-pub struct FakeLocal {
-    pub state: Mutex<LocalState>,
-}
-fn local_urls(mut i: Instance) -> Instance {
-    i.api_url = LOCAL_API_URL.into();
-    i.agent_url = LOCAL_AGENT_URL.into();
-    i
-}
-#[async_trait]
-impl Provider for FakeLocal {
-    fn name(&self) -> &'static str {
-        "local"
-    }
-    fn replaceable(&self) -> bool {
-        false
-    }
-    async fn rent(
-        &self,
-        o: &CreateOpts,
-        c: CancellationToken,
-        _: &(dyn Fn(String) + Sync),
-    ) -> Result<Instance> {
-        if c.is_cancelled() {
-            return Err(Error::Cancelled);
-        }
-        let mut s = self.state.lock().unwrap();
-        s.created.push(o.clone());
-        let i = local_urls(Instance {
-            provider: "local".into(),
-            id: "4242".into(),
-            status: "running".into(),
-            detail: format!("this Mac, {}", o.model),
-            ..Default::default()
-        });
-        s.running.push(i.clone());
-        Ok(i)
-    }
-    async fn list(&self) -> Result<Vec<Instance>> {
-        Ok(self
-            .state
-            .lock()
-            .unwrap()
-            .running
-            .iter()
-            .cloned()
-            .map(local_urls)
-            .collect())
-    }
-    async fn get(&self, id: &str) -> Result<Instance> {
-        self.state
-            .lock()
-            .unwrap()
-            .running
-            .iter()
-            .find(|i| i.id == id)
-            .cloned()
-            .map(local_urls)
-            .ok_or(Error::NotFound)
-    }
-    async fn delete(&self, id: &str) -> Result<()> {
-        let mut s = self.state.lock().unwrap();
-        s.deleted.push(id.into());
-        s.running.retain(|i| i.id != id);
-        Ok(())
-    }
-}
 pub fn deps(rp: Arc<FakeRunPod>, ag: Arc<FakeAgent>, clock: Arc<dyn Clock>) -> Deps {
     Deps {
         connection: None,
@@ -232,32 +157,6 @@ pub fn boot_script() -> Vec<Option<Status>> {
                 bytes: 12357400000,
                 total: 28595762272,
                 mbps: 51.3,
-                ..Default::default()
-            },
-            ..Default::default()
-        }),
-        Some(Status {
-            stage: Stage::Load,
-            ..Default::default()
-        }),
-        Some(Status {
-            stage: Stage::Ready,
-            ..Default::default()
-        }),
-    ]
-}
-pub fn local_boot_script() -> Vec<Option<Status>> {
-    vec![
-        Some(Status {
-            stage: Stage::Gpu,
-            ..Default::default()
-        }),
-        Some(Status {
-            stage: Stage::Download,
-            download: DownloadProgress {
-                bytes: 1 << 30,
-                total: 22082528352,
-                mbps: 12.0,
                 ..Default::default()
             },
             ..Default::default()
@@ -342,13 +241,11 @@ pub struct RecordingState {
     pub calls: Vec<String>,
     pub broken: bool,
     pub boot_id: String,
-    pub start_id: u64,
     pub created: Vec<CreateOpts>,
     pub delay: Duration,
     pub panic_after_create: bool,
     pub uncertain_create: bool,
     pub cancel_on_rent: bool,
-    pub swap_on_delete: bool,
     pub rents: usize,
 }
 pub struct RecordingProvider {
@@ -372,7 +269,7 @@ impl Provider for RecordingProvider {
         self.name
     }
     fn replaceable(&self) -> bool {
-        self.name != "local"
+        true
     }
     async fn list(&self) -> Result<Vec<Instance>> {
         let mut s = self.state.lock().unwrap();
@@ -396,28 +293,6 @@ impl Provider for RecordingProvider {
         s.calls.push(format!("delete:{id}"));
         s.instances.retain(|i| i.id != id);
         Ok(())
-    }
-    async fn runtime_identity(&self, id: &str) -> Result<Option<(String, i32, u64)>> {
-        let mut s = self.state.lock().unwrap();
-        s.calls.push(format!("identity:{id}"));
-        Ok(s.instances
-            .iter()
-            .find(|i| i.id == id)
-            .map(|_| (s.boot_id.clone(), 4242, s.start_id)))
-    }
-    async fn delete_owned(&self, id: &str, boot_id: &str, start_id: Option<u64>) -> Result<()> {
-        if self.name == "local" {
-            let mut s = self.state.lock().unwrap();
-            s.calls.push(format!("owned-delete:{id}:{boot_id}"));
-            if s.swap_on_delete {
-                s.boot_id = "replacement".into();
-                s.start_id += 1;
-            }
-            if s.boot_id != boot_id || start_id.is_some_and(|start| s.start_id != start) {
-                return Ok(());
-            }
-        }
-        self.delete(id).await
     }
     async fn rent(
         &self,
@@ -444,14 +319,13 @@ impl Provider for RecordingProvider {
         let i = Instance {
             provider: self.name.into(),
             id: "4242".into(),
-            agent_url: LOCAL_AGENT_URL.into(),
-            api_url: LOCAL_API_URL.into(),
+            agent_url: "http://owned-agent".into(),
+            api_url: "http://owned-api/v1".into(),
             ..Default::default()
         };
         {
             let mut s = self.state.lock().unwrap();
             s.boot_id = opts.boot_id.clone();
-            s.start_id = 100;
             s.instances.push(i.clone());
         }
         assert!(!panic, "scoped worker exploded");

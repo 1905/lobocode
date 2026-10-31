@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Deferred, direct two-request measurement of an already-owned local runtime.
+"""Bounded HTTP and evidence helpers for the cloud runtime diagnostic.
 
-This tool never starts, stops, downloads, rents, or changes a runtime. Invoke
-only when the deferred E2E stage is authorized. --self-test uses HTTP fakes only.
-No prompts, response content, token IDs, credentials, or raw errors are saved.
+Run --self-test for fake-only checks. Live requests require cloud_runtime_e2e.py
+and its exact cloud instance receipt. No local inference entrypoint exists.
 """
 
 import argparse
-import ctypes
 import http.client
 import json
 import math
@@ -16,7 +14,6 @@ from pathlib import Path
 import re
 import socket
 import stat
-import subprocess
 import sys
 import tempfile
 import threading
@@ -134,99 +131,10 @@ def config_key(path):
     return found
 
 
-def state_path():
-    base = os.environ.get("XDG_STATE_HOME")
-    return (Path(base) if base else Path.home() / ".local/state") / "lobo/local.json"
 
 
-def supervisor_start(pid, boot_id):
-    """Match the core supervisor check and capture the kernel start identity."""
-    try:
-        # Captured command stays private. No subprocess inherits the API key.
-        result = subprocess.run(["/bin/ps", "-ww", "-o", "command=", "-p", str(pid)],
-                                capture_output=True, timeout=2, check=False,
-                                env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"})
-        require(result.returncode == 0 and len(result.stdout) <= LINE_BYTES,
-                "supervisor_unavailable")
-        fields = result.stdout.decode("utf-8").split()
-        adjacent = list(zip(fields, fields[1:]))
-        require(("local", "run") in adjacent and ("--boot-id", boot_id) in adjacent,
-                "supervisor_mismatch")
-        if sys.platform == "darwin":
-            class BsdInfo(ctypes.Structure):
-                _fields_ = [(name, ctypes.c_uint32) for name in (
-                    "flags", "status", "xstatus", "pid", "ppid", "uid", "gid",
-                    "ruid", "rgid", "svuid", "svgid", "reserved")]
-                _fields_ += [("comm", ctypes.c_char * 16), ("name", ctypes.c_char * 32)]
-                _fields_ += [(name, ctypes.c_uint32) for name in (
-                    "nfiles", "pgid", "pjobc", "tdev", "tpgid")]
-                _fields_ += [("nice", ctypes.c_int32), ("start_sec", ctypes.c_uint64),
-                             ("start_usec", ctypes.c_uint64)]
-
-            lib = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
-            lib.proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64,
-                                        ctypes.c_void_p, ctypes.c_int]
-            lib.proc_pidinfo.restype = ctypes.c_int
-            info = BsdInfo()
-            size = ctypes.sizeof(info)
-            require(lib.proc_pidinfo(pid, 3, 0, ctypes.byref(info), size) == size,
-                    "supervisor_unavailable")  # PROC_PIDTBSDINFO
-            require(info.uid == os.getuid() and info.pid == pid, "supervisor_unowned")
-            start = info.start_sec * 1000000 + info.start_usec
-        elif sys.platform.startswith("linux"):
-            path = Path("/proc") / str(pid) / "stat"
-            raw = private_read(path, LINE_BYTES, "supervisor_unavailable", owned=True)
-            start = int(raw.decode("utf-8").rsplit(")", 1)[1].split()[19])
-        else:
-            raise Blocked("host_unsupported")
-        return integer(start, "supervisor_unavailable", 1)
-    except (OSError, ValueError, UnicodeError, IndexError, subprocess.TimeoutExpired):
-        raise Blocked("supervisor_unavailable") from None
 
 
-class LocalRuntime:
-    def __init__(self):
-        self.path = state_path()
-        catalog = object_json(private_read(CATALOG, 1048576, "catalog_unavailable"))
-        require(type(catalog) is list, "catalog_invalid")
-        self.models = {entry["id"]: entry for entry in catalog
-                       if type(entry) is dict and entry.get("id") in ("q6", "q8")}
-        self.identity = self.snapshot()
-        self.pid, self.boot, self.model, self.port, self.agent_port = self.identity[:5]
-        self.start = self.identity[5]
-        self.alias = self.models[self.model]["alias"]
-        require(re.fullmatch(r"[a-z0-9.-]{1,80}", self.alias) is not None, "catalog_invalid")
-
-    def snapshot(self):
-        state = object_json(private_read(self.path, LINE_BYTES, "runtime_absent", owned=True))
-        require(type(state) is dict, "state_invalid")
-        pid = integer(state.get("pid"), "state_invalid", 1, 2**31 - 1)
-        boot = state.get("boot_id")
-        require(type(boot) is str and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", boot), "state_invalid")
-        model = state.get("model")
-        require(type(model) is str and model in self.models, "model_unknown")
-        port = integer(state.get("port"), "state_invalid", 1, 65535)
-        agent = integer(state.get("api_port"), "state_invalid", 1, 65535)
-        require(port != agent, "state_invalid")
-        weights = state.get("weights")
-        require(type(weights) is str and Path(weights).is_absolute(), "state_invalid")
-        entry = self.models[model]
-        filename = entry.get("file")
-        require(type(filename) is str and Path(filename).name == filename, "catalog_invalid")
-        try:
-            info = (Path(weights) / filename).stat()
-        except OSError:
-            raise Blocked("model_absent") from None
-        # Catalog entries describe one complete GGUF, not separate shard files.
-        expected_size = integer(entry.get("size"), "catalog_invalid", 1)
-        require(stat.S_ISREG(info.st_mode) and info.st_size == expected_size, "model_absent")
-        start = supervisor_start(pid, boot)
-        # Paths and inode metadata are compared privately, never emitted.
-        return (pid, boot, model, port, agent, start, weights,
-                info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
-
-    def unchanged(self):
-        require(self.snapshot() == self.identity, "runtime_changed")
 
 
 class DirectHTTP:
@@ -506,8 +414,7 @@ class Harness:
                 "request_limit": 2, "max_input_tokens": self.input_cap,
                 "max_output_tokens": self.output_cap, "preflight": self.preflight,
                 "measurements": self.results, "model": runtime.model,
-                "boot_id": runtime.boot, "supervisor_pid": runtime.pid,
-                "supervisor_start_id": runtime.start, "app_revision": self.revision}
+                "boot_id": runtime.boot, "agent_revision": self.revision}
 
 
 def evidence_directory(path):
@@ -540,74 +447,19 @@ class SafeParser(argparse.ArgumentParser):
         self.exit(2, "blocked: invalid_arguments\n")
 
 
-def arguments(argv):
-    parser = SafeParser(description=__doc__, allow_abbrev=False)
-    parser.add_argument("--config", type=Path)
-    parser.add_argument("--requests", type=int, default=2)
-    parser.add_argument("--max-input-tokens", type=int, default=64)
-    parser.add_argument("--max-output-tokens", type=int, default=32)
-    parser.add_argument("--evidence-dir", type=Path)
-    parser.add_argument("--self-test", action="store_true")
-    args = parser.parse_args(argv)
-    if args.requests != 2 or not 0 < args.max_input_tokens <= 64 or not 0 < args.max_output_tokens <= 32:
-        parser.error("limits")
-    if args.self_test:
-        if args.config is not None or args.evidence_dir is not None:
-            parser.error("self-test isolation")
-    elif args.config is None or args.evidence_dir is None:
-        parser.error("paths required")
-    return args
 
 
-def main(argv=None):
-    args = arguments(argv)
-    if args.self_test:
-        return self_test()
-    harness = None
-    reserved = False
-    try:
-        evidence_directory(args.evidence_dir)
-        reserved = True
-        run_end = time.monotonic() + RUN_SECONDS
-        key = config_key(args.config)
-        runtime = LocalRuntime()
-        harness = Harness(runtime, DirectHTTP(key, run_end), args.max_input_tokens,
-                          args.max_output_tokens)
-        harness.run()
-        write_evidence(args.evidence_dir, harness.summary())
-        print("passed: 2 bounded sequential requests")
-        return 0
-    except Blocked as error:
-        category = error.category
-    except KeyboardInterrupt:
-        category = "interrupted"
-    except Exception:
-        # Do not print exception strings, traceback, HTTP content or file paths.
-        category = "internal_error"
-    if reserved:
-        summary = harness.summary(category) if harness else {
-            "schema": 1, "status": "blocked", "error_category": category,
-            "generation_attempts": 0, "request_limit": 2,
-            "max_input_tokens": args.max_input_tokens,
-            "max_output_tokens": args.max_output_tokens, "measurements": []}
-        try:
-            write_evidence(args.evidence_dir, summary)
-        except Blocked:
-            category = "evidence_write_failed"
-    print("blocked: " + category)
-    return 2
 
 
-# Deferred HTTP fake tests. This branch never calls LocalRuntime or resolves
-# real state. Config parsing uses private dummy files. HTTP is loopback only.
+# HTTP fake tests use private dummy files and loopback only.
 def self_test():
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
     secret = "fake-secret-must-not-appear"
-    alias = "qwen3.5-27b-uncensored-q6"
+    alias = "qwen3.8-27b-abliterated-q6"
 
     class FakeRuntime:
-        pid, boot, model, start = 123, "fake-boot", "q6", 123456
+        pid, boot, model, start = 123, "fake-boot", "qwen38-q6", 123456
         port = agent_port = 0
 
         def __init__(self, scenario):
@@ -682,7 +534,7 @@ def self_test():
                     else:
                         self.answer({"stage": "load" if scenario == "not_ready" else "ready",
                                      "boot_id": "other" if scenario == "stale_boot" else "fake-boot",
-                                     "model": "q6"})
+                                     "model": "qwen38-q6"})
                     return
                 if self.headers.get("Authorization") != "Bearer " + secret or scenario == "auth":
                     self.answer({"error": secret}, 401)
@@ -873,5 +725,12 @@ def self_test():
     return 0
 
 
+def arguments(argv):
+    parser = SafeParser(description=__doc__, allow_abbrev=False)
+    parser.add_argument("--self-test", action="store_true", required=True)
+    return parser.parse_args(argv)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    arguments(sys.argv[1:])
+    sys.exit(self_test())

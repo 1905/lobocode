@@ -48,10 +48,43 @@ fn replay_go_cli() {
             // Valid config reaches the provider; this fixture intentionally blocks networking.
             case.stderr_match = "provider_error".into();
         }
+        let retired = case
+            .args
+            .first()
+            .is_some_and(|arg| matches!(arg.as_str(), "models" | "local"))
+            || case.args.iter().any(|arg| arg.starts_with("--q6"));
+        if retired {
+            case.exit = 1;
+            case.stdout.clear();
+            case.stderr_match = "prefix".into();
+            case.files_after.clear();
+            case.twice = false;
+        }
+        case.stdout = case.stdout.replace(
+            "providers (at least one, or LOBO_PROVIDER=local)",
+            "providers (at least one)",
+        );
+        case.stderr = case
+            .stderr
+            .replace("want runpod, vast or local", "want runpod or vast");
         if matches!(case.name.as_str(), "gen_key_new" | "gen_key_keep") {
-            for text in case.files_after.values_mut() {
-                *text = text.replace("https://lobo.test/v1", "http://127.0.0.1:8933/v1");
-            }
+            let mut expected: serde_json::Value =
+                serde_json::from_str(&case.files_after["opencode.lobo.json"]).unwrap();
+            expected["provider"]
+                .as_object_mut()
+                .unwrap()
+                .remove("lobo-local");
+            let model = lobo_proto::catalog::get(lobo_proto::DEFAULT_CLOUD_MODEL).unwrap();
+            let cloud = &mut expected["provider"]["lobo"];
+            cloud["options"]["baseURL"] = "http://127.0.0.1:8933/v1".into();
+            cloud["models"] = serde_json::json!({&model.alias: {"limit":{"context":65536,"output":8192},"name":format!("{} {}",model.name,model.quant)}});
+            expected["agent"]["lobo"]["model"] = format!("lobo/{}", model.alias).into();
+            expected["agent"]["lobo"]["description"] =
+                "Lean agent for the Lobo cloud pod: core coding tools only".into();
+            case.files_after.insert(
+                "opencode.lobo.json".into(),
+                serde_json::to_string_pretty(&expected).unwrap() + "\n",
+            );
         }
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();

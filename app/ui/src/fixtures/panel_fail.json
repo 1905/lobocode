@@ -51,7 +51,7 @@
     "last_update_ms": 1790683200000,
     "log_path": null,
     "log_tail": [
-      "Docker image model shard failed SHA-256 verification; instance deleted",
+      "Model chunk failed SHA-256 verification; instance deleted",
       "create: bad host, renting another pod (4/4)",
       "vast 26461301, offer 51399812, 9129 Mbps down, Quebec, CA"
     ],

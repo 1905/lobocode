@@ -92,7 +92,7 @@ async fn chat_request_shape() {
         .respond_with(|r: &Request| {
             let body = r.body_json::<Value>().unwrap();
             assert_eq!(body["stream"], true);
-            assert_eq!(body["model"], "q8");
+            assert_eq!(body["model"], "qwen38-q6");
             assert_eq!(body["temperature"], 0.2);
             assert_eq!(body["max_tokens"], 200);
             ResponseTemplate::new(200).set_body_string(chunk("hello") + end())
@@ -102,7 +102,7 @@ async fn chat_request_shape() {
         .await;
     let hc = crate::http::client(Duration::from_secs(3));
     assert_eq!(
-        chat(&hc, &format!("{}/v1", s.uri()), "key", "q8")
+        chat(&hc, &format!("{}/v1", s.uri()), "key", "qwen38-q6")
             .await
             .unwrap(),
         "hello"
@@ -128,7 +128,7 @@ async fn tool_call_request_shape() {
         .await;
     let hc = crate::http::client(Duration::from_secs(3));
     validate_tool_call(
-        &tool_call(&hc, &format!("{}/v1", s.uri()), "key", "q8")
+        &tool_call(&hc, &format!("{}/v1", s.uri()), "key", "qwen38-q6")
             .await
             .unwrap(),
     )
@@ -144,7 +144,7 @@ async fn request_error_includes_http_status() {
         .await;
     let hc = crate::http::client(Duration::from_secs(3));
     assert_eq!(
-        chat(&hc, &s.uri(), "key", "q8")
+        chat(&hc, &s.uri(), "key", "qwen38-q6")
             .await
             .unwrap_err()
             .to_string(),

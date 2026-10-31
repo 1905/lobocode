@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-"""One direct Q6 diagnostic: 47,000 synthetic input tokens, at most 32 output.
+"""Exact-size synthetic prompt helper for the cloud diagnostic.
 
-Use only after explicit authorization and normal production memory admission.
-The runtime must already be ready and task-owned. This tool never starts, stops,
-downloads, rents, retries, or launches OpenCode. --self-test uses HTTP fakes only.
-The original request size was approximate; this is a size comparison, not a replay.
+Run --self-test for fake-only checks. Live requests go through
+cloud_runtime_e2e.py and its cloud ownership checks.
 """
 
 import json
-from pathlib import Path
 import socket
 import sys
 import threading
 import time
 
-import bounded_runtime_e2e as bounded
+import cloud_probe_http as bounded
 
 
 INPUT_TOKENS = 47000
@@ -24,7 +21,7 @@ GENERATION_SECONDS = 1800.0
 RUN_SECONDS = GENERATION_SECONDS + 120.0
 REQUEST_BYTES = 1048576
 MARKER = "LOBO_SYNTHETIC_FILLER_19C54A0E"
-FILLER = "Neutral reference text for a local performance measurement. "
+FILLER = "Neutral reference text for a cloud performance measurement. "
 MESSAGE = ("The following reference text is padding for a performance measurement.\n"
            + MARKER + "\nEnd of reference text.\nWhat is 2 + 2? Reply only 4.")
 
@@ -79,7 +76,7 @@ class SamePromptHarness(bounded.Harness):
         self.progress = progress
 
     def ready(self):
-        bounded.require(self.runtime.model == "q6", "diagnostic_model_mismatch")
+        bounded.require(self.runtime.model == "qwen38-q6", "diagnostic_model_mismatch")
         status = super().ready()
         bounded.require(type(status.get("ctx")) is int and status["ctx"] == CONTEXT_TOKENS,
                         "diagnostic_context_mismatch")
@@ -132,56 +129,8 @@ class SamePromptHarness(bounded.Harness):
         return value
 
 
-def arguments(argv):
-    parser = bounded.SafeParser(description=__doc__, allow_abbrev=False)
-    parser.add_argument("--config", type=Path)
-    parser.add_argument("--evidence-dir", type=Path)
-    parser.add_argument("--self-test", action="store_true")
-    args = parser.parse_args(argv)
-    if args.self_test:
-        if args.config is not None or args.evidence_dir is not None:
-            parser.error("self-test isolation")
-    elif args.config is None or args.evidence_dir is None:
-        parser.error("paths required")
-    return args
 
 
-def main(argv=None):
-    args = arguments(argv)
-    if args.self_test:
-        return self_test()
-    harness, reserved = None, False
-    try:
-        bounded.evidence_directory(args.evidence_dir)
-        reserved = True
-        key = bounded.config_key(args.config)
-        runtime = bounded.LocalRuntime()
-        http = bounded.DirectHTTP(key, time.monotonic() + RUN_SECONDS,
-                                  generation_seconds=GENERATION_SECONDS,
-                                  request_bytes=REQUEST_BYTES)
-        harness = SamePromptHarness(runtime, http)
-        harness.run()
-        bounded.write_evidence(args.evidence_dir, harness.summary())
-        print("passed: one 47000-input-token direct Q6 request", flush=True)
-        return 0
-    except bounded.Blocked as error:
-        category = error.category
-    except KeyboardInterrupt:
-        category = "interrupted"
-    except Exception:
-        category = "internal_error"
-    if reserved:
-        value = harness.summary(category) if harness else {
-            "schema": 1, "status": "blocked", "error_category": category,
-            "diagnostic": "same-size-synthetic", "generation_attempts": 0,
-            "request_limit": 1, "max_input_tokens": INPUT_TOKENS,
-            "max_output_tokens": OUTPUT_TOKENS, "measurements": []}
-        try:
-            bounded.write_evidence(args.evidence_dir, value)
-        except bounded.Blocked:
-            category = "evidence_write_failed"
-    print("blocked: " + category, flush=True)
-    return 2
 
 
 def self_test():
@@ -191,7 +140,7 @@ def self_test():
     from io import StringIO
 
     bounded.self_test()
-    alias, secret = "qwen3.5-27b-uncensored-q6", "fake-secret-private"
+    alias, secret = "qwen3.8-27b-abliterated-q6", "fake-secret-private"
     cases = {"ok": (None, 1), "wrong_answer": (None, 1),
              "context": ("diagnostic_context_mismatch", 0),
              "model": ("diagnostic_model_mismatch", 0),
@@ -204,7 +153,7 @@ def self_test():
         seen = []
 
         class FakeRuntime:
-            pid, boot, start, model = 123, "fake-boot", 456, "q6"
+            pid, boot, start, model = 123, "fake-boot", 456, "qwen38-q6"
             completed = False
 
             def unchanged(self):
@@ -233,7 +182,7 @@ def self_test():
             def route(self, payload):
                 seen.append((self.path, payload))
                 if self.path == "/api/status":
-                    self.answer({"stage": "ready", "boot_id": "fake-boot", "model": "q6",
+                    self.answer({"stage": "ready", "boot_id": "fake-boot", "model": "qwen38-q6",
                                  "ctx": 8192 if scenario == "context" else CONTEXT_TOKENS})
                 elif self.path == "/api/version":
                     self.answer({"git_sha": "abcdef123456"})
@@ -338,9 +287,14 @@ def self_test():
                 raise bounded.Blocked("self_test_arguments")
     bounded.require(bounded.DirectHTTP(secret, 0).request_bytes == bounded.BODY_BYTES,
                     "self_test_default_changed")
-    print("passed: 12 same-size diagnostic HTTP fake scenarios; short harness unchanged")
+    print("passed: 12 same-size diagnostic HTTP fake scenarios; bounded HTTP checks passed")
     return 0
 
 
+def arguments(argv):
+    return bounded.arguments(argv)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    arguments(sys.argv[1:])
+    sys.exit(self_test())

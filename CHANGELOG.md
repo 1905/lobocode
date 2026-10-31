@@ -1,5 +1,13 @@
 # Changelog
 
+## App 0.2.4 — in progress
+
+- Remove retired `q6`/`q8` catalog entries, local inference code and CLI commands, and complete-image model packaging.
+- Migrate old saved model and provider choices to the supported cloud configuration. Preserve existing user files and old ownership records.
+- Keep one model, `qwen38-q6`, on RunPod and Vast. Keep verified chunk downloads and the Hugging Face fallback.
+- Remove the unused model picker and retired GitHub Actions upload code.
+- Validation in progress. No live GPU inference or local app installation is part of this cleanup.
+
 ## App 0.2.3 — 2026-10-31
 
 - Support only `qwen38-q6` on RunPod or Vast. Show the model as fixed text; remove Q6/Q8 choices and local runs.

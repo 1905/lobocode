@@ -44,7 +44,6 @@
       label="model"
       models={panel.catalog}
       value={panel.model}
-      onpick={(v) => pick('model', v)}
     />
     <div class="row small">
       <span class="dim target">&gt; limits</span><span class="dim"

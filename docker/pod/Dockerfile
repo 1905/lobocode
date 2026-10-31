@@ -1,18 +1,8 @@
-# Public GPU image. Target full (the default): complete image with runtime, agent,
-# SSH and selected model weights. Target thin: the same runtime without weights.
+# Public GPU image with runtime, agent, and SSH. The default target is thin.
+# Model chunks download at startup and are checked against the pinned catalog.
 # Build and verify images on the authorized Linux build host.
 # LLAMA_IMAGE comes from lobo-proto DEFAULT_LLAMA_IMAGE.
 ARG LLAMA_IMAGE
-ARG SPLIT_IMAGE=ghcr.io/ggml-org/llama.cpp:full-cuda-b11118
-
-FROM ${SPLIT_IMAGE} AS model
-ARG MODEL=q8
-COPY crates/lobo-proto/catalog.json /build/catalog.json
-# License text from https://www.apache.org/licenses/LICENSE-2.0.txt is bundled.
-COPY docker/pod/build_model.py docker/pod/Apache-2.0.txt /build/
-# Retain verified upstream bytes across packaging fixes. This cache is build-only.
-RUN --mount=type=cache,id=lobo-model-sources,target=/model-cache,sharing=locked \
-    python3 /build/build_model.py "$MODEL" /out
 
 FROM cloudflare/cloudflared:2026.9.1 AS tunnel
 
@@ -42,19 +32,3 @@ COPY --from=tunnel /usr/local/bin/cloudflared /lobo/bin/cloudflared
 COPY --chmod=755 docker/pod/start.sh /lobo/start
 EXPOSE 2222/tcp
 ENTRYPOINT ["/lobo/start"]
-
-FROM thin AS full
-COPY --from=model /out/model.json /lobo/model.json
-COPY --from=model /out/licenses/ /lobo/licenses/
-# One shard per layer keeps every layer below GHCR's 10 GB limit.
-COPY --from=model /out/01/ /lobo/models/
-COPY --from=model /out/02/ /lobo/models/
-COPY --from=model /out/03/ /lobo/models/
-COPY --from=model /out/04/ /lobo/models/
-COPY --from=model /out/05/ /lobo/models/
-COPY --from=model /out/06/ /lobo/models/
-COPY --from=model /out/07/ /lobo/models/
-COPY --from=model /out/08/ /lobo/models/
-ARG MODEL=q8
-RUN --network=none /lobo/lobo-agent check-image --model "$MODEL"
-ENV LOBO_IMAGE_MODEL=1

@@ -42,14 +42,12 @@ pub struct Laptop {
     pub ctx: String,
     pub idle_min: String,
     pub max_hours: String,
-    pub weights_dir: String,
-    pub local_port: String,
     pub r2: R2Creds,
 }
 impl Laptop {
     pub fn from_values(m: &BTreeMap<String, String>) -> Self {
         let get = |k: &str| m.get(k).cloned().unwrap_or_default();
-        Self {
+        let mut laptop = Self {
             runpod_api_key: get("RUNPOD_API_KEY"),
             lobo_api_key: get("LOBO_API_KEY"),
             cf_tunnel_token: get("CF_TUNNEL_TOKEN"),
@@ -73,15 +71,18 @@ impl Laptop {
             ctx: get("LOBO_CTX"),
             idle_min: get("LOBO_IDLE_MIN"),
             max_hours: get("LOBO_MAX_HOURS"),
-            weights_dir: get("LOBO_WEIGHTS_DIR"),
-            local_port: get("LOBO_LOCAL_PORT"),
             r2: R2Creds {
                 account_id: get("R2_ACCOUNT_ID"),
                 access_key: get("R2_ACCESS_KEY"),
                 secret_key: get("R2_SECRET_KEY"),
                 endpoint: get("R2_ENDPOINT"),
             },
+        };
+        laptop.model = saved_model(&laptop.model).into();
+        if laptop.provider == "local" {
+            laptop.provider = laptop.default_provider();
         }
+        laptop
     }
     pub fn require_cloud(&self) -> Result<()> {
         self.connection_mode()?;
@@ -147,9 +148,9 @@ impl Laptop {
     }
     pub fn cloud_port(&self) -> u16 {
         if self.cloud_port.is_empty() || self.cloud_port == "0" {
-            8933
+            DEFAULT_CLOUD_PORT
         } else {
-            parse_local_port(&self.cloud_port).unwrap_or(8933)
+            parse_cloud_port(&self.cloud_port).unwrap_or(DEFAULT_CLOUD_PORT)
         }
     }
     pub fn cloud_url(&self) -> String {
@@ -235,26 +236,6 @@ impl Laptop {
             Err(Error::Defaults(bad))
         }
     }
-    pub fn weights(&self) -> PathBuf {
-        self.weights_with_home(
-            &std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_default(),
-        )
-    }
-    pub fn weights_with_home(&self, home: &Path) -> PathBuf {
-        let w = &self.weights_dir;
-        if w.is_empty() {
-            home.join("Library/Application Support/lobo/weights")
-        } else if w == "~" || w.starts_with("~/") {
-            home.join(w.trim_start_matches('~').trim_start_matches('/'))
-        } else {
-            w.into()
-        }
-    }
-    pub fn port(&self) -> u16 {
-        parse_local_port(&self.local_port).unwrap_or(DEFAULT_LOCAL_PORT)
-    }
     pub fn providers(&self) -> Vec<String> {
         let mut out = Vec::new();
         if !self.runpod_api_key.is_empty() {
@@ -266,15 +247,19 @@ impl Laptop {
         out
     }
     pub fn default_provider(&self) -> String {
-        if self.provider == "local" {
-            return "local".into();
-        }
         let keyed = self.providers();
         if keyed.contains(&self.provider) {
             self.provider.clone()
         } else {
             keyed.first().cloned().unwrap_or_else(|| "runpod".into())
         }
+    }
+}
+/// Saved retired IDs migrate in memory. Explicit selections use catalog validation.
+fn saved_model(model: &str) -> &str {
+    match model {
+        "q6" | "q8" => lobo_proto::DEFAULT_MODEL,
+        _ => model,
     }
 }
 fn valid_url(value: &str) -> bool {
@@ -298,7 +283,7 @@ pub fn load_laptop(path: &Path) -> Result<Laptop> {
         return Err(Error::Config(format!("config: {}", bad.join("; "))));
     }
     // Legacy storage fields are only validated by explicitly invoked release tools.
-    // Normal starts use complete public images and must ignore old source settings.
+    // Normal starts use public GPU images and must ignore old source settings.
     Ok(l)
 }
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -317,14 +302,8 @@ pub fn defaults_partial(l: &Laptop) -> (Defaults, BTreeMap<String, String>) {
     if let Err(e) = l.connection_mode() {
         bad.insert("LOBO_CONNECTION".into(), e.to_string());
     }
-    if let Err(e) = parse_local_port(&l.cloud_port) {
+    if let Err(e) = parse_cloud_port(&l.cloud_port) {
         bad.insert("LOBO_CLOUD_PORT".into(), e.to_string());
-    }
-    if l.uses_ssh() && l.port().abs_diff(l.cloud_port()) < 2 {
-        bad.insert(
-            "LOBO_CLOUD_PORT".into(),
-            "cloud and local port pairs overlap".into(),
-        );
     }
     let mut one_of = |key: &str, v: &str, choices: &[&str]| {
         if v.is_empty() || choices.contains(&v) {
@@ -338,8 +317,20 @@ pub fn defaults_partial(l: &Laptop) -> (Defaults, BTreeMap<String, String>) {
         }
     };
     let mut d = Defaults {
-        provider: one_of("LOBO_PROVIDER", &l.provider, &["runpod", "vast", "local"]),
-        model: one_of("LOBO_MODEL", &l.model, &lobo_proto::catalog::ids()),
+        provider: one_of(
+            "LOBO_PROVIDER",
+            &if l.provider == "local" {
+                l.default_provider()
+            } else {
+                l.provider.clone()
+            },
+            &["runpod", "vast"],
+        ),
+        model: one_of(
+            "LOBO_MODEL",
+            saved_model(&l.model),
+            &lobo_proto::catalog::ids(),
+        ),
         cloud: one_of("LOBO_CLOUD", &l.cloud, &["secure", "community"]),
         ..Default::default()
     };
@@ -393,15 +384,12 @@ pub fn defaults_partial(l: &Laptop) -> (Defaults, BTreeMap<String, String>) {
             }
         }
     }
-    if let Err(e) = parse_local_port(&l.local_port) {
-        bad.insert("LOBO_LOCAL_PORT".into(), e.to_string());
-    }
     (d, bad)
 }
-pub const DEFAULT_LOCAL_PORT: u16 = 8931;
-pub fn parse_local_port(v: &str) -> Result<u16> {
+pub const DEFAULT_CLOUD_PORT: u16 = 8933;
+pub fn parse_cloud_port(v: &str) -> Result<u16> {
     if v.is_empty() || v == "0" {
-        return Ok(DEFAULT_LOCAL_PORT);
+        return Ok(DEFAULT_CLOUD_PORT);
     }
     v.parse::<u16>()
         .ok()

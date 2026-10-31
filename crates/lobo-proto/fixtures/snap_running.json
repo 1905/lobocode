@@ -16,7 +16,7 @@
     "built_by": "sample",
     "llama_image": "ghcr.io/ggml-org/llama.cpp:server-cuda-b11118",
     "model": {
-      "id": "q8",
+      "id": "qwen38-q6",
       "file": "sample",
       "sha256": "sample"
     },
@@ -64,7 +64,7 @@
       "gen_tps": 1.25
     },
     "metrics_failures": 42,
-    "model": "q8",
+    "model": "qwen38-q6",
     "ctx": 42,
     "timings": {
       "container_started_at": "2026-09-29T10:00:00.5Z",
@@ -74,7 +74,7 @@
       "gpu_check_s": 1.25,
       "download_s": 1.25,
       "download_mbps": 1.25,
-      "download_source": "https://models.example.com/q8.gguf",
+      "download_source": "https://models.example.com/qwen38-q6.gguf",
       "download_conns": 42,
       "verify_s": 1.25,
       "load_s": 1.25,

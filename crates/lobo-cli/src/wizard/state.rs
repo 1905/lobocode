@@ -7,7 +7,7 @@ pub const SECRETS: [&str; 4] = [
     "LOBO_API_KEY",
     "CF_TUNNEL_TOKEN",
 ];
-pub const SUMMARY_ROWS: [(&str, &str); 13] = [
+pub const SUMMARY_ROWS: [(&str, &str); 11] = [
     ("RUNPOD_API_KEY", "RunPod key"),
     ("VASTAI_API_KEY", "Vast key"),
     ("LOBO_CONNECTION", "Connection"),
@@ -19,8 +19,6 @@ pub const SUMMARY_ROWS: [(&str, &str); 13] = [
     ("LOBO_MAX_HOURS", "Max hours"),
     ("LOBO_CLOUD", "RunPod cloud"),
     ("LOBO_VAST_MAX_DPH", "Vast max $/h"),
-    ("LOBO_WEIGHTS_DIR", "Weights folder"),
-    ("LOBO_LOCAL_PORT", "Local port"),
 ];
 pub fn resolve_secret(old: &str, typed: &str) -> String {
     match typed.trim() {
@@ -49,14 +47,12 @@ pub struct WizardState {
     pub idle: String,
     pub max_h: String,
     pub vast_dph: String,
-    pub weights: String,
-    pub port: String,
-    pub local_ok: bool,
     pub save: bool,
 }
 impl WizardState {
-    pub fn new(cur: BTreeMap<String, String>, local_ok: bool) -> Self {
+    pub fn new(cur: BTreeMap<String, String>) -> Self {
         let get = |k: &str| cur.get(k).cloned().unwrap_or_default();
+        let effective = lobo_core::config::Laptop::from_values(&cur);
         let mut s = Self {
             api_key: if get("LOBO_API_KEY").is_empty() {
                 "new"
@@ -65,34 +61,18 @@ impl WizardState {
             }
             .into(),
             domain: get("LOBO_DOMAIN"),
-            provider: get("LOBO_PROVIDER"),
-            model: get("LOBO_MODEL"),
+            provider: effective.default_provider(),
+            model: lobo_proto::DEFAULT_CLOUD_MODEL.into(),
             cloud: get("LOBO_CLOUD"),
             min_mbps: get("LOBO_MIN_MBPS"),
             ctx: get("LOBO_CTX"),
             idle: get("LOBO_IDLE_MIN"),
             max_h: get("LOBO_MAX_HOURS"),
             vast_dph: get("LOBO_VAST_MAX_DPH"),
-            weights: get("LOBO_WEIGHTS_DIR"),
-            port: get("LOBO_LOCAL_PORT"),
             cur,
-            local_ok,
             save: true,
             ..Default::default()
         };
-        if s.provider == "local" && !local_ok {
-            s.provider.clear();
-        }
-        if s.provider.is_empty() && local_ok && s.runpod_key().is_empty() && s.vast_key().is_empty()
-        {
-            s.provider = "local".into();
-        }
-        if s.provider.is_empty() {
-            s.provider = "runpod".into();
-        }
-        if s.model.is_empty() {
-            s.model = lobo_proto::DEFAULT_CLOUD_MODEL.into();
-        }
         if s.cloud.is_empty() {
             s.cloud = "community".into();
         }
@@ -109,9 +89,6 @@ impl WizardState {
     }
     pub fn both_keys(&self) -> bool {
         !self.runpod_key().is_empty() && !self.vast_key().is_empty()
-    }
-    pub fn is_local(&self) -> bool {
-        self.local_ok && self.provider == "local"
     }
     pub fn result(&self, new_key: &str) -> BTreeMap<String, String> {
         let mut out: BTreeMap<String, String> = [
@@ -139,8 +116,6 @@ impl WizardState {
             ("LOBO_PROVIDER", String::new()),
             ("LOBO_CLOUD", String::new()),
             ("LOBO_VAST_MAX_DPH", String::new()),
-            ("LOBO_WEIGHTS_DIR", self.weights.trim().into()),
-            ("LOBO_LOCAL_PORT", self.port.trim().into()),
         ]
         .into_iter()
         .map(|(k, v)| (k.into(), v))
@@ -152,7 +127,7 @@ impl WizardState {
                 .unwrap_or("ssh")
                 .into(),
         );
-        if self.is_local() || self.both_keys() && self.provider != "local" {
+        if self.both_keys() {
             out.insert("LOBO_PROVIDER".into(), self.provider.clone());
         }
         if !out["RUNPOD_API_KEY"].is_empty() {
@@ -170,7 +145,6 @@ impl WizardState {
             ("LOBO_CLOUD", "community"),
             ("LOBO_PROVIDER", "runpod"),
             ("LOBO_VAST_MAX_DPH", "1.20"),
-            ("LOBO_LOCAL_PORT", "8931"),
         ] {
             if out[k] == default || out[k] == "0" {
                 out.insert(k.into(), String::new());
@@ -225,7 +199,7 @@ mod tests {
             ("LOBO_PROVIDER", "vast"),
             ("LOBO_MIN_MBPS", "150"),
         ]);
-        let mut s = WizardState::new(old.clone(), false);
+        let mut s = WizardState::new(old.clone());
         let r = s.result("sk-new");
         for k in [
             "RUNPOD_API_KEY",
@@ -258,8 +232,8 @@ mod tests {
         assert_eq!(r["LOBO_CLOUD"], "secure");
     }
     #[test]
-    fn new_state_fresh_file_and_local() {
-        let s = WizardState::new(BTreeMap::new(), false);
+    fn new_state_migrates_saved_model_and_provider_without_local_controls() {
+        let s = WizardState::new(BTreeMap::new());
         assert_eq!(
             (&*s.api_key, &*s.provider, &*s.model, &*s.cloud),
             ("new", "runpod", "qwen38-q6", "community")
@@ -267,68 +241,36 @@ mod tests {
         let key = new_api_key();
         assert!(key.starts_with("sk-"));
         assert_eq!(key.len(), 51);
-        for (old, local, want) in [
-            (vec![], true, "local"),
-            (vec![], false, "runpod"),
-            (vec![("RUNPOD_API_KEY", "rp")], true, "runpod"),
-            (
-                vec![("RUNPOD_API_KEY", "rp"), ("LOBO_PROVIDER", "local")],
-                true,
-                "local",
-            ),
-            (vec![("LOBO_PROVIDER", "local")], false, "runpod"),
-        ] {
-            assert_eq!(WizardState::new(cur(&old), local).provider, want);
+        for model in ["q6", "q8", "qwen38-q6"] {
+            let old = cur(&[
+                ("LOBO_PROVIDER", "local"),
+                ("VASTAI_API_KEY", "key"),
+                ("LOBO_MODEL", model),
+                ("LOBO_LOCAL_PORT", "9000"),
+                ("LOBO_WEIGHTS_DIR", "/untouched"),
+            ]);
+            let s = WizardState::new(old);
+            assert_eq!(s.provider, "vast");
+            assert_eq!(s.model, "qwen38-q6");
+            assert!(!s.result("").contains_key("LOBO_LOCAL_PORT"));
+            assert!(!s.result("").contains_key("LOBO_WEIGHTS_DIR"));
         }
     }
     #[test]
-    fn result_local() {
-        let mut s = WizardState::new(cur(&[("LOBO_API_KEY", "sk")]), true);
-        s.port = "8931".into();
-        let r = s.result("");
-        assert_eq!(r["LOBO_PROVIDER"], "local");
-        assert_eq!(r["LOBO_LOCAL_PORT"], "");
-        s.weights = " /Volumes/Extreme/_lobocode ".into();
-        s.port = "9000".into();
-        let r = s.result("");
-        assert_eq!(r["LOBO_WEIGHTS_DIR"], "/Volumes/Extreme/_lobocode");
-        assert_eq!(r["LOBO_LOCAL_PORT"], "9000");
-        s.runpod = "rp".into();
-        s.vast = "v".into();
-        assert_eq!(s.result("")["LOBO_PROVIDER"], "local");
-        s.provider = "runpod".into();
-        s.vast = "-".into();
-        s.port = "0".into();
-        let r = s.result("");
-        assert_eq!(r["LOBO_PROVIDER"], "");
-        assert_eq!(r["LOBO_LOCAL_PORT"], "");
-    }
-    #[test]
-    fn summary_masks_secrets_and_local_rows() {
-        let s = WizardState::new(
-            cur(&[
-                ("RUNPOD_API_KEY", "rpa_SECRETSECRETSECRET"),
-                ("CF_TUNNEL_TOKEN", "eyJTOKENTOKENTOKEN"),
-                ("LOBO_WEIGHTS_DIR", "/Volumes/Extreme/_lobocode"),
-                ("LOBO_LOCAL_PORT", "9000"),
-                ("LOBO_PROVIDER", "local"),
-            ]),
-            true,
-        );
+    fn summary_masks_secrets_and_omits_retired_settings() {
+        let s = WizardState::new(cur(&[
+            ("RUNPOD_API_KEY", "rpa_SECRETSECRETSECRET"),
+            ("CF_TUNNEL_TOKEN", "eyJTOKENTOKENTOKEN"),
+            ("LOBO_WEIGHTS_DIR", "/untouched"),
+            ("LOBO_LOCAL_PORT", "9000"),
+        ]));
         let sum = s.summary(false);
         assert!(!sum.contains("SECRETSECRET"));
         assert!(!sum.contains("TOKENTOKEN"));
         assert!(sum.contains("rpa_…CRET"));
-        for want in [
-            "Weights folder",
-            "/Volumes/Extreme/_lobocode",
-            "Local port",
-            "9000",
-            "local",
-        ] {
-            assert!(sum.contains(want));
-        }
-        assert_eq!(sum.lines().count(), 13);
+        assert!(!sum.contains("Weights folder"));
+        assert!(!sum.contains("Local port"));
+        assert_eq!(sum.lines().count(), SUMMARY_ROWS.len());
         for (line, (_, label)) in sum.lines().zip(SUMMARY_ROWS) {
             assert!(line.starts_with(label));
         }

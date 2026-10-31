@@ -89,13 +89,10 @@ app-e2e: app-e2e-build
 	python3 tools/native_app_e2e.py --setup-only
 	python3 tools/native_app_e2e.py --legacy-config
 
-# Deferred, explicit-only inference check. No build or runtime-start dependency.
-# CONFIG must name the existing runtime's credential config. EVIDENCE_DIR must
-# name a new private leaf directory under an existing parent.
-.PHONY: bounded-runtime-e2e
-bounded-runtime-e2e:
-	@test -n "$(CONFIG)" && test -n "$(EVIDENCE_DIR)" || { echo "CONFIG and EVIDENCE_DIR are required" >&2; exit 2; }
-	python3 tools/bounded_runtime_e2e.py --config "$(CONFIG)" --requests 2 --max-input-tokens 64 --max-output-tokens 32 --evidence-dir "$(EVIDENCE_DIR)"
+# Fake-only cloud HTTP, exact prompt, and saved ownership checks. No inference.
+.PHONY: cloud-probe-test
+cloud-probe-test:
+	python3 tools/cloud_runtime_e2e.py --self-test
 
 # Drag-to-install disk image: lobocode.app next to an Applications shortcut. Unsigned (ad-hoc).
 DMG := $(BIN)/lobocode.dmg

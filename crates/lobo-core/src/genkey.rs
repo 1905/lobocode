@@ -12,36 +12,15 @@ pub fn new_api_key() -> String {
     let bytes: [u8; 24] = rand::random();
     format!("sk-{}", hex::encode(bytes))
 }
-pub fn opencode_config(domain: &str, key: &str, port: u16) -> Result<String> {
-    opencode_endpoints(
-        (!domain.is_empty()).then(|| format!("https://{domain}/v1")),
-        key,
-        port,
-    )
-}
 pub fn opencode_for_laptop(cfg: &config::Laptop, key: &str) -> Result<String> {
     cfg.connection_mode()?;
-    let cloud = (!cfg.providers().is_empty() || !cfg.domain.is_empty()).then(|| cfg.cloud_url());
-    opencode_endpoints(cloud, key, cfg.port())
-}
-fn opencode_endpoints(cloud: Option<String>, key: &str, port: u16) -> Result<String> {
-    let m = lobo_proto::catalog::get("q8").expect("q8 is in the pinned model catalog");
-    let models =
-        json!({&m.alias:{"name":"Qwen3.5-27B Q8","limit":{"context":65536,"output":8192}}});
-    let provider = |name: &str, base: String| json!({"npm":"@ai-sdk/openai-compatible","name":name,"options":{"baseURL":base,"apiKey":key},"models":models});
-    let mut providers = serde_json::Map::new();
-    providers.insert(
-        "lobo-local".into(),
-        provider("Lobo (this Mac)", format!("http://127.0.0.1:{port}/v1")),
-    );
-    let mut agent_model = format!("lobo-local/{}", m.alias);
-    if let Some(cloud) = cloud {
-        providers.insert("lobo".into(), provider("Lobo", cloud));
-        agent_model = format!("lobo/{}", m.alias);
-    }
-    let config = json!({"$schema":"https://opencode.ai/config.json","provider":providers,
-        "agent":{"lobo":{"description":"Lean agent for the lobo pod (Qwen3.5-27B): no MCP, no skills, core coding tools only",
-            "mode":"primary","model":agent_model,"tools":{"blender_*":false,"pencil_*":false,"skill":false,"webfetch":false,"todowrite":false,"todoread":false,"task":false}}}});
+    let m = lobo_proto::catalog::get(lobo_proto::DEFAULT_CLOUD_MODEL)
+        .expect("supported model is in the pinned model catalog");
+    let models = json!({&m.alias: {"name": format!("{} {}", m.name, m.quant), "limit": {"context": 65536, "output": 8192}}});
+    let provider = json!({"lobo": {"npm": "@ai-sdk/openai-compatible", "name": "Lobo", "options": {"baseURL": cfg.cloud_url(), "apiKey": key}, "models": models}});
+    let config = json!({"$schema": "https://opencode.ai/config.json", "provider": provider,
+        "agent": {"lobo": {"description": "Lean agent for the Lobo cloud pod: core coding tools only", "mode": "primary", "model": format!("lobo/{}", m.alias),
+        "tools": {"blender_*":false,"pencil_*":false,"skill":false,"webfetch":false,"todowrite":false,"todoread":false,"task":false}}}});
     // Go's JSON encoder escapes HTML characters, even in strings.
     let text = serde_json::to_string_pretty(&config)?
         .replace('&', "\\u0026")
@@ -50,9 +29,6 @@ fn opencode_endpoints(cloud: Option<String>, key: &str, port: u16) -> Result<Str
         .replace('\u{2028}', "\\u2028")
         .replace('\u{2029}', "\\u2029");
     Ok(text + "\n")
-}
-pub fn write_opencode(path: &Path, domain: &str, key: &str, port: u16) -> Result<()> {
-    write_config(path, &opencode_config(domain, key, port)?)
 }
 pub fn write_opencode_for_laptop(path: &Path, cfg: &config::Laptop, key: &str) -> Result<()> {
     write_config(path, &opencode_for_laptop(cfg, key)?)

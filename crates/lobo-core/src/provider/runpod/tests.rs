@@ -113,10 +113,11 @@ fn payload_min_download() {
 #[test]
 fn payload_matches_go() {
     let mut o = fixture_opts();
-    let expected: Value = serde_json::from_str(include_str!(
+    let mut expected: Value = serde_json::from_str(include_str!(
         "../../../fixtures/runpod/payload_community.json"
     ))
     .unwrap();
+    expected["env"]["LOBO_MODEL"] = json!(lobo_proto::DEFAULT_MODEL);
     assert_eq!(build_create_payload(&o, "COMMUNITY", 0.0), expected);
     o.ssh_pub_key = "ssh-ed25519 AAAATEST".into();
     let mut expected: Value = serde_json::from_str(include_str!(
@@ -124,6 +125,7 @@ fn payload_matches_go() {
     ))
     .unwrap();
     // JSON has one number type; Go emits integral floats without a decimal.
+    expected["env"]["LOBO_MODEL"] = json!(lobo_proto::DEFAULT_MODEL);
     expected["minDownloadMbps"] = json!(expected["minDownloadMbps"].as_f64().unwrap());
     assert_eq!(build_create_payload(&o, "SECURE", 5000.0), expected);
 }

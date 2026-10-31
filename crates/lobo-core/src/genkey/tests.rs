@@ -2,35 +2,39 @@ use super::*;
 use serde_json::Value;
 
 #[test]
-fn write_opencode_table() {
+fn generated_client_has_only_supported_cloud_model_and_endpoint() {
     let tmp = tempfile::tempdir().unwrap();
-    let p = tmp.path().join("config.json");
-    for (domain, port) in [("lobo.example.com", 8931), ("", 9000)] {
-        write_opencode(&p, domain, "key", port).unwrap();
-        let cfg: Value = serde_json::from_slice(&fs::read(&p).unwrap()).unwrap();
+    let path = tmp.path().join("config.json");
+    for (connection, expected) in [
+        ("ssh", "http://127.0.0.1:9000/v1"),
+        ("cloudflare", "https://lobo.example.com/v1"),
+    ] {
+        let laptop = config::Laptop {
+            connection: connection.into(),
+            cloud_port: "9000".into(),
+            domain: "lobo.example.com".into(),
+            ..Default::default()
+        };
+        write_opencode_for_laptop(&path, &laptop, "key").unwrap();
+        let cfg: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let model = lobo_proto::catalog::get(lobo_proto::DEFAULT_CLOUD_MODEL).unwrap();
+        assert_eq!(cfg["provider"].as_object().unwrap().len(), 1);
+        assert_eq!(cfg["provider"]["lobo"]["options"]["baseURL"], expected);
+        assert_eq!(cfg["provider"]["lobo"]["options"]["apiKey"], "key");
         assert_eq!(
-            cfg["provider"]["lobo-local"]["options"]["baseURL"],
-            format!("http://127.0.0.1:{port}/v1")
+            cfg["agent"]["lobo"]["model"],
+            format!("lobo/{}", model.alias)
         );
-        assert_eq!(cfg["provider"]["lobo-local"]["options"]["apiKey"], "key");
-        assert_eq!(cfg["provider"].get("lobo").is_some(), !domain.is_empty());
+        assert!(
+            cfg["provider"]["lobo"]["models"]
+                .get(&model.alias)
+                .is_some()
+        );
         assert_eq!(
-            fs::metadata(&p).unwrap().permissions().mode() & 0o777,
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600
         );
     }
-}
-
-#[test]
-fn opencode_matches_go_bytes() {
-    assert_eq!(
-        opencode_config("lobo.example.com", "sk-fixed", 8931).unwrap(),
-        include_str!("../../fixtures/opencode/cloud.json")
-    );
-    assert_eq!(
-        opencode_config("", "sk-fixed", 9000).unwrap(),
-        include_str!("../../fixtures/opencode/local_only.json")
-    );
 }
 
 #[test]

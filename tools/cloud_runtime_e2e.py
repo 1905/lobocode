@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One direct RunPod Q6 diagnostic through its existing private SSH tunnel.
+"""One direct RunPod qwen38-q6 diagnostic through its existing private SSH tunnel.
 
 Exactly 47,000 synthetic input tokens, at most 32 output, context 65,536.
 This tool never rents, starts, stops, retries, reads provider credentials for use,
@@ -17,8 +17,8 @@ import sys
 import tempfile
 import time
 
-import bounded_runtime_e2e as bounded
-import same_prompt_runtime_e2e as same
+import cloud_probe_http as bounded
+import cloud_probe_prompt as same
 
 
 IMAGE_PATTERN = r"ghcr\.io/1905/lobocode@sha256:[0-9a-f]{64}"
@@ -65,7 +65,7 @@ def private_file(path, optional=False):
 
 
 class CloudRuntime:
-    model = "q6"
+    model = "qwen38-q6"
 
     def __init__(self, config, instance, boot, image):
         receipt(instance, boot, image)
@@ -125,7 +125,7 @@ class CloudRuntime:
 
 class CloudHarness(same.SamePromptHarness):
     def summary(self, category=None):
-        # Deliberately do not call the local summary: cloud has no supervisor PID.
+        # Include the exact cloud identity in the evidence.
         return {"schema": 1, "status": "passed" if category is None else "blocked",
                 "error_category": category, "diagnostic": "same-size-synthetic-cloud",
                 "provider": "runpod", "instance_id": self.runtime.instance,
@@ -181,7 +181,7 @@ def main(argv=None):
         harness = CloudHarness(runtime, http)
         harness.run()
         bounded.write_evidence(args.evidence_dir, harness.summary())
-        print("passed: one 47000-input-token direct RunPod Q6 request", flush=True)
+        print("passed: one 47000-input-token direct RunPod qwen38-q6 request", flush=True)
         return 0
     except bounded.Blocked as error:
         category = error.category
@@ -290,7 +290,7 @@ def self_test():
                                 "self_test_port")
                 if path == "/api/status":
                     return {"stage": "ready", "boot_id": self.remote_boot,
-                            "model": "q6", "ctx": same.CONTEXT_TOKENS}
+                            "model": "qwen38-q6", "ctx": same.CONTEXT_TOKENS}
                 if path == "/api/version":
                     return {"git_sha": "abcdef123456"}
                 if path == "/v1/models":
@@ -329,7 +329,7 @@ def self_test():
                         "self_test_privacy")
     expect("expected_boot_invalid", lambda: receipt(instance, "bad", image))
     expect("expected_instance_invalid", lambda: receipt("../bad", boot, image))
-    expect("expected_image_invalid", lambda: receipt(instance, boot, "ghcr.io/1905/lobocode:latest-q6"))
+    expect("expected_image_invalid", lambda: receipt(instance, boot, "ghcr.io/1905/lobocode:latest-qwen38-q6"))
     print("passed: cloud saved-connection identity, privacy, expiry and file-change checks")
     return 0
 

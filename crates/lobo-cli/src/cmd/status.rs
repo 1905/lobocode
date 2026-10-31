@@ -12,7 +12,7 @@ use std::{io::Write, path::Path};
 
 pub async fn run(app: &App, a: &StatusArgs, path: &Path, io: &mut Io) -> anyhow::Result<()> {
     let cfg = load_cfg(path)?;
-    control::check_providers(&cfg, app.local_supported)?;
+    control::check_providers(&cfg)?;
     let deps = app.deps(cfg, path)?;
     if !a.json && !a.once && app.term.stdout_tty {
         return run_status(&deps, &app.cancel, app.term.no_color).await;

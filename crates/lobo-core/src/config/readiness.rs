@@ -4,10 +4,8 @@ use lobo_proto::{DEFAULT_MODEL, Readiness};
 pub fn readiness(path: &Path) -> Readiness {
     let mut r = Readiness {
         exists: path.exists(),
-        local_supported: crate::local::supported().is_ok(),
         default_provider: "runpod".into(),
         default_model: DEFAULT_MODEL.into(),
-        local_port: DEFAULT_LOCAL_PORT,
         ..Default::default()
     };
     match load_laptop(path) {
@@ -19,9 +17,8 @@ pub fn readiness(path: &Path) -> Readiness {
             } else {
                 cfg.model.clone()
             };
-            r.local_port = cfg.port();
             r.cloud_ready = r.exists && cfg.require_cloud().is_ok();
-            r.ready = r.cloud_ready || (r.local_supported && r.exists);
+            r.ready = r.cloud_ready;
         }
         Err(e) => r.error = Some(e.to_string()),
     }
@@ -30,6 +27,7 @@ pub fn readiness(path: &Path) -> Readiness {
 
 /// Settings validation. Empty values clear a setting; zero retains built-in limits.
 pub fn validate_set(set: &BTreeMap<String, String>) -> std::result::Result<(), String> {
+    validate_selection(set)?;
     if let Some(v) = set.get("LOBO_CONNECTION")
         && !matches!(v.as_str(), "" | "ssh" | "cloudflare")
     {
@@ -37,7 +35,7 @@ pub fn validate_set(set: &BTreeMap<String, String>) -> std::result::Result<(), S
     }
     if let Some(v) = set.get("LOBO_CLOUD_PORT")
         && !v.is_empty()
-        && (v == "0" || parse_local_port(v).is_err())
+        && (v == "0" || parse_cloud_port(v).is_err())
     {
         return Err("LOBO_CLOUD_PORT: whole number 1024-65534, or empty".into());
     }
@@ -68,11 +66,19 @@ pub fn validate_set(set: &BTreeMap<String, String>) -> std::result::Result<(), S
     {
         return Err("LOBO_DOMAIN: bare hostname, no https://".into());
     }
-    if let Some(v) = set.get("LOBO_LOCAL_PORT")
-        && !v.is_empty()
-        && (v == "0" || parse_local_port(v).is_err())
+    Ok(())
+}
+
+pub(super) fn validate_selection(
+    set: &BTreeMap<String, String>,
+) -> std::result::Result<(), String> {
+    if let Some(v) = set.get("LOBO_MODEL").filter(|v| !v.is_empty()) {
+        lobo_proto::catalog::get(v).map_err(|e| format!("LOBO_MODEL: {e}"))?;
+    }
+    if let Some(v) = set.get("LOBO_PROVIDER")
+        && !matches!(v.as_str(), "" | "runpod" | "vast")
     {
-        return Err("LOBO_LOCAL_PORT: whole number 1024-65534, or empty".into());
+        return Err("LOBO_PROVIDER: want runpod or vast".into());
     }
     Ok(())
 }
@@ -86,7 +92,8 @@ mod tests {
         let path = d.path().join("config.env");
         let r = readiness(&path);
         assert!(!r.exists && !r.ready);
-        assert_eq!(r.local_port, 8931);
+        assert!(!r.local_supported);
+        assert_eq!(r.local_port, 0);
         let cloud = "RUNPOD_API_KEY=r\nCF_TUNNEL_TOKEN=t\nLOBO_DOMAIN=lobo.test\nLOBO_BUCKET_URL=https://bucket.test\n";
         std::fs::write(&path, cloud).unwrap();
         assert!(!readiness(&path).ready);
@@ -95,18 +102,19 @@ mod tests {
         assert!(r.ready && r.cloud_ready);
         assert_eq!(r.providers, ["runpod"]);
         assert_eq!(r.default_provider, "runpod");
-        assert_eq!(r.default_model, "q6");
-        assert_eq!(r.local_port, 8931);
+        assert_eq!(r.default_model, DEFAULT_MODEL);
+        assert!(!r.local_supported);
+        assert_eq!(r.local_port, 0);
         std::fs::write(
             &path,
             "LOBO_API_KEY=fixture\nLOBO_PROVIDER=local\nLOBO_LOCAL_PORT=9000\n",
         )
         .unwrap();
         let r = readiness(&path);
-        assert_eq!(r.default_provider, "local");
+        assert_eq!(r.default_provider, "runpod");
         assert!(!r.cloud_ready);
-        assert_eq!(r.ready, r.local_supported);
-        assert_eq!(r.local_port, 9000);
+        assert!(!r.ready && !r.local_supported);
+        assert_eq!(r.local_port, 0);
         for bad in ["LOBO_API_KEY=\n", "LOBO_API_KEY='unclosed"] {
             std::fs::write(&path, bad).unwrap();
             let r = readiness(&path);
@@ -128,12 +136,12 @@ mod tests {
     fn validate_set_preserves_settings_rules() {
         let check = |k: &str, v: &str| validate_set(&BTreeMap::from([(k.into(), v.into())]));
         for value in ["", "1024", "8931", "65534"] {
-            check("LOBO_LOCAL_PORT", value).unwrap();
+            check("LOBO_CLOUD_PORT", value).unwrap();
         }
         for value in ["80", "1023", "65535", "0", "-1", "89.31", "port", " 8931"] {
             assert_eq!(
-                check("LOBO_LOCAL_PORT", value).unwrap_err(),
-                "LOBO_LOCAL_PORT: whole number 1024-65534, or empty"
+                check("LOBO_CLOUD_PORT", value).unwrap_err(),
+                "LOBO_CLOUD_PORT: whole number 1024-65534, or empty"
             );
         }
         assert!(check("LOBO_CTX", "100").is_err());
@@ -146,5 +154,27 @@ mod tests {
             assert!(check("LOBO_VAST_MAX_DPH", v).is_err());
         }
         check("LOBO_VAST_MAX_DPH", "1.20").unwrap();
+    }
+
+    #[test]
+    fn explicit_model_and_provider_selections_reject_retired_values() {
+        for model in ["q6", "q8", "unknown"] {
+            let set = BTreeMap::from([("LOBO_MODEL".into(), model.into())]);
+            assert!(validate_set(&set).unwrap_err().contains("valid: qwen38-q6"));
+        }
+        for provider in ["local", "unknown"] {
+            let set = BTreeMap::from([("LOBO_PROVIDER".into(), provider.into())]);
+            assert_eq!(
+                validate_set(&set).unwrap_err(),
+                "LOBO_PROVIDER: want runpod or vast"
+            );
+        }
+        for provider in ["", "runpod", "vast"] {
+            validate_set(&BTreeMap::from([
+                ("LOBO_PROVIDER".into(), provider.into()),
+                ("LOBO_MODEL".into(), DEFAULT_MODEL.into()),
+            ]))
+            .unwrap();
+        }
     }
 }

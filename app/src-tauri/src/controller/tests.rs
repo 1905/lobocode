@@ -1,3 +1,5 @@
+const CLOUD_API_URL: &str = "http://127.0.0.1:18933/v1";
+const CLOUD_AGENT_URL: &str = "http://127.0.0.1:18934";
 use super::*;
 use crate::backend::PreparedUp;
 use async_trait::async_trait;
@@ -136,7 +138,7 @@ impl Backend for FakeBackend {
                 ready: self.ready.load(Ordering::SeqCst),
                 cloud_ready: self.ready.load(Ordering::SeqCst),
                 default_provider: "runpod".into(),
-                default_model: "q8".into(),
+                default_model: "qwen38-q6".into(),
                 local_port: 8931,
                 ..Default::default()
             },
@@ -361,7 +363,11 @@ fn setup_path(b: &crate::opencode::tests::FixtureBackend) -> String {
 
 #[tokio::test]
 async fn opencode_off_info_keeps_path_and_never_queries_runtime() {
-    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "runpod", "q6");
+    let b = crate::opencode::tests::FixtureBackend::new(
+        "http://127.0.0.1:1234/v1",
+        "runpod",
+        "qwen38-q6",
+    );
     let c = setup_controller(b.clone());
     c.change(|s| {
         s.set_runtime(None);
@@ -380,7 +386,11 @@ async fn opencode_off_info_keeps_path_and_never_queries_runtime() {
 
 #[tokio::test]
 async fn opencode_selected_valid_file_remains_usable_when_default_is_invalid() {
-    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "runpod", "q6");
+    let b = crate::opencode::tests::FixtureBackend::new(
+        "http://127.0.0.1:1234/v1",
+        "runpod",
+        "qwen38-q6",
+    );
     let c = setup_controller(b.clone());
     std::fs::write(b.destination(), "{ bad: private-parser-secret }").unwrap();
     let default = c.opencode_info(None).unwrap();
@@ -399,7 +409,7 @@ async fn opencode_selected_valid_file_remains_usable_when_default_is_invalid() {
     assert_eq!(info.path, selected.to_string_lossy());
     assert_eq!(
         info.model_alias,
-        Some(lobo_proto::catalog::get("q6").unwrap().alias.clone())
+        Some(lobo_proto::catalog::get("qwen38-q6").unwrap().alias.clone())
     );
     assert_eq!(info.context, Some(4096));
     assert!(info.warnings.is_empty());
@@ -414,7 +424,7 @@ async fn opencode_stop_settings_and_change_back_during_http_invalidate_setup() {
         let b = crate::opencode::tests::FixtureBackend::new(
             &format!("{}/v1", server.uri()),
             "runpod",
-            "q6",
+            "qwen38-q6",
         );
         let c = setup_controller(b.clone());
         let original = b.bytes();
@@ -427,7 +437,7 @@ async fn opencode_stop_settings_and_change_back_during_http_invalidate_setup() {
                 3 => { controller.set_provider("vast".into()).unwrap(); controller.set_provider("runpod".into()).unwrap(); },
                 _ => unreachable!(),
             }
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({"data":[{"id":lobo_proto::catalog::get("q6").unwrap().alias}]}))
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"data":[{"id":lobo_proto::catalog::get("qwen38-q6").unwrap().alias}]}))
         }).expect(1).mount(&server).await;
         assert!(c.configure_opencode(setup_path(&b), true).await.is_err());
         assert_eq!(b.bytes(), original);
@@ -441,7 +451,11 @@ async fn opencode_stop_settings_and_change_back_during_http_invalidate_setup() {
 
 #[tokio::test]
 async fn opencode_duplicate_and_cancelled_verification_release_reservation() {
-    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "runpod", "q6");
+    let b = crate::opencode::tests::FixtureBackend::new(
+        "http://127.0.0.1:1234/v1",
+        "runpod",
+        "qwen38-q6",
+    );
     b.gated.store(true, Ordering::SeqCst);
     let c = setup_controller(b.clone());
     let directory_names = || {
@@ -470,11 +484,11 @@ async fn opencode_stale_owner_stop_or_selection_before_final_callback_rejects() 
     use wiremock::MockServer;
     for mutation in 0..3 {
         let server = MockServer::start().await;
-        crate::opencode::tests::serve_models(&server, "q6", 1).await;
+        crate::opencode::tests::serve_models(&server, "qwen38-q6", 1).await;
         let b = crate::opencode::tests::FixtureBackend::new(
             &format!("{}/v1", server.uri()),
             "runpod",
-            "q6",
+            "qwen38-q6",
         );
         let c = setup_controller(b.clone());
         let original = b.bytes();
@@ -508,11 +522,11 @@ async fn opencode_stale_owner_stop_or_selection_before_final_callback_rejects() 
 async fn opencode_commit_and_noop_retain_both_gates_until_backend_returns() {
     use wiremock::MockServer;
     let server = MockServer::start().await;
-    crate::opencode::tests::serve_models(&server, "q6", 2).await;
+    crate::opencode::tests::serve_models(&server, "qwen38-q6", 2).await;
     let b = crate::opencode::tests::FixtureBackend::new(
         &format!("{}/v1", server.uri()),
         "runpod",
-        "q6",
+        "qwen38-q6",
     );
     let c = setup_controller(b.clone());
     let controller = c.clone();
@@ -545,11 +559,11 @@ async fn opencode_commit_and_noop_retain_both_gates_until_backend_returns() {
 async fn opencode_panic_after_validation_cleans_files_and_does_not_poison_app_gates() {
     use wiremock::MockServer;
     let server = MockServer::start().await;
-    crate::opencode::tests::serve_models(&server, "q6", 2).await;
+    crate::opencode::tests::serve_models(&server, "qwen38-q6", 2).await;
     let b = crate::opencode::tests::FixtureBackend::new(
         &format!("{}/v1", server.uri()),
         "runpod",
-        "q6",
+        "qwen38-q6",
     );
     let c = setup_controller(b.clone());
     let original = b.bytes();
@@ -574,7 +588,11 @@ async fn opencode_panic_after_validation_cleans_files_and_does_not_poison_app_ga
 
 #[tokio::test]
 async fn opencode_preparation_panic_releases_reservation() {
-    let b = crate::opencode::tests::FixtureBackend::new("http://127.0.0.1:1234/v1", "runpod", "q6");
+    let b = crate::opencode::tests::FixtureBackend::new(
+        "http://127.0.0.1:1234/v1",
+        "runpod",
+        "qwen38-q6",
+    );
     b.panic_prepare.store(true, Ordering::SeqCst);
     let c = setup_controller(b.clone());
     let controller = c.clone();
@@ -875,12 +893,11 @@ fn cloud_owned_fixture() -> (
     {
         let mut state = runpod.state.lock().unwrap();
         state.boot_id = "cloud-boot".into();
-        state.start_id = 100;
         state.instances.push(Instance {
             provider: "runpod".into(),
             id: "4242".into(),
-            api_url: testkit::LOCAL_API_URL.into(),
-            agent_url: testkit::LOCAL_AGENT_URL.into(),
+            api_url: CLOUD_API_URL.into(),
+            agent_url: CLOUD_AGENT_URL.into(),
             ..Default::default()
         });
     }
@@ -892,8 +909,8 @@ fn cloud_owned_fixture() -> (
         provider: "runpod".into(),
         instance_id: Some("4242".into()),
         boot_id: "cloud-boot".into(),
-        agent_url: Some(testkit::LOCAL_AGENT_URL.into()),
-        api_url: Some(testkit::LOCAL_API_URL.into()),
+        agent_url: Some(CLOUD_AGENT_URL.into()),
+        api_url: Some(CLOUD_API_URL.into()),
         local_pid: None,
         local_start_id: None,
     });
@@ -937,7 +954,7 @@ async fn cloud_ready_and_stop_ignore_a_failing_vast_provider() {
     assert!(snap.down);
     assert_eq!(snap.pod, None);
     assert_eq!(snap.status, None);
-    assert_ne!(c.state().endpoint.as_deref(), Some(testkit::LOCAL_API_URL));
+    assert_ne!(c.state().endpoint.as_deref(), Some(CLOUD_API_URL));
     assert!(vast.calls().is_empty());
 }
 

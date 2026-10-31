@@ -21,7 +21,7 @@ pub fn root_help(w: &mut dyn Write, color: bool, have_config: bool, path: &Path)
     )?;
     writeln!(
         w,
-        "Rent an RTX 5090 on RunPod or Vast.ai and serve Qwen3.5-27B behind an OpenAI-compatible API.\nPods delete themselves when idle or expired."
+        "Rent an RTX 5090 on RunPod or Vast.ai and serve Qwen3.8-27B behind an OpenAI-compatible API.\nPods delete themselves when idle or expired."
     )?;
     if !have_config {
         writeln!(
@@ -35,7 +35,7 @@ pub fn root_help(w: &mut dyn Write, color: bool, have_config: bool, path: &Path)
     let tree = crate::cli::command();
     for (group, names) in [
         ("Run", &["up", "status", "logs", "test", "down"][..]),
-        ("Setup", &["config", "models", "gen-api-key", "version"][..]),
+        ("Setup", &["config", "gen-api-key", "version"][..]),
     ] {
         writeln!(w, "\n{}", style(group, "1"))?;
         for name in names {
@@ -56,14 +56,7 @@ pub fn root_help(w: &mut dyn Write, color: bool, have_config: bool, path: &Path)
             "lobo up --provider vast",
             "rent on Vast.ai instead of the default provider",
         ),
-        (
-            "lobo up --provider local",
-            "run on this Mac (Apple Silicon, llama.cpp); no cloud keys",
-        ),
-        (
-            "lobo up --q6 --min-mbps 200",
-            "smaller model, drop hosts slower than 200 MB/s",
-        ),
+        ("lobo up --min-mbps 200", "skip hosts slower than 200 MB/s"),
         (
             "lobo status",
             "live dashboard: GPU, tokens/s, idle timer, cost",

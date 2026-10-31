@@ -198,10 +198,9 @@ fn create_body_matches_go() {
         include_str!("../../../fixtures/vast/create_body.json"),
         include_str!("../../../fixtures/vast/create_body_baked.json"),
     ] {
-        assert_eq!(
-            create_body(&o),
-            serde_json::from_str::<Value>(fixture).unwrap()
-        );
+        let mut expected: Value = serde_json::from_str(fixture).unwrap();
+        expected["env"]["LOBO_MODEL"] = json!(lobo_proto::DEFAULT_MODEL);
+        assert_eq!(create_body(&o), expected);
         o.release_url.clear();
         o.release_sha256.clear();
     }

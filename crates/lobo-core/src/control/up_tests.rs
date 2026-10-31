@@ -45,7 +45,7 @@ async fn bundled_verification_progress_reaches_clients() {
                 bytes: 123,
                 total: 456,
                 verifying: true,
-                source: "Docker image".into(),
+                source: "https://models.example".into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -63,7 +63,7 @@ async fn bundled_verification_progress_reaches_clients() {
         .unwrap();
     assert!(progress.verifying);
     assert_eq!((progress.bytes, progress.total), (123, 456));
-    assert_eq!(progress.source, "Docker image");
+    assert_eq!(progress.source, "https://models.example");
 }
 #[tokio::test]
 async fn lifetime_limit_applies_while_image_is_still_pulling() {
@@ -142,7 +142,7 @@ async fn up_preflight_rejects_before_renting() {
                 "already running"
             }
             "unconfigured" => {
-                o.provider = "missing".into();
+                o.provider = "vast".into();
                 "not configured"
             }
             "image-release" => {
@@ -369,58 +369,6 @@ async fn up_gives_up_after_four_bad_hosts() {
     let s = rp.state.lock().unwrap();
     assert_eq!(s.created.len(), 4);
     assert_eq!(s.deleted.len(), 4);
-}
-#[tokio::test]
-async fn up_local_and_local_failure_stops_without_rerent() {
-    for fail in [false, true] {
-        let (mut d, rp) = test_deps(ready());
-        let local = Arc::new(FakeLocal::default());
-        d.providers.insert("local".into(), local.clone());
-        d.images = Arc::new(PanicImages);
-        let script = if fail {
-            vec![Some(Status {
-                stage: Stage::Failed,
-                stage_detail: "gpu: no Metal".into(),
-                ..Default::default()
-            })]
-        } else {
-            local_boot_script()
-        };
-        let agent = Arc::new(FakeAgent::new(script));
-        d.new_agent = Arc::new(move |url| {
-            assert_eq!(url, LOCAL_AGENT_URL);
-            agent.clone()
-        });
-        let (events, result) = collect(
-            d,
-            UpOpts {
-                provider: "local".into(),
-                ..Default::default()
-            },
-        )
-        .await;
-        if fail {
-            assert!(
-                result
-                    .unwrap_err()
-                    .to_string()
-                    .contains("local run stopped")
-            );
-        } else {
-            result.unwrap();
-            assert_eq!(
-                events.last().unwrap().ready.as_ref().unwrap().url,
-                LOCAL_API_URL
-            );
-        }
-        let s = local.state.lock().unwrap();
-        assert_eq!(s.created.len(), 1);
-        assert_eq!(s.deleted.len(), usize::from(fail));
-        assert!(s.created[0].image.is_empty());
-        assert!(s.created[0].model_url.is_empty());
-        assert!(s.created[0].cf_tunnel_token.is_empty());
-        assert!(rp.state.lock().unwrap().created.is_empty());
-    }
 }
 struct SlowProvider {
     running: Mutex<Vec<Instance>>,
@@ -1211,7 +1159,7 @@ async fn cancellation_interrupts_a_hung_provider_check_and_cleans_the_exact_pod(
     assert!(p.running.lock().unwrap().is_empty());
 }
 #[tokio::test]
-async fn up_rejects_models_without_gpu_support_before_renting() {
+async fn up_rejects_retired_models_before_renting() {
     for model in ["q6", "q8"] {
         let (d, rp) = test_deps(ready());
         let opts = UpOpts {
@@ -1219,7 +1167,7 @@ async fn up_rejects_models_without_gpu_support_before_renting() {
             ..Default::default()
         };
         let error = collect(d, opts).await.1.unwrap_err().to_string();
-        assert!(error.contains("not supported on GPU"), "{model}: {error}");
+        assert!(error.contains("unknown model"), "{model}: {error}");
         assert!(rp.state.lock().unwrap().created.is_empty());
     }
 }

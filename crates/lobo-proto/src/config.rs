@@ -19,10 +19,12 @@ pub struct Readiness {
     pub exists: bool,
     pub cloud_ready: bool,
     pub ready: bool,
+    /// Legacy wire field. Current clients never support local inference.
     pub local_supported: bool,
     pub providers: Vec<String>,
     pub default_provider: String,
     pub default_model: String,
+    /// Legacy wire field. Current readiness responses leave it at zero.
     pub local_port: u16,
     pub error: Option<String>,
 }

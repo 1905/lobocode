@@ -4,7 +4,7 @@ use crate::{
     types::{AppError, OpenCodeResult},
 };
 use async_trait::async_trait;
-use lobo_core::{config, control, local};
+use lobo_core::{config, control};
 use lobo_proto::{ConfigShow, Readiness, Snap, Status, UpRequest};
 use std::{
     collections::BTreeMap,
@@ -87,14 +87,7 @@ pub struct CoreBackend {
 impl CoreBackend {
     pub fn new(path: PathBuf) -> std::io::Result<Self> {
         let path = std::path::absolute(path)?;
-        let mut wiring =
-            control::Wiring::new(path.clone(), local::Spawner::app(std::env::current_exe()?));
-        // Shared core retains CLI local support. The app never constructs that provider.
-        wiring.supported = || {
-            Err(lobo_core::Error::Local(
-                "The Mac app supports cloud GPUs only.".into(),
-            ))
-        };
+        let wiring = control::Wiring::new(path.clone(), std::env::current_exe()?);
         Ok(Self {
             path,
             wiring,
@@ -166,7 +159,6 @@ fn cloud_config(mut cfg: config::Laptop) -> config::Laptop {
         cfg.model = lobo_proto::DEFAULT_CLOUD_MODEL.into();
     }
     // Legacy CLI settings stay on disk and do not participate in app admission.
-    cfg.local_port.clear();
     cfg
 }
 
@@ -349,7 +341,7 @@ impl Backend for CoreBackend {
         // Reject before dependencies, ownership writes, or workers exist.
         self.load_owner()?;
         let cfg = cloud_config(config::load_laptop(&self.path)?);
-        let opts = control::resolve_up(&cfg, &self.path, &req, self.wiring.supported)?;
+        let opts = control::resolve_up(&cfg, &self.path, &req)?;
         require_cloud_provider(&opts.provider)?;
         Ok(PreparedUp {
             config: cfg,
@@ -525,9 +517,8 @@ mod tests {
         assert!(!shown.values.contains_key("LOBO_WEIGHTS_DIR"));
         assert_eq!(shown.values["LOBO_PROVIDER"], "runpod");
         assert_eq!(std::fs::read(&backend.path).unwrap(), original);
-        assert!((backend.wiring.supported)().is_err());
         let cfg = cloud_config(config::load_laptop(&backend.path).unwrap());
-        assert!(control::local_provider_from_config(&cfg, &backend.wiring).is_none());
+        assert!(!control::providers_from_config(&cfg, &backend.wiring).contains_key("local"));
         backend
             .save(BTreeMap::from([("LOBO_CTX".into(), "65536".into())]))
             .await
@@ -544,9 +535,15 @@ mod tests {
         let prepared = backend.prepare_up(UpRequest::default()).unwrap();
         assert_eq!(prepared.options.provider, "runpod");
         assert_eq!(prepared.options.model, lobo_proto::DEFAULT_CLOUD_MODEL);
+        assert!(
+            backend
+                .save(BTreeMap::from([("LOBO_MODEL".into(), "q8".into())]))
+                .await
+                .is_err()
+        );
         backend
             .save(BTreeMap::from([
-                ("LOBO_MODEL".into(), "q8".into()),
+                ("LOBO_MODEL".into(), lobo_proto::DEFAULT_CLOUD_MODEL.into()),
                 ("LOBO_PROVIDER".into(), "vast".into()),
                 ("VASTAI_API_KEY".into(), "fixture".into()),
             ]))
@@ -669,7 +666,6 @@ mod tests {
                 runpod_api_key: runpod.into(),
                 vast_api_key: vast.into(),
                 model: "q8".into(),
-                local_port: "invalid".into(),
                 ..Default::default()
             });
             assert_eq!(
@@ -677,7 +673,6 @@ mod tests {
                 "{provider} / runpod={runpod} / vast={vast}"
             );
             assert_eq!(cfg.model, lobo_proto::DEFAULT_CLOUD_MODEL);
-            assert!(cfg.local_port.is_empty());
         }
     }
     #[tokio::test]

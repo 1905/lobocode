@@ -50,22 +50,18 @@ fn setup() -> (
     (d, local, runpod, vast)
 }
 #[tokio::test]
-async fn local_discovery_status_and_stop_never_call_cloud() {
+async fn legacy_local_targets_reject_before_any_provider_calls() {
     let (d, local, rp, vast) = setup();
-    assert_eq!(discover_app(&d, "local").await.unwrap(), None);
-    assert!(
-        snapshot_app(&d, &target("local", "missing"))
-            .await
-            .unwrap()
-            .down
-    );
-    assert_eq!(
-        down_app(&d, &target("local", "missing")).await.unwrap(),
-        0.0
-    );
+    assert!(discover_app(&d, "local").await.is_err());
+    let mut target = target("local", "4242");
+    target.local_pid = Some(4242);
+    target.local_start_id = Some(100);
+    assert!(snapshot_app(&d, &target).await.is_err());
+    assert!(down_app(&d, &target).await.is_err());
+    assert!(sample_app(&d, &target).await.is_err());
+    assert!(local.calls().is_empty());
     assert!(rp.calls().is_empty());
     assert!(vast.calls().is_empty());
-    assert!(!local.calls().is_empty());
 }
 #[tokio::test]
 async fn cloud_stop_deletes_only_recorded_instance() {
@@ -123,7 +119,7 @@ async fn ambiguous_discovery_never_selects_first() {
 async fn direct_sample_never_lists_or_touches_connections() {
     let (d, local, rp, vast) = setup();
     assert_eq!(
-        sample_app(&d, &target("local", "ours"))
+        sample_app(&d, &target("runpod", "ours"))
             .await
             .unwrap()
             .boot_id,
@@ -136,51 +132,13 @@ async fn direct_sample_never_lists_or_touches_connections() {
 #[tokio::test]
 async fn direct_sample_rejects_changed_or_empty_boot() {
     let (d, _, _, _) = setup();
-    let mut t = target("local", "ours");
+    let mut t = target("runpod", "ours");
     t.boot_id = "other".into();
     assert!(sample_app(&d, &t).await.is_err());
     t.boot_id.clear();
     assert!(sample_app(&d, &t).await.is_err());
 }
 
-#[tokio::test]
-async fn local_discovery_records_process_identity_and_rejects_replacement() {
-    let (d, local, rp, vast) = setup();
-    {
-        let mut s = local.state.lock().unwrap();
-        s.instances.push(instance("local", "4242"));
-        s.boot_id = "owned".into();
-        s.start_id = 100;
-    }
-    let t = discover_app(&d, "local").await.unwrap().unwrap();
-    assert_eq!(t.local_pid, Some(4242));
-    assert_eq!(t.local_start_id, Some(100));
-    assert_eq!(
-        snapshot_app(&d, &t).await.unwrap().status.unwrap().boot_id,
-        "owned"
-    );
-    local.state.lock().unwrap().start_id += 1;
-    assert!(snapshot_app(&d, &t).await.unwrap().down);
-    down_app(&d, &t).await.unwrap();
-    assert!(!local.calls().iter().any(|c| c.starts_with("delete:")));
-    assert!(rp.calls().is_empty());
-    assert!(vast.calls().is_empty());
-}
-#[tokio::test]
-async fn local_replacement_at_delete_boundary_is_not_signalled() {
-    let (d, local, _, _) = setup();
-    {
-        let mut s = local.state.lock().unwrap();
-        s.instances.push(instance("local", "4242"));
-        s.boot_id = "owned".into();
-        s.start_id = 100;
-    }
-    let t = discover_app(&d, "local").await.unwrap().unwrap();
-    local.state.lock().unwrap().swap_on_delete = true;
-    down_app(&d, &t).await.unwrap();
-    assert_eq!(local.state.lock().unwrap().instances.len(), 1);
-    assert!(!local.calls().iter().any(|c| c.starts_with("delete:")));
-}
 #[tokio::test]
 async fn stop_rejects_empty_boot_before_provider_calls() {
     let (d, local, rp, vast) = setup();
@@ -201,6 +159,7 @@ type StartupDeps = (
 );
 fn startup_deps() -> StartupDeps {
     let (mut d, local, rp, vast) = setup();
+    rp.state.lock().unwrap().broken = false;
     let agent = Arc::new(FakeAgent::new(vec![Some(Status {
         stage: lobo_proto::Stage::Ready,
         ..Default::default()
@@ -217,35 +176,35 @@ fn startup_deps() -> StartupDeps {
     });
     (d, local, rp, vast, owner, targets)
 }
-fn local_opts() -> UpOpts {
+fn cloud_opts() -> UpOpts {
     UpOpts {
-        provider: "local".into(),
+        provider: "runpod".into(),
         ..Default::default()
     }
 }
 #[tokio::test]
-async fn local_start_ignores_broken_cloud_keys_and_records_owner() {
-    let (d, local, rp, vast, owner, targets) = startup_deps();
-    let mut op = up_app(d, local_opts(), None, CancellationToken::new(), owner);
+async fn cloud_start_ignores_other_provider_keys_and_records_owner() {
+    let (d, sentinel, local, vast, owner, targets) = startup_deps();
+    let mut op = up_app(d, cloud_opts(), None, CancellationToken::new(), owner);
     op.wait().await.unwrap();
     let targets = targets.lock().unwrap();
     assert!(targets[0].instance_id.is_none());
     assert!(!targets[0].boot_id.is_empty());
     let ready = targets.last().unwrap();
     assert_eq!(ready.instance_id.as_deref(), Some("4242"));
-    assert_eq!(ready.local_pid, Some(4242));
-    assert_eq!(ready.local_start_id, Some(100));
-    assert_eq!(ready.agent_url.as_deref(), Some(LOCAL_AGENT_URL));
+    assert_eq!(ready.local_pid, None);
+    assert_eq!(ready.local_start_id, None);
+    assert_eq!(ready.agent_url.as_deref(), Some("http://owned-agent"));
     assert_eq!(local.state.lock().unwrap().created.len(), 1);
-    assert!(rp.calls().is_empty());
+    assert!(sentinel.calls().is_empty());
     assert!(vast.calls().is_empty());
 }
 #[tokio::test]
 async fn foreign_pending_blocks_start_without_any_provider_calls() {
     for (pending_provider, previous_provider, previous_boot) in [
-        ("runpod", "local", "foreign"),
-        ("local", "local", "other"),
-        ("runpod", "runpod", "foreign"),
+        ("local", "local", "foreign"),
+        ("runpod", "runpod", "other"),
+        ("vast", "vast", "foreign"),
     ] {
         let (mut d, local, rp, vast, owner, _) = startup_deps();
         let tmp = tempfile::tempdir().unwrap();
@@ -267,7 +226,7 @@ async fn foreign_pending_blocks_start_without_any_provider_calls() {
         previous.boot_id = previous_boot.into();
         let mut op = up_app(
             d,
-            local_opts(),
+            cloud_opts(),
             Some(previous),
             CancellationToken::new(),
             owner,
@@ -287,10 +246,10 @@ async fn foreign_pending_blocks_start_without_any_provider_calls() {
 }
 #[tokio::test]
 async fn owner_record_failure_before_create_never_rents() {
-    let (d, local, _, _, _, _) = startup_deps();
+    let (d, _, local, _, _, _) = startup_deps();
     let mut op = up_app(
         d,
-        local_opts(),
+        cloud_opts(),
         None,
         CancellationToken::new(),
         Arc::new(|_| Err(Error::Other("owner record failed".into()))),
@@ -306,11 +265,11 @@ async fn owner_record_failure_before_create_never_rents() {
 }
 #[tokio::test]
 async fn owner_record_failure_after_create_retains_worker_cleanup() {
-    let (d, local, _, _, _, _) = startup_deps();
+    let (d, _, local, _, _, _) = startup_deps();
     let state = d.operations.clone();
     let mut op = up_app(
         d,
-        local_opts(),
+        cloud_opts(),
         None,
         CancellationToken::new(),
         Arc::new(|t| {
@@ -343,61 +302,20 @@ async fn cancellation_before_create_has_no_provider_calls() {
     let (d, local, rp, vast, owner, _) = startup_deps();
     let cancel = CancellationToken::new();
     cancel.cancel();
-    let mut op = up_app(d, local_opts(), None, cancel, owner);
+    let mut op = up_app(d, cloud_opts(), None, cancel, owner);
     assert!(matches!(op.wait().await, Err(Error::Cancelled)));
     assert!(local.calls().is_empty());
     assert!(rp.calls().is_empty());
     assert!(vast.calls().is_empty());
 }
 #[tokio::test(start_paused = true)]
-async fn cancelled_or_panicked_start_cleans_only_its_local_owner() {
-    for panic in [false, true] {
-        let (d, local, rp, vast, owner, _) = startup_deps();
-        {
-            let mut s = local.state.lock().unwrap();
-            s.cancel_on_rent = !panic;
-            s.panic_after_create = panic;
-        }
-        let mut op = up_app(d, local_opts(), None, CancellationToken::new(), owner);
-        let error = op.wait().await.unwrap_err();
-        if panic {
-            assert!(error.to_string().contains("scoped worker exploded"));
-        } else {
-            assert!(matches!(error, Error::Cancelled));
-        }
-        assert!(local.state.lock().unwrap().instances.is_empty());
-        assert!(rp.calls().is_empty());
-        assert!(vast.calls().is_empty());
-    }
-}
-#[tokio::test(start_paused = true)]
-async fn scoped_cancelled_uncertain_create_is_reconciled_without_rerent() {
-    let (d, local, rp, vast, owner, _) = startup_deps();
-    {
-        let mut s = local.state.lock().unwrap();
-        s.cancel_on_rent = true;
-        s.uncertain_create = true;
-    }
-    let mut op = up_app(d, local_opts(), None, CancellationToken::new(), owner);
+async fn cancelled_start_cleans_only_its_cloud_owner() {
+    let (d, sentinel, rp, vast, owner, _) = startup_deps();
+    rp.state.lock().unwrap().cancel_on_rent = true;
+    let mut op = up_app(d, cloud_opts(), None, CancellationToken::new(), owner);
     assert!(matches!(op.wait().await, Err(Error::Cancelled)));
-    assert_eq!(local.state.lock().unwrap().created.len(), 1);
-    assert!(local.state.lock().unwrap().instances.is_empty());
-    assert!(rp.calls().is_empty());
-    assert!(vast.calls().is_empty());
-}
-#[tokio::test]
-async fn cancelled_start_does_not_delete_replacement_local_identity() {
-    let (d, local, rp, vast, owner, _) = startup_deps();
-    {
-        let mut s = local.state.lock().unwrap();
-        s.cancel_on_rent = true;
-        s.swap_on_delete = true;
-    }
-    let mut op = up_app(d, local_opts(), None, CancellationToken::new(), owner);
-    assert!(matches!(op.wait().await, Err(Error::Cancelled)));
-    assert_eq!(local.state.lock().unwrap().instances.len(), 1);
-    assert!(!local.calls().iter().any(|c| c.starts_with("delete:")));
-    assert!(rp.calls().is_empty());
+    assert!(rp.state.lock().unwrap().instances.is_empty());
+    assert!(sentinel.calls().is_empty());
     assert!(vast.calls().is_empty());
 }
 
@@ -425,21 +343,21 @@ fn saved_connection(
     (desired, bytes, key)
 }
 #[tokio::test]
-async fn local_start_status_stop_preserve_saved_cloud_connection() {
+async fn rejected_local_start_preserves_saved_cloud_connection() {
     let (mut d, _, rp, vast, owner, _) = startup_deps();
     let tmp = tempfile::tempdir().unwrap();
     let (path, bytes, key) = saved_connection(&mut d, tmp.path());
     let mut op = up_app(
         d.clone(),
-        local_opts(),
+        UpOpts {
+            provider: "local".into(),
+            ..Default::default()
+        },
         None,
         CancellationToken::new(),
         owner,
     );
-    op.wait().await.unwrap();
-    let t = discover_app(&d, "local").await.unwrap().unwrap();
-    assert!(!snapshot_app(&d, &t).await.unwrap().down);
-    down_app(&d, &t).await.unwrap();
+    assert!(op.wait().await.is_err());
     assert_eq!(std::fs::read(path).unwrap(), bytes);
     assert_eq!(std::fs::read_to_string(key).unwrap(), "foreign key");
     assert!(rp.calls().is_empty());
@@ -496,43 +414,20 @@ async fn unproven_cloud_uncertain_create_keeps_journal_and_never_deletes_candida
     assert!(vast.calls().is_empty());
 }
 #[tokio::test]
-async fn unproven_local_candidate_is_not_adopted_or_deleted() {
-    let (d, local, _, _) = setup();
+async fn matching_pending_cloud_owner_is_recovered_before_new_start() {
+    let (d, sentinel, local, vast, owner, _) = startup_deps();
     {
         let mut s = local.state.lock().unwrap();
-        s.instances.push(instance("local", "4242"));
-        s.boot_id = "foreign".into();
-        s.start_id = 100;
-    }
-    let pending = operation_state::PendingCreate {
-        provider: "local".into(),
-        boot_id: "ours".into(),
-        before: vec![],
-        instance_id: None,
-    };
-    assert_eq!(
-        cleanup::adopt_owned(&d, &pending).await.unwrap_err().kind(),
-        "unresolved_create"
-    );
-    assert_eq!(local.state.lock().unwrap().instances.len(), 1);
-    assert!(!local.calls().iter().any(|c| c.starts_with("delete:")));
-}
-#[tokio::test]
-async fn matching_pending_local_owner_is_recovered_before_new_start() {
-    let (d, local, rp, vast, owner, _) = startup_deps();
-    {
-        let mut s = local.state.lock().unwrap();
-        s.instances.push(instance("local", "4242"));
+        s.instances.push(instance("runpod", "4242"));
         s.boot_id = "owned".into();
-        s.start_id = 100;
     }
-    let previous = discover_app(&d, "local").await.unwrap().unwrap();
+    let previous = target("runpod", "4242");
     d.operations
         .acquire(&CancellationToken::new())
         .await
         .unwrap()
         .record(operation_state::PendingCreate {
-            provider: "local".into(),
+            provider: "runpod".into(),
             boot_id: "owned".into(),
             before: vec![],
             instance_id: Some("4242".into()),
@@ -540,7 +435,7 @@ async fn matching_pending_local_owner_is_recovered_before_new_start() {
         .unwrap();
     let mut op = up_app(
         d,
-        local_opts(),
+        cloud_opts(),
         Some(previous),
         CancellationToken::new(),
         owner,
@@ -548,8 +443,8 @@ async fn matching_pending_local_owner_is_recovered_before_new_start() {
     op.wait().await.unwrap();
     assert_eq!(local.state.lock().unwrap().created.len(), 1);
     assert_eq!(local.state.lock().unwrap().instances.len(), 1);
-    assert!(local.calls().contains(&"owned-delete:4242:owned".into()));
-    assert!(rp.calls().is_empty());
+    assert!(local.calls().contains(&"delete:4242".into()));
+    assert!(sentinel.calls().is_empty());
     assert!(vast.calls().is_empty());
 }
 

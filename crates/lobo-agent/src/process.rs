@@ -193,7 +193,7 @@ mod tests {
     }
     #[test]
     fn llama_args() {
-        let m = lobo_proto::catalog::get("q8").unwrap();
+        let m = lobo_proto::catalog::get("qwen38-q6").unwrap();
         let path = format!("/models/{}", m.file);
         assert_eq!(
             LlamaArgs {

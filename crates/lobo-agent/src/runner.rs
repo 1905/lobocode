@@ -380,7 +380,7 @@ mod tests {
         wait_stage(&r, Stage::Ready).await;
         tokio::time::sleep(Duration::from_millis(15)).await;
         let s = r.status();
-        assert_eq!(s.model, "q8");
+        assert_eq!(s.model, "qwen38-q6");
         assert_eq!(s.download.bytes, 5);
         assert!(s.llama.is_some());
         assert!(s.gpu.is_some());

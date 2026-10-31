@@ -210,7 +210,7 @@ fn quoted(value: &str) -> String {
 }
 
 fn validate_binding(binding: &Binding) -> Result<()> {
-    if !matches!(binding.provider.as_str(), "lobo-local" | "lobo")
+    if binding.provider != "lobo"
         || binding.model_alias.is_empty()
         || binding.model_alias.len() > 256
         || binding.context == 0
@@ -257,16 +257,7 @@ pub fn patch_config(
         .get("name")
         .is_none()
     {
-        set(
-            &mut text,
-            &provider,
-            "name",
-            &quoted(if binding.provider == "lobo-local" {
-                "Lobo (this Mac)"
-            } else {
-                "Lobo"
-            }),
-        )?;
+        set(&mut text, &provider, "name", &quoted("Lobo"))?;
     }
     let options = ["provider", binding.provider.as_str(), "options"];
     set(&mut text, &options, "baseURL", &quoted(&binding.endpoint))?;

@@ -9,9 +9,8 @@ pub fn run_wizard(
     p: &mut dyn Prompter,
     path: &Path,
     cur: BTreeMap<String, String>,
-    local_ok: bool,
 ) -> anyhow::Result<Option<BTreeMap<String, String>>> {
-    match flow(p, path, WizardState::new(cur, local_ok)) {
+    match flow(p, path, WizardState::new(cur)) {
         Ok(s) if s.save => Ok(Some(s.result(&new_api_key()))),
         Ok(_) | Err(PromptError::Aborted) => Ok(None),
         Err(PromptError::Failed(e)) => Err(e),
@@ -25,9 +24,6 @@ fn secret_desc(help: &str, current: &str) -> String {
 }
 fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<WizardState> {
     p.note("lobo config",&format!("File: {}\nPlain KEY=value lines. You can edit it by hand at any time;\nthis form only rewrites the keys it shows and keeps everything else.\n\nEnter: next · Esc: quit without saving",path.display()))?;
-    if s.local_ok {
-        s.provider=p.select("1/4 · Where lobo runs · Default provider","Local runs llama.cpp on this Mac and needs no cloud keys. `lobo up --provider …` still overrides this.",&provider_options(true),&s.provider)?;
-    }
     s.runpod = p.secret(
         "1/4 · GPU providers · RunPod API key",
         &secret_desc(
@@ -53,7 +49,7 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
             "2/4 · Access · Domain",
             "The hostname your Cloudflare tunnel serves, e.g. lobo.example.com. Cloud only.",
             &s.domain,
-            &s.cloud_only(&hostname),
+            &hostname,
         )?;
         s.domain = domain;
     }
@@ -88,20 +84,14 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
             &|v| s.tunnel_token(v),
         )?;
     }
-    if !s.local_ok && s.both_keys() {
+    if s.both_keys() {
         s.provider = p.select(
             "3/4 · Provider · Default provider",
             "Both keys are set. `lobo up --provider …` still overrides this.",
-            &provider_options(false),
+            &provider_options(),
             &s.provider,
         )?;
     }
-    let models = model_options();
-    if !models.iter().any(|(_, v)| *v == s.model) {
-        s.model = models[0].1.into();
-    }
-    let models: Vec<_> = models.iter().map(|(l, v)| (l.as_str(), *v)).collect();
-    s.model = p.select("3/4 · Defaults for lobo up · Model", "", &models, &s.model)?;
     s.ctx = p.text(
         "3/4 · Defaults for lobo up · Context size",
         "Tokens. Empty = release default (65536).",
@@ -139,23 +129,6 @@ fn flow(p: &mut dyn Prompter, path: &Path, mut s: WizardState) -> PromptResult<W
             &positive_float,
         )?;
     }
-    if s.local_ok {
-        s.weights = p.text(
-            "3/4 · Local (this Mac) · Weights folder",
-            &format!(
-                "GGUF files and the llama.cpp runtime. Empty = {}.",
-                lobo_core::config::Laptop::default().weights().display()
-            ),
-            &s.weights,
-            &|_| Ok(()),
-        )?;
-        s.port = p.text(
-            "3/4 · Local (this Mac) · Local port",
-            "llama-server port; the agent API uses port+1. Empty = 8931.",
-            &s.port,
-            &local_port,
-        )?;
-    }
     s.save = p.confirm(
         &format!("4/4 · Save · Save to {}?", path.display()),
         &s.summary(false),
@@ -172,7 +145,6 @@ mod tests {
     #[derive(Default)]
     struct Scripted {
         titles: Vec<String>,
-        local: bool,
         both: bool,
         abort_at: Option<usize>,
         discard: bool,
@@ -200,9 +172,7 @@ mod tests {
             check: &dyn Fn(&str) -> Result<(), String>,
         ) -> PromptResult<String> {
             self.record(t)?;
-            let value = if self.local {
-                ""
-            } else if t.contains("RunPod API") {
+            let value = if t.contains("RunPod API") {
                 "rp"
             } else if t.contains("Cloudflare") {
                 "token"
@@ -229,9 +199,9 @@ mod tests {
                 self.checks += 1;
                 return Ok("8192".into());
             }
-            let value = if !self.local && t.ends_with("Domain") {
+            let value = if t.ends_with("Domain") {
                 "lobo.x.cc"
-            } else if !self.local && t.ends_with("Bucket URL") {
+            } else if t.ends_with("Bucket URL") {
                 "https://pub.r2.dev"
             } else {
                 initial
@@ -264,42 +234,31 @@ mod tests {
         }
     }
     #[test]
-    fn flow_order_cloud_and_local() {
-        for local in [false, true] {
-            let mut p = Scripted {
-                local,
-                ..Default::default()
-            };
-            let result = run_wizard(&mut p, Path::new("config"), BTreeMap::new(), local)
-                .unwrap()
-                .unwrap();
-            assert!(result["LOBO_API_KEY"].starts_with("sk-"));
-            let fields = p
-                .titles
-                .iter()
-                .map(|s| s.rsplit(" · ").next().unwrap())
-                .collect::<Vec<_>>();
-            let mut want = vec!["lobo config"];
-            if local {
-                want.push("Default provider");
-            }
-            want.extend([
+    fn flow_contains_only_cloud_controls() {
+        let mut p = Scripted::default();
+        let result = run_wizard(&mut p, Path::new("config"), BTreeMap::new())
+            .unwrap()
+            .unwrap();
+        assert!(result["LOBO_API_KEY"].starts_with("sk-"));
+        let fields = p
+            .titles
+            .iter()
+            .map(|s| s.rsplit(" · ").next().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            fields,
+            [
+                "lobo config",
                 "RunPod API key",
                 "Vast.ai API key",
                 "LOBO API key",
-                "Model",
                 "Context size",
                 "Idle minutes",
                 "Max hours",
-            ]);
-            if local {
-                want.extend(["Weights folder", "Local port"]);
-            } else {
-                want.push("RunPod cloud");
-            }
-            want.push("Save to config?");
-            assert_eq!(fields, want);
-        }
+                "RunPod cloud",
+                "Save to config?"
+            ]
+        );
     }
     #[test]
     fn flow_pick_with_two_keys_and_validation() {
@@ -308,7 +267,7 @@ mod tests {
             reject_ctx: true,
             ..Default::default()
         };
-        let r = run_wizard(&mut p, Path::new("config"), BTreeMap::new(), false)
+        let r = run_wizard(&mut p, Path::new("config"), BTreeMap::new())
             .unwrap()
             .unwrap();
         assert_eq!(r["LOBO_CTX"], "8192");
@@ -318,14 +277,14 @@ mod tests {
     }
     #[test]
     fn abort_and_discard_save_nothing() {
-        for abort in [Some(1), Some(5), Some(10), None] {
+        for abort in [Some(1), Some(5), Some(9), None] {
             let mut p = Scripted {
                 abort_at: abort,
                 discard: true,
                 ..Default::default()
             };
             assert!(
-                run_wizard(&mut p, Path::new("config"), BTreeMap::new(), false)
+                run_wizard(&mut p, Path::new("config"), BTreeMap::new())
                     .unwrap()
                     .is_none()
             );

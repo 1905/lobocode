@@ -28,13 +28,7 @@ fn cloud_without_domain_and_legacy_selection() {
     assert_eq!(migrated.cloud_url(), "http://127.0.0.1:9010/v1");
     let mut invalid = migrated;
     invalid.cloud_port = "8932".into();
-    assert!(
-        invalid
-            .defaults()
-            .unwrap_err()
-            .to_string()
-            .contains("overlap")
-    );
+    invalid.defaults().unwrap();
     invalid.connection = "public-http".into();
     assert!(invalid.require_cloud().is_err());
 }
@@ -70,8 +64,9 @@ fn load_laptop_ignores_bad_defaults() {
     assert!(l.defaults().is_err());
 }
 #[test]
-fn load_laptop_local_only() {
+fn load_laptop_legacy_local_only_requires_cloud_credentials() {
     let l = load("LOBO_API_KEY=sk-x\nLOBO_PROVIDER=local\n").unwrap();
+    assert_eq!(l.provider, "runpod");
     let e = l.require_cloud().unwrap_err().to_string();
     assert!(e.contains("RUNPOD_API_KEY or VASTAI_API_KEY"));
     assert!(load("LOBO_API_KEY=sk-x\nLOBO_WEIGHTS_DIR=/w\n").is_ok());
@@ -161,7 +156,7 @@ fn defaults_accept_every_catalog_id() {
     let l = Laptop::from_values(&[("LOBO_MODEL".into(), "q4".into())].into());
     assert_eq!(
         defaults_partial(&l).1["LOBO_MODEL"],
-        "want q6 or q8 or qwen38-q6, got \"q4\""
+        "want qwen38-q6, got \"q4\""
     );
 }
 #[test]
@@ -213,7 +208,7 @@ fn model_base_url_default_override_and_validation() {
 fn defaults_parse_and_reject() {
     let l = Laptop {
         provider: "vast".into(),
-        model: "q6".into(),
+        model: "qwen38-q6".into(),
         cloud: "community".into(),
         ctx: "32768".into(),
         min_mbps: "200".into(),
@@ -224,7 +219,7 @@ fn defaults_parse_and_reject() {
         l.defaults().unwrap(),
         Defaults {
             provider: "vast".into(),
-            model: "q6".into(),
+            model: "qwen38-q6".into(),
             cloud: "community".into(),
             ctx: 32768,
             min_mbps: 200,
@@ -245,32 +240,32 @@ fn defaults_parse_and_reject() {
     }
 }
 #[test]
-fn defaults_local_port() {
+fn defaults_cloud_port() {
     for v in ["bad", "1023", "65535"] {
         let l = Laptop {
-            local_port: v.into(),
+            cloud_port: v.into(),
             ..Default::default()
         };
         assert!(
             l.defaults()
                 .unwrap_err()
                 .to_string()
-                .contains("LOBO_LOCAL_PORT")
+                .contains("LOBO_CLOUD_PORT")
         );
-        assert_eq!(l.port(), 8931);
+        assert_eq!(l.cloud_port(), DEFAULT_CLOUD_PORT);
     }
     for v in ["", "0", "1024", "65534"] {
-        assert!(parse_local_port(v).is_ok());
+        assert!(parse_cloud_port(v).is_ok());
     }
 }
 #[test]
 fn defaults_partial_keeps_good_fields() {
     let (d, bad) = defaults_partial(&Laptop {
-        model: "q6".into(),
+        model: "qwen38-q6".into(),
         ctx: "100".into(),
         ..Default::default()
     });
-    assert_eq!(d.model, "q6");
+    assert_eq!(d.model, "qwen38-q6");
     assert_eq!(d.ctx, 0);
     assert_eq!(bad.keys().collect::<Vec<_>>(), ["LOBO_CTX"]);
 }
@@ -290,24 +285,6 @@ fn default_path_xdg_and_home() {
     );
 }
 #[test]
-fn weights_and_port() {
-    let home = Path::new("/h");
-    for (input, want) in [
-        ("", "/h/Library/Application Support/lobo/weights"),
-        ("~/models", "/h/models"),
-        ("~", "/h"),
-        ("/w", "/w"),
-    ] {
-        let l = Laptop {
-            weights_dir: input.into(),
-            local_port: "9000".into(),
-            ..Default::default()
-        };
-        assert_eq!(l.weights_with_home(home), Path::new(want));
-        assert_eq!(l.port(), 9000);
-    }
-}
-#[test]
 fn default_provider_table() {
     for (r, v, p, want) in [
         ("r", "", "", "runpod"),
@@ -315,8 +292,9 @@ fn default_provider_table() {
         ("r", "v", "", "runpod"),
         ("r", "v", "vast", "vast"),
         ("r", "", "vast", "runpod"),
-        ("r", "v", "local", "local"),
-        ("", "", "local", "local"),
+        ("r", "v", "local", "runpod"),
+        ("", "v", "local", "vast"),
+        ("", "", "local", "runpod"),
     ] {
         assert_eq!(
             Laptop {
@@ -344,7 +322,7 @@ fn loose_mode_bits() {
 fn image_repo_rejects_malformed_values() {
     for v in [
         "https://ghcr.io/sandquattro/lobocode",
-        "sandquattro/lobocode:latest-q6",
+        "sandquattro/lobocode:latest-qwen38-q6",
         "ghcr.io/",
         "lobocode",
     ] {
@@ -367,5 +345,51 @@ fn image_repo_rejects_malformed_values() {
             !defaults_partial(&l).1.contains_key("LOBO_IMAGE_REPO"),
             "{v}"
         );
+    }
+}
+
+#[test]
+fn saved_retired_selections_migrate_without_rewriting_config_or_user_files() {
+    for model in ["q6", "q8"] {
+        for (keys, provider) in [
+            ("RUNPOD_API_KEY=rp\n", "runpod"),
+            ("VASTAI_API_KEY=vk\n", "vast"),
+            ("RUNPOD_API_KEY=rp\nVASTAI_API_KEY=vk\n", "runpod"),
+            ("", "runpod"),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("config.env");
+            let weights = dir.path().join("existing.gguf");
+            std::fs::write(&weights, b"existing model").unwrap();
+            let original = format!(
+                "# preserved\nLOBO_API_KEY=sk\n{keys}LOBO_PROVIDER=local\nLOBO_MODEL={model}\nLOBO_LOCAL_PORT=invalid\nLOBO_WEIGHTS_DIR={}\nCUSTOM_THING=kept\n",
+                weights.display()
+            );
+            std::fs::write(&path, &original).unwrap();
+            let l = load_laptop(&path).unwrap();
+            assert_eq!(l.model, lobo_proto::DEFAULT_MODEL);
+            assert_eq!(l.provider, provider);
+            assert_eq!(l.defaults().unwrap().model, lobo_proto::DEFAULT_MODEL);
+            assert_eq!(l.defaults().unwrap().provider, provider);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+            assert_eq!(std::fs::read(&weights).unwrap(), b"existing model");
+            assert_eq!(values(&path).unwrap()["CUSTOM_THING"], "kept");
+            assert_eq!(l.require_cloud().is_ok(), !keys.is_empty());
+        }
+    }
+}
+
+#[test]
+fn defaults_migrate_legacy_in_memory_selections() {
+    for model in ["q6", "q8"] {
+        let l = Laptop {
+            model: model.into(),
+            provider: "local".into(),
+            vast_api_key: "vk".into(),
+            ..Default::default()
+        };
+        let defaults = l.defaults().unwrap();
+        assert_eq!(defaults.model, lobo_proto::DEFAULT_MODEL);
+        assert_eq!(defaults.provider, "vast");
     }
 }

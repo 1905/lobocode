@@ -86,7 +86,7 @@ pub async fn run(
     io: &mut crate::app::Io,
 ) -> anyhow::Result<()> {
     let cfg = crate::app::load_cfg(path)?;
-    let opts = prepare(app, a, changed, &cfg, path)?;
+    let opts = prepare(a, changed, &cfg, path)?;
     let deps = app.deps(cfg, path)?;
     let source = opts.source.clone();
     let conns = opts.conns;
@@ -163,7 +163,7 @@ pub async fn run(
 
 pub fn up_opts(a: &UpArgs) -> UpOpts {
     UpOpts {
-        model: if a.q6 { "q6" } else { "" }.into(),
+        model: String::new(),
         ctx: a.ctx,
         release: a.release.clone(),
         idle_min: a.idle_min,
@@ -181,7 +181,6 @@ pub fn set_fn(changed: &BTreeSet<String>) -> impl Fn(&str) -> bool + '_ {
     |name| changed.contains(name)
 }
 pub fn prepare(
-    app: &App,
     a: &UpArgs,
     changed: &BTreeSet<String>,
     cfg: &Laptop,
@@ -195,7 +194,7 @@ pub fn prepare(
     if opts.provider == "local" {
         anyhow::bail!("local runs are not supported; use --provider runpod or vast");
     }
-    control::check_target(cfg, &opts.provider, app.local_supported)?;
+    control::check_target(cfg, &opts.provider)?;
     if !a.ssh.is_empty() {
         opts.ssh_key = std::fs::read_to_string(&a.ssh)?.trim().into();
     }

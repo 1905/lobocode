@@ -7,7 +7,7 @@ use std::{io::Write, path::Path};
 
 pub async fn run(app: &App, a: &DownArgs, path: &Path, io: &mut Io) -> anyhow::Result<()> {
     let cfg = load_cfg(path)?;
-    control::check_providers(&cfg, app.local_supported)?;
+    control::check_providers(&cfg)?;
     let deps = app.deps(cfg, path)?;
     if app.cancel.is_cancelled() {
         return Err(lobo_core::Error::Cancelled.into());

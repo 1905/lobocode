@@ -116,20 +116,6 @@ async fn execute(app: &App, argv: Vec<OsString>, io: &mut Io) -> anyhow::Result<
         )?,
         Some(Cmd::Config(a)) => cmd::config::run(app, a, &path, io)?,
         Some(Cmd::GenApiKey(a)) => cmd::genkey::run(&path, a.rotate, io)?,
-        Some(Cmd::Models(a)) => {
-            cmd::models::write_models(&mut io.out, &app::load_cfg(&path)?.weights(), a.json)?
-        }
-        Some(Cmd::Local(a)) => match a.cmd {
-            Some(cli::LocalCmd::Run(a)) => {
-                (app.supervise)(a.to_run_config(&path)?, app.cancel.clone()).await?;
-            }
-            None => {
-                let mut tree = cli::command();
-                let sub = tree.find_subcommand_mut("local").unwrap();
-                sub.write_long_help(&mut io.out)?;
-                writeln!(io.out)?;
-            }
-        },
         Some(Cmd::Up(a)) => {
             cmd::up::run(app, &a, &changed, &path, io).await?;
         }

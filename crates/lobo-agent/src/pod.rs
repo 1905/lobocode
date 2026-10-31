@@ -414,31 +414,18 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
         &cfg.vast_api_key,
     )
     .ok_or_else(|| Error::msg("invalid provider instance credentials"))?;
-    let (download, model_path): (Arc<dyn Download>, PathBuf) = if cfg.image_model {
-        let bundled = crate::image_model::ImageModel::load(
-            std::path::Path::new("/lobo/models"),
-            std::path::Path::new("/lobo/model.json"),
-            &model,
-        )
-        .await?;
-        let path = bundled.model_path();
-        (Arc::new(bundled), path)
-    } else {
-        (
-            Arc::new(ModelDownload {
-                urls: vec![cdn, hf.clone()],
-                dst: PathBuf::from(MODEL_DIR).join(&model.file),
-                size: model.size,
-                sha: model.sha256.clone(),
-                chunk_sha: model.chunk_sha.clone(),
-                conns: cfg.dl_conns,
-                min_mbps: cfg.min_mbps as f64,
-                slow_check_after: SLOW_CHECK_AFTER,
-                make_source: chunks_or_ranges(hf, model.size),
-            }),
-            PathBuf::from(MODEL_DIR).join(&model.file),
-        )
-    };
+    let model_path = PathBuf::from(MODEL_DIR).join(&model.file);
+    let download = Arc::new(ModelDownload {
+        urls: vec![cdn, hf.clone()],
+        dst: model_path.clone(),
+        size: model.size,
+        sha: model.sha256.clone(),
+        chunk_sha: model.chunk_sha.clone(),
+        conns: cfg.dl_conns,
+        min_mbps: cfg.min_mbps as f64,
+        slow_check_after: SLOW_CHECK_AFTER,
+        make_source: chunks_or_ranges(hf, model.size),
+    });
     let d = Deps {
         tunnel: if cfg.connection == "ssh" {
             Arc::new(PrivateConnection)
@@ -483,16 +470,8 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
         killer: Arc::new(RetryKiller { api }),
     };
     let mut timings = boot_timings(get);
-    timings.download_conns = if cfg.image_model {
-        0
-    } else {
-        cfg.dl_conns as i64
-    };
-    timings.download_source = if cfg.image_model {
-        "Docker image".into()
-    } else {
-        redact_url(&cfg.model_base_url)
-    };
+    timings.download_conns = cfg.dl_conns as i64;
+    timings.download_source = redact_url(&cfg.model_base_url);
     let idle = Duration::from_secs(
         (cfg.idle_min as u64)
             .checked_mul(60)
@@ -597,7 +576,7 @@ mod tests {
     }
     fn gpu_cfg(bin: PathBuf) -> GpuCheckCfg {
         let mut c = GpuCheckCfg::pod(
-            catalog::get("q8").unwrap(),
+            catalog::get("qwen38-q6").unwrap(),
             vec![("PATH".into(), "/bin:/usr/bin".into())],
             Arc::new(LogRing::new(100)),
         );
@@ -680,7 +659,7 @@ mod tests {
     #[test]
     fn gpu_check_defaults_are_3min_10s_1min() {
         let c = GpuCheckCfg::pod(
-            catalog::get("q8").unwrap(),
+            catalog::get("qwen38-q6").unwrap(),
             vec![],
             Arc::new(LogRing::new(1)),
         );
@@ -692,7 +671,7 @@ mod tests {
                 Duration::from_secs(60)
             )
         );
-        assert_eq!(c.min_free_mib, 29831);
+        assert_eq!(c.min_free_mib, 23951);
     }
     #[tokio::test]
     async fn gpu_check_retries_until_cuda0() {
@@ -760,7 +739,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(
             e.to_string(),
-            "only 20000 MiB VRAM free, q8 needs 29831 MiB"
+            "only 20000 MiB VRAM free, qwen38-q6 needs 23951 MiB"
         );
     }
     #[test]

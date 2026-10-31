@@ -71,13 +71,13 @@ impl OperationState {
                 match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
                     Ok(lock) => break lock,
                     Err((f, Errno::EWOULDBLOCK | Errno::EINTR)) => file = f,
-                    Err((_, e)) => return Err(Error::Local(format!("operation lock: {e}"))),
+                    Err((_, e)) => return Err(Error::Other(format!("operation lock: {e}"))),
                 }
                 tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),_=tokio::time::sleep(Duration::from_millis(20))=>{}}
             };
             *pending = match fs::read(path) {
                 Ok(bytes) => Some(serde_json::from_slice(&bytes).map_err(|e| {
-                    Error::Local(format!("read operation {}: {e}", path.display()))
+                    Error::Other(format!("read operation {}: {e}", path.display()))
                 })?),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
                 Err(e) => return Err(e.into()),

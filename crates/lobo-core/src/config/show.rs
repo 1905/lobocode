@@ -21,8 +21,6 @@ pub const PLAIN_KEYS: &[&str] = &[
     "LOBO_MODEL_SSH_HOSTKEY",
     "R2_ACCOUNT_ID",
     "R2_ENDPOINT",
-    "LOBO_WEIGHTS_DIR",
-    "LOBO_LOCAL_PORT",
 ];
 pub fn mask(s: &str) -> String {
     if s.is_empty() {
@@ -54,7 +52,16 @@ pub fn masked(k: &str, v: &str) -> String {
     }
 }
 pub fn show(path: &Path) -> Result<lobo_proto::ConfigShow> {
-    let values = super::values(path)?;
+    let mut values = super::values(path)?;
+    values.remove("LOBO_WEIGHTS_DIR");
+    values.remove("LOBO_LOCAL_PORT");
+    let cfg = super::Laptop::from_values(&values);
+    if values.contains_key("LOBO_MODEL") {
+        values.insert("LOBO_MODEL".into(), cfg.model);
+    }
+    if values.contains_key("LOBO_PROVIDER") {
+        values.insert("LOBO_PROVIDER".into(), cfg.provider);
+    }
     Ok(lobo_proto::ConfigShow {
         path: path.to_string_lossy().into_owned(),
         exists: path.exists(),
@@ -108,5 +115,20 @@ mod tests {
     fn mask_non_ascii_no_panic() {
         assert_eq!(mask("🦀🦀🦀🦀🦀🦀"), "🦀…🦀");
         assert_eq!(mask("日本語日本語"), "日本語日…語日本語");
+    }
+    #[test]
+    fn show_migrates_retired_selections_and_hides_local_settings() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("config");
+        let original = "VASTAI_API_KEY=fixture\nLOBO_PROVIDER=local\nLOBO_MODEL=q8\nLOBO_WEIGHTS_DIR=/existing\nLOBO_LOCAL_PORT=invalid\n";
+        std::fs::write(&p, original).unwrap();
+        let shown = show(&p).unwrap();
+        assert_eq!(shown.values["LOBO_PROVIDER"], "vast");
+        assert_eq!(shown.values["LOBO_MODEL"], lobo_proto::DEFAULT_MODEL);
+        for key in ["LOBO_WEIGHTS_DIR", "LOBO_LOCAL_PORT"] {
+            assert!(!shown.values.contains_key(key));
+            assert!(!shown.set.contains_key(key));
+        }
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), original);
     }
 }

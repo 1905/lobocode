@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify a completed, read-only Q6 OCI export before its optional CI upload."""
+"""Verify a completed, read-only thin GPU image export before publication."""
 
 import argparse
 import hashlib
@@ -26,6 +26,7 @@ CONFIG_TYPES = {
     "application/vnd.docker.container.image.v1+json",
 }
 SOURCE = "https://github.com/1905/lobocode"
+MODEL = "qwen38-q6"
 
 
 class InvalidCandidate(ValueError):
@@ -50,7 +51,8 @@ def json_file(path):
     return value
 
 
-def verify(layout, metadata_path, source_sha, image_digest, model="q6", source=SOURCE):
+def verify(layout, metadata_path, source_sha, image_digest, model=MODEL, source=SOURCE):
+    require(model == MODEL, f"Supported model is {MODEL}")
     require(SHA.fullmatch(source_sha), "source_sha must be a full lowercase Git SHA")
     require(DIGEST.fullmatch(image_digest), "image_digest must be a SHA256 digest")
     for directory in (layout, layout / "blobs", layout / "blobs" / "sha256"):
@@ -136,13 +138,13 @@ def verify(layout, metadata_path, source_sha, image_digest, model="q6", source=S
     for platform in platforms:
         require(platform.get("os") == "linux" and platform.get("architecture") == "amd64",
                 "Runnable OCI descriptor platform differs from Linux AMD64 image config")
-    require(layers, "Complete image has no layers")
+    require(layers, "Thin image has no layers")
     image_config = config.get("config", {})
     require(isinstance(image_config, dict), "Invalid runtime config")
     require(image_config.get("Entrypoint") == ["/lobo/start"], "Image entrypoint is not /lobo/start")
     environment = image_config.get("Env", [])
     require(isinstance(environment, list) and all(isinstance(item, str) for item in environment), "Invalid image environment")
-    require([item for item in environment if item.startswith("LOBO_IMAGE_MODEL=")] == ["LOBO_IMAGE_MODEL=1"], "Complete-model flag is missing or ambiguous")
+    require(not any(item.startswith("LOBO_IMAGE_MODEL=") for item in environment), "Retired complete-model flag is not allowed")
     require("2222/tcp" in image_config.get("ExposedPorts", {}), "Image does not expose its SSH port")
     labels = image_config.get("Labels", {})
     require(isinstance(labels, dict), "Invalid image labels")
@@ -166,10 +168,10 @@ def self_test():
         (layout / "oci-layout").write_text('{"imageLayoutVersion":"1.0.0"}')
         source_sha = "a" * 40
         config = {"os": "linux", "architecture": "amd64", "config": {
-            "Entrypoint": ["/lobo/start"], "Env": ["LOBO_IMAGE_MODEL=1"],
+            "Entrypoint": ["/lobo/start"], "Env": ["PATH=/usr/bin:/bin"],
             "ExposedPorts": {"2222/tcp": {}}, "Labels": {
                 "org.opencontainers.image.revision": source_sha,
-                "org.opencontainers.image.source": SOURCE, "io.lobocode.model": "q6"}}}
+                "org.opencontainers.image.source": SOURCE, "io.lobocode.model": MODEL}}}
 
         def blob(data, media_type):
             digest = hashlib.sha256(data).hexdigest()
@@ -214,18 +216,25 @@ def self_test():
 
         for nested in (False, True):
             metadata, digest = prepare(config, nested)
-            assert verify(layout, metadata, source_sha, digest)["model"] == "q6"
+            assert verify(layout, metadata, source_sha, digest)["model"] == MODEL
             checks += 1
         metadata, digest = prepare(config, nested=True, attestation=True)
-        assert verify(layout, metadata, source_sha, digest)["model"] == "q6"
+        assert verify(layout, metadata, source_sha, digest)["model"] == MODEL
         checks += 1
         forked = "https://github.com/sandquattro/lobocode"
         other = json.loads(json.dumps(config))
-        other["config"]["Labels"].update({"io.lobocode.model": "qwen38-q6", "org.opencontainers.image.source": forked})
+        other["config"]["Labels"]["org.opencontainers.image.source"] = forked
         metadata, digest = prepare(other)
-        assert verify(layout, metadata, source_sha, digest, model="qwen38-q6", source=forked)["immutable_tag"] == "sha-" + "a" * 12 + "-qwen38-q6"
+        assert verify(layout, metadata, source_sha, digest, source=forked)["immutable_tag"] == "sha-" + "a" * 12 + "-qwen38-q6"
         checks += 1
         rejected(lambda: verify(layout, metadata, source_sha, digest))
+        metadata, digest = prepare(config)
+        for retired_model in ("q6", "q8"):
+            rejected(lambda: verify(layout, metadata, source_sha, digest, model=retired_model))
+            bad = json.loads(json.dumps(config))
+            bad["config"]["Labels"]["io.lobocode.model"] = retired_model
+            metadata, digest = prepare(bad)
+            rejected(lambda: verify(layout, metadata, source_sha, digest))
         for nested in (False, True):
             metadata, digest = prepare(config, nested=nested, platform={"os": "linux", "architecture": "amd64"})
             assert verify(layout, metadata, source_sha, digest)["platform"] == "linux/amd64"
@@ -243,7 +252,8 @@ def self_test():
             bad[key] = value
             metadata, digest = prepare(bad)
             rejected(lambda: verify(layout, metadata, source_sha, digest))
-        for key, value in (("Entrypoint", ["/bin/sh"]), ("Env", ["LOBO_IMAGE_MODEL=0"]), ("ExposedPorts", {})):
+        for key, value in (("Entrypoint", ["/bin/sh"]), ("Env", ["LOBO_IMAGE_MODEL=1"]),
+                           ("Env", ["LOBO_IMAGE_MODEL=0"]), ("Env", [None]), ("ExposedPorts", {})):
             bad = json.loads(json.dumps(config))
             bad["config"][key] = value
             metadata, digest = prepare(bad)
@@ -277,9 +287,9 @@ def self_test():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--layout", type=Path, default=Path("/candidate/q6-oci"))
-    parser.add_argument("--metadata", type=Path, default=Path("/candidate/q6-metadata.json"))
-    parser.add_argument("--model", default="q6")
+    parser.add_argument("--layout", type=Path, default=Path("/candidate/image-oci"))
+    parser.add_argument("--metadata", type=Path, default=Path("/candidate/image-metadata.json"))
+    parser.add_argument("--model", choices=[MODEL], default=MODEL)
     parser.add_argument("--source", default=SOURCE)
     parser.add_argument("--source-sha")
     parser.add_argument("--image-digest")

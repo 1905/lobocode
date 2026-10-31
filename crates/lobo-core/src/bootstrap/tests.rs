@@ -98,7 +98,9 @@ fn env_matches_go() {
         include_str!("../../fixtures/bootstrap/env_full.json"),
         include_str!("../../fixtures/bootstrap/env_baked.json"),
     ] {
-        let expected: BTreeMap<String, String> = serde_json::from_str(fixture).unwrap();
+        let mut expected: BTreeMap<String, String> = serde_json::from_str(fixture).unwrap();
+        // Keep the frozen Go transport shape with the current Rust model.
+        expected.insert("LOBO_MODEL".into(), lobo_proto::DEFAULT_MODEL.into());
         assert_eq!(env(&o, "runpod"), expected);
         o.release_url.clear();
         o.release_sha256.clear();

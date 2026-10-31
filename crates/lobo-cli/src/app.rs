@@ -1,9 +1,7 @@
-use futures_util::future::BoxFuture;
 use lobo_core::{
     clock::{Clock, SystemClock},
     config::{self, Laptop},
     control::{self, Deps, Wiring},
-    local::{self, RunConfig, Spawner},
 };
 use std::{
     io::{IsTerminal, Read, Write},
@@ -34,13 +32,8 @@ impl Io {
     }
 }
 pub type DepsFactory = Arc<dyn Fn(Laptop, &Wiring) -> lobo_core::Result<Deps> + Send + Sync>;
-pub type Supervisor = Arc<
-    dyn Fn(RunConfig, CancellationToken) -> BoxFuture<'static, lobo_core::Result<()>> + Send + Sync,
->;
 pub struct App {
     pub deps: DepsFactory,
-    pub local_supported: fn() -> lobo_core::Result<()>,
-    pub supervise: Supervisor,
     pub prompter: Arc<dyn Fn() -> Box<dyn crate::wizard::Prompter> + Send + Sync>,
     pub clock: Arc<dyn Clock>,
     pub term: Term,
@@ -53,8 +46,6 @@ impl App {
     pub fn real() -> Self {
         Self {
             deps: Arc::new(control::deps_from_config),
-            local_supported: local::supported,
-            supervise: Arc::new(|cfg, cancel| Box::pin(local::supervise(cfg, cancel))),
             prompter: Arc::new(|| Box::new(crate::wizard::InquirePrompter)),
             clock: Arc::new(SystemClock),
             exe: std::env::current_exe().unwrap_or_else(|_| PathBuf::from("lobo")),
@@ -69,11 +60,7 @@ impl App {
         }
     }
     pub fn wiring(&self, path: &Path) -> Wiring {
-        Wiring {
-            config_path: path.into(),
-            spawner: Spawner::cli(self.exe.clone()),
-            supported: self.local_supported,
-        }
+        Wiring::new(path.into(), self.exe.clone())
     }
     pub fn deps(&self, cfg: Laptop, path: &Path) -> lobo_core::Result<Deps> {
         (self.deps)(cfg, &self.wiring(path))

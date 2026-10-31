@@ -13,7 +13,7 @@ version       2026.09.23-1  ·  git feaaaa5
 image         ghcr.io/ggml-org/llama.cpp:server-cuda-b11118
 
 Agent
-stage         ● ready  q8 · ctx 8192
+stage         ● ready  qwen38-q6 · ctx 8192
 
 GPU
 device        NVIDIA GeForce RTX 5090

@@ -32,7 +32,6 @@ where
         (Some(at), Some(start)) => at - start,
         _ => TimeDelta::zero(),
     };
-    let local = p.provider == "local";
     lines.extend([
         Line::default(),
         Line::from(span("Pod", TITLE)),
@@ -46,16 +45,12 @@ where
     ]);
     lines.push(row(
         "cost",
-        text(if local {
-            format!("free  ·  up {}", dur(up))
-        } else {
-            format!(
-                "${:.2}/h  ·  up {}  ·  spent ${:.2}",
-                p.cost_per_hr,
-                dur(up),
-                p.cost_per_hr * up.num_milliseconds() as f64 / 3_600_000.0
-            )
-        }),
+        text(format!(
+            "${:.2}/h  ·  up {}  ·  spent ${:.2}",
+            p.cost_per_hr,
+            dur(up),
+            p.cost_per_hr * up.num_milliseconds() as f64 / 3_600_000.0
+        )),
     ));
     lines.extend([Line::default(), Line::from(span("Release", TITLE))]);
     if let Some(v) = &s.version {
@@ -115,10 +110,7 @@ where
         )));
         lines.push(row(if verifying { "verify" } else { "download" }, value));
     }
-    lines.extend([
-        Line::default(),
-        Line::from(span(if local { "Mac" } else { "GPU" }, TITLE)),
-    ]);
+    lines.extend([Line::default(), Line::from(span("GPU", TITLE))]);
     let memory = |used: i64, total: i64| {
         let f = if total > 0 {
             used as f64 / total as f64
@@ -131,19 +123,15 @@ where
     };
     if let Some(g) = &st.gpu {
         lines.push(row("device", text(g.name.clone())));
-        if local {
-            lines.push(row("memory", memory(g.vram_used_mb, g.vram_total_mb)));
-        } else {
-            let f = g.util_pct as f64 / 100.0;
-            let mut v = bar(f, 24, load_style(f));
-            v.push(Span::raw(format!(" {:3}%", g.util_pct)));
-            lines.push(row("load", v));
-            lines.push(row("vram", memory(g.vram_used_mb, g.vram_total_mb)));
-        }
+        let f = g.util_pct as f64 / 100.0;
+        let mut v = bar(f, 24, load_style(f));
+        v.push(Span::raw(format!(" {:3}%", g.util_pct)));
+        lines.push(row("load", v));
+        lines.push(row("vram", memory(g.vram_used_mb, g.vram_total_mb)));
     } else {
         lines.push(row("gpu", vec![dim("n/a")]));
     }
-    if !local {
+    {
         lines.extend([Line::default(), Line::from(span("Host", TITLE))]);
         if let Some(h) = &st.host {
             lines.push(row(
@@ -206,7 +194,7 @@ where
             },
         )],
     ));
-    if !local {
+    {
         lines.push(row(
             "expires",
             text(

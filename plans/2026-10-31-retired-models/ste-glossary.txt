@@ -1,0 +1,37 @@
+# Project terms for plan-v1.0.md (technical nouns, names and tools)
+model
+models
+catalog
+inference
+provider
+providers
+cloud
+app
+artifacts
+artifact
+fixtures
+fixture
+chunk
+shard
+hashes
+helpers
+helper
+workspace
+backend
+frontend
+wizard
+supervisor
+entrypoints
+checkbox
+ownership
+Hugging Face
+Feesh
+Air
+Svelte
+Rust
+Python
+Docker
+Dockerfile
+fullsend
+Wiring
+migrate

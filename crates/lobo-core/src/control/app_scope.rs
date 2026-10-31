@@ -34,6 +34,7 @@ pub fn up_app(
     )
 }
 fn provider<'a>(d: &'a Deps, name: &str) -> Result<&'a Arc<dyn Provider>> {
+    require_cloud_provider(name)?;
     d.providers
         .get(name)
         .ok_or_else(|| Error::Config(format!("provider {name} is not configured")))
@@ -41,7 +42,16 @@ fn provider<'a>(d: &'a Deps, name: &str) -> Result<&'a Arc<dyn Provider>> {
 fn nonempty(value: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.into())
 }
+fn require_cloud_provider(name: &str) -> Result<()> {
+    if !matches!(name, "runpod" | "vast") {
+        return Err(Error::Config(format!(
+            "unsupported provider {name:?}; use runpod or vast"
+        )));
+    }
+    Ok(())
+}
 fn check_boot(target: &RuntimeTarget) -> Result<()> {
+    require_cloud_provider(&target.provider)?;
     if target.boot_id.is_empty() {
         return Err(Error::Other("runtime boot identity is missing".into()));
     }
@@ -63,17 +73,7 @@ pub async fn discover_app(d: &Deps, name: &str) -> Result<Option<RuntimeTarget>>
             "provider returned an invalid runtime identity".into(),
         ));
     }
-    let mut local_pid = None;
-    let mut local_start_id = None;
-    let boot_id = if name == "local" {
-        let (boot, pid, start) = p
-            .runtime_identity(&i.id)
-            .await?
-            .ok_or_else(|| Error::Other("local runtime identity cannot be verified".into()))?;
-        local_pid = Some(pid);
-        local_start_id = Some(start);
-        boot
-    } else if let Some((boot, port)) = d
+    let boot_id = if let Some((boot, port)) = d
         .connection
         .as_ref()
         .map(|c| c.recorded(name, &i.id))
@@ -99,8 +99,8 @@ pub async fn discover_app(d: &Deps, name: &str) -> Result<Option<RuntimeTarget>>
         boot_id,
         agent_url: nonempty(&i.agent_url),
         api_url: nonempty(&i.api_url),
-        local_pid,
-        local_start_id,
+        local_pid: None,
+        local_start_id: None,
     };
     check_boot(&target)?;
     Ok(Some(target))
@@ -119,17 +119,7 @@ async fn owned_instance(d: &Deps, target: &RuntimeTarget) -> Result<Option<Insta
     if i.provider != target.provider || i.id != *id {
         return Err(Error::Other("provider returned a different runtime".into()));
     }
-    if target.provider == "local" {
-        let Some((boot, pid, start)) = p.runtime_identity(id).await? else {
-            return Ok(None);
-        };
-        if boot != target.boot_id
-            || Some(pid) != target.local_pid
-            || Some(start) != target.local_start_id
-        {
-            return Ok(None);
-        }
-    } else if let Some(connection) = &d.connection {
+    if let Some(connection) = &d.connection {
         connection.attach_owned(&mut i, &target.boot_id).await?;
     }
     Ok(Some(i))
@@ -168,7 +158,7 @@ pub async fn down_app(d: &Deps, target: &RuntimeTarget) -> Result<f64> {
     if guard.pending().is_some_and(|pending| {
         pending.provider == target.provider && pending.boot_id == target.boot_id
     }) {
-        cleanup::pending_owned(d, &mut guard, target.local_start_id).await?;
+        cleanup::pending_owned(d, &mut guard).await?;
     }
     let Some(id) = target.instance_id.as_deref() else {
         return Ok(0.0);
@@ -183,23 +173,9 @@ pub async fn down_app(d: &Deps, target: &RuntimeTarget) -> Result<f64> {
         if i.provider != target.provider || i.id != id {
             return Err(Error::Other("provider returned a different runtime".into()));
         }
-        if target.provider == "local" {
-            let Some((boot, pid, start)) = p.runtime_identity(id).await? else {
-                return Ok(0.0);
-            };
-            if boot != target.boot_id
-                || Some(pid) != target.local_pid
-                || Some(start) != target.local_start_id
-            {
-                return Ok(0.0);
-            }
-        }
-        cleanup::delete_owned_verified(&**p, id, &target.boot_id, target.local_start_id, d.poll)
-            .await?;
+        cleanup::delete_owned_verified(&**p, id, &target.boot_id, d.poll).await?;
     }
-    if target.provider != "local"
-        && let Some(connection) = &d.connection
-    {
+    if let Some(connection) = &d.connection {
         connection
             .stop_owned(&target.provider, id, &target.boot_id)
             .await?;

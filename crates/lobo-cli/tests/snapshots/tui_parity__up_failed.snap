@@ -2,7 +2,7 @@
 source: crates/lobo-cli/tests/tui_parity.rs
 expression: text
 ---
-lobo up  ·  Qwen3.5-27B on a rented RTX 5090
+lobo up  ·  Qwen3.8-27B on a rented RTX 5090
 
  ✓ rent pod        7s     runpod pod1, COMMUNITY, host ≥10000 Mbps, $0.69/h, qwen38-q6 ctx 65536
  ✓ boot container  7s     agent unreachable (other); ready unconfirmed

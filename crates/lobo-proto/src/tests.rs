@@ -80,7 +80,8 @@ fn release_fixtures_and_go_pin() {
         include_str!("../../../internal/release/manifest.go")
             .contains(&format!("DefaultLlamaImage = \"{DEFAULT_LLAMA_IMAGE}\""))
     );
-    assert_eq!(DEFAULT_MODEL, "q8");
+    assert_eq!(DEFAULT_MODEL, "qwen38-q6");
+    assert_eq!(DEFAULT_MODEL, DEFAULT_CLOUD_MODEL);
     assert_eq!(
         DEFAULT_DEFAULTS,
         Defaults {
@@ -126,30 +127,16 @@ fn legacy_ready_event() {
 }
 
 #[test]
-fn local_and_config_fixtures() {
-    round_trip::<Listing>("listing.json");
-    assert!(
-        round_trip::<Listing>("listing_empty.json")
-            .models
-            .is_empty()
-    );
-    round_trip::<LocalState>("local_state.json");
+fn config_fixture_remains_readable() {
     round_trip::<ConfigShow>("config_show.json");
 }
 
 #[test]
-fn catalog_go_parity() {
-    for (id, suffix, alias, size) in [
-        ("q8", "Q8_0", "qwen3.5-27b-uncensored-q8", 28595762272),
-        ("q6", "Q6_K", "qwen3.5-27b-uncensored-q6", 22082528352),
-    ] {
-        let m = catalog::get(id).unwrap();
-        assert_eq!(
-            m.file,
-            format!("Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-{suffix}.gguf")
-        );
-        assert_eq!(m.alias, alias);
-        assert_eq!(m.size, size);
+fn catalog_contains_only_supported_cloud_model() {
+    assert_eq!(catalog::ids(), [DEFAULT_MODEL]);
+    for m in catalog::all() {
+        assert!(m.gpu);
+        assert!(!m.local);
         assert_eq!(m.sha256.len(), 64);
         assert_eq!(
             m.url("https://pub-x.r2.dev/"),
@@ -167,16 +154,15 @@ fn catalog_go_parity() {
     }
     assert_eq!(
         catalog::get("x").unwrap_err().to_string(),
-        "unknown model \"x\", valid: q6, q8, qwen38-q6"
+        "unknown model \"x\", valid: qwen38-q6"
     );
-    assert_eq!(
-        catalog::all()
-            .iter()
-            .map(|m| m.id.as_str())
-            .collect::<Vec<_>>(),
-        ["q6", "q8", "qwen38-q6"]
-    );
-    assert!((29275..31602).contains(&catalog::min_free_mib(28595762272)));
+    for retired in ["q6", "q8"] {
+        assert_eq!(
+            catalog::get(retired).unwrap_err().to_string(),
+            format!("unknown model {retired:?}, valid: qwen38-q6")
+        );
+    }
+    assert_eq!(catalog::min_free_mib(22430999840), 23951);
 }
 
 #[test]
@@ -205,27 +191,14 @@ fn catalog_cloud_entry_qwen38() {
         m.hf_url(),
         "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF/resolve/main/Huihui-Qwen3.8-27B-abliterated-Q6_K.gguf"
     );
-    assert_eq!(catalog::ids(), ["q6", "q8", "qwen38-q6"]);
+    assert_eq!(catalog::ids(), ["qwen38-q6"]);
     assert_eq!(catalog::get(DEFAULT_CLOUD_MODEL).unwrap().id, "qwen38-q6");
     assert!(
         catalog::get("x")
             .unwrap_err()
             .to_string()
-            .ends_with("valid: q6, q8, qwen38-q6")
+            .ends_with("valid: qwen38-q6")
     );
-    for (id, quant) in [("q6", "Q6_K"), ("q8", "Q8_0")] {
-        let m = catalog::get(id).unwrap();
-        assert_eq!(
-            (m.repo.as_str(), m.name.as_str(), m.quant.as_str(), m.local),
-            (
-                "HauhauCS/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive",
-                "qwen3.5-27b uncensored",
-                quant,
-                true
-            )
-        );
-        assert!(!m.chunk_sha.is_empty());
-    }
 }
 
 #[test]
@@ -255,10 +228,6 @@ fn export_bindings_schema() {
         ReadyInfo,
         UpEvent,
         Snap,
-        ModelState,
-        RuntimeInfo,
-        Listing,
-        LocalState,
         ConfigShow,
         UpRequest,
         Readiness,
@@ -286,10 +255,6 @@ fn export_bindings_schema() {
         "ReadyInfo",
         "UpEvent",
         "Snap",
-        "ModelState",
-        "RuntimeInfo",
-        "Listing",
-        "LocalState",
         "ConfigShow",
         "UpRequest",
         "Readiness",
@@ -319,6 +284,13 @@ fn app_request_and_readiness_wire() {
         serde_json::to_value(UpRequest::default()).unwrap(),
         serde_json::json!({"provider":null,"model":null,"ctx":null,"source":null,"cloud":null})
     );
+    let value = serde_json::json!({"exists":true,"cloud_ready":true,"ready":true,"local_supported":false,"providers":["runpod"],"default_provider":"runpod","default_model":"qwen38-q6","local_port":0,"error":null});
+    let r: Readiness = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(serde_json::to_value(r).unwrap(), value);
+}
+
+#[test]
+fn legacy_readiness_wire_remains_readable() {
     let value = serde_json::json!({"exists":true,"cloud_ready":false,"ready":true,"local_supported":true,"providers":[],"default_provider":"local","default_model":"q6","local_port":9000,"error":null});
     let r: Readiness = serde_json::from_value(value.clone()).unwrap();
     assert_eq!(serde_json::to_value(r).unwrap(), value);

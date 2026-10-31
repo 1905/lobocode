@@ -35,7 +35,7 @@ impl FixtureBackend {
         let root = tempfile::tempdir().unwrap();
         fs::write(
             root.path().join("lobo.env"),
-            format!("LOBO_API_KEY={SECRET}\nLOBO_MODEL=q8\nLOBO_CTX=65536\n"),
+            format!("LOBO_API_KEY={SECRET}\nLOBO_MODEL=qwen38-q6\nLOBO_CTX=65536\n"),
         )
         .unwrap();
         fs::write(
@@ -212,13 +212,8 @@ async fn prepared(backend: &FixtureBackend) -> Result<PreparedOpenCode> {
 }
 
 #[tokio::test]
-async fn authenticates_only_model_get_for_cloud_q6_q8_context() {
-    for (provider, model) in [
-        ("vast", "q6"),
-        ("vast", "q8"),
-        ("runpod", "q6"),
-        ("runpod", "q8"),
-    ] {
+async fn authenticates_only_model_get_for_supported_cloud_model() {
+    for (provider, model) in [("vast", "qwen38-q6"), ("runpod", "qwen38-q6")] {
         let server = MockServer::start().await;
         serve_models(&server, model, 1).await;
         let b = FixtureBackend::new(&format!("{}/v1", server.uri()), provider, model);
@@ -264,7 +259,7 @@ async fn authentication_model_and_parser_errors_are_bounded_and_write_nothing() 
             .expect(1)
             .mount(&server)
             .await;
-        let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "q6");
+        let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "qwen38-q6");
         let original = b.bytes();
         let Err(e) = prepared(&b).await else {
             panic!("discovery must fail")
@@ -277,7 +272,7 @@ async fn authentication_model_and_parser_errors_are_bounded_and_write_nothing() 
 #[tokio::test]
 async fn empty_key_and_unsafe_endpoints_send_nothing() {
     let server = MockServer::start().await;
-    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "q6");
+    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "qwen38-q6");
     fs::write(b.config_path(), "LOBO_API_KEY=\n").unwrap();
     let original = b.bytes();
     assert!(prepared(&b).await.is_err());
@@ -304,7 +299,7 @@ async fn rotated_saved_key_does_not_repair_with_a_running_old_key() {
         .expect(1)
         .mount(&server)
         .await;
-    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "q6");
+    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "qwen38-q6");
     fs::write(b.config_path(), "LOBO_API_KEY=rotated-saved-key\n").unwrap();
     let original = b.bytes();
     let Err(e) = prepared(&b).await else {
@@ -343,8 +338,8 @@ fn captured_key_parser_keeps_dotenv_semantics_and_sanitizes_bad_source() {
 #[tokio::test]
 async fn rotated_key_after_authentication_rejects_final_commit() {
     let server = MockServer::start().await;
-    serve_models(&server, "q6", 1).await;
-    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "q6");
+    serve_models(&server, "qwen38-q6", 1).await;
+    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "qwen38-q6");
     let original = b.bytes();
     let p = prepared(&b).await.unwrap();
     fs::write(b.config_path(), "LOBO_API_KEY=rotated-saved-key\n").unwrap();
@@ -380,7 +375,7 @@ async fn redirects_never_forward_authorization_even_on_the_same_host() {
         .expect(0)
         .mount(&server)
         .await;
-    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "q6");
+    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "qwen38-q6");
     let original = b.bytes();
     assert!(prepared(&b).await.is_err());
     b.unchanged(&original);
@@ -398,7 +393,7 @@ async fn cross_host_redirect_sends_nothing_to_the_destination() {
         .expect(1)
         .mount(&source)
         .await;
-    let b = FixtureBackend::new(&format!("{}/v1", source.uri()), "runpod", "q6");
+    let b = FixtureBackend::new(&format!("{}/v1", source.uri()), "runpod", "qwen38-q6");
     assert!(prepared(&b).await.is_err());
     assert!(destination.received_requests().await.unwrap().is_empty());
 }
@@ -440,7 +435,7 @@ async fn chunked_body_without_content_length_still_has_a_hard_limit() {
         }
         let _ = connection.write_all(b"0\r\n\r\n").await;
     });
-    let b = FixtureBackend::new(&format!("http://{address}/v1"), "runpod", "q6");
+    let b = FixtureBackend::new(&format!("http://{address}/v1"), "runpod", "qwen38-q6");
     let original = b.bytes();
     let Err(e) = prepared(&b).await else {
         panic!("streaming body must fail")
@@ -461,7 +456,7 @@ async fn short_client_timeout_returns_safe_error_without_writes() {
         .expect(1)
         .mount(&server)
         .await;
-    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "q6");
+    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "qwen38-q6");
     let client = Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_millis(20))
@@ -478,7 +473,7 @@ async fn short_client_timeout_returns_safe_error_without_writes() {
 async fn stale_boot_model_context_endpoint_or_key_during_http_rejects_before_files() {
     for change in 0..5 {
         let server = MockServer::start().await;
-        let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "q6");
+        let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "qwen38-q6");
         let original = b.bytes();
         let mutation = b.clone();
         Mock::given(path("/v1/models")).respond_with(move |_: &wiremock::Request| {
@@ -489,7 +484,7 @@ async fn stale_boot_model_context_endpoint_or_key_during_http_rejects_before_fil
                 3 => mutation.snap.lock().unwrap().pod.as_mut().unwrap().api_url = "http://other/v1".into(),
                 _ => fs::write(mutation.config_path(), "LOBO_API_KEY=rotated-key\n").unwrap(),
             }
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({"data":[{"id":lobo_proto::catalog::get("q6").unwrap().alias}]}))
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"data":[{"id":lobo_proto::catalog::get("qwen38-q6").unwrap().alias}]}))
         }).expect(1).mount(&server).await;
         assert!(prepared(&b).await.is_err());
         b.unchanged(&original);
@@ -498,8 +493,8 @@ async fn stale_boot_model_context_endpoint_or_key_during_http_rejects_before_fil
 #[tokio::test]
 async fn revision_catches_external_atomic_rotate_and_restore_before_commit() {
     let server = MockServer::start().await;
-    serve_models(&server, "q6", 1).await;
-    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "q6");
+    serve_models(&server, "qwen38-q6", 1).await;
+    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "qwen38-q6");
     let original = b.bytes();
     let p = prepared(&b).await.unwrap();
     let raw = fs::read(b.config_path()).unwrap();
@@ -525,8 +520,8 @@ async fn revision_catches_external_atomic_rotate_and_restore_before_commit() {
 #[tokio::test]
 async fn authenticated_noop_revalidates_and_creates_no_key_or_backup_churn() {
     let server = MockServer::start().await;
-    serve_models(&server, "q6", 2).await;
-    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "q6");
+    serve_models(&server, "qwen38-q6", 2).await;
+    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "qwen38-q6");
     let p = prepared(&b).await.unwrap();
     configure(&*b, &b.destination(), &p, true, &|| Ok(())).unwrap();
     let before = b.bytes();
@@ -569,8 +564,8 @@ fn file_picker_validation_refuses_missing_symlink_and_wrong_extension() {
 #[tokio::test]
 async fn restrictions_are_static_preserved_and_checked_before_commit() {
     let server = MockServer::start().await;
-    serve_models(&server, "q6", 1).await;
-    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "q6");
+    serve_models(&server, "qwen38-q6", 1).await;
+    let b = FixtureBackend::new(&format!("{}/v1", server.uri()), "runpod", "qwen38-q6");
     fs::write(b.destination(), "{\n\"disabled_providers\":[\"lobo\"],\n\"enabled_providers\":[],\n\"experimental\":{\"policies\":[\"secret policy\"]}\n}").unwrap();
     let p = prepared(&b).await.unwrap();
     let result = configure(&*b, &b.destination(), &p, false, &|| Ok(())).unwrap();
@@ -587,7 +582,7 @@ async fn restrictions_are_static_preserved_and_checked_before_commit() {
 
 #[tokio::test]
 async fn local_binding_is_rejected_without_config_reads_or_requests() {
-    let backend = FixtureBackend::new("http://127.0.0.1:1/v1", "local", "q6");
+    let backend = FixtureBackend::new("http://127.0.0.1:1/v1", "local", "qwen38-q6");
     let owner = backend.load_owner().unwrap().unwrap();
     fs::remove_file(backend.config_path()).unwrap();
     assert_eq!(

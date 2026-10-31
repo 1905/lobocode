@@ -619,7 +619,7 @@ pub fn cfg() -> RunnerConfig {
     RunnerConfig {
         boot_id: "boot".into(),
         timings: Default::default(),
-        model: "q8".into(),
+        model: "qwen38-q6".into(),
         ctx: 8192,
         idle: Duration::from_secs(3600),
         expires_at: chrono::Utc::now() + chrono::TimeDelta::hours(1),

@@ -6,7 +6,7 @@
   "built_by": "sample",
   "llama_image": "ghcr.io/ggml-org/llama.cpp:server-cuda-b11118",
   "model": {
-    "id": "q8",
+    "id": "qwen38-q6",
     "file": "sample",
     "sha256": "sample"
   },

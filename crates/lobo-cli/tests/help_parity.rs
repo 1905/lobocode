@@ -120,7 +120,7 @@ fn help_facts_match_go() {
     {
         let file = file.unwrap().path();
         let name = file.file_stem().unwrap().to_str().unwrap();
-        if name.starts_with("root") {
+        if name.starts_with("root") || matches!(name, "models" | "local" | "local_run") {
             continue;
         }
         let mut cmd = &root;
@@ -130,7 +130,7 @@ fn help_facts_match_go() {
         let mut expected = cobra(&std::fs::read_to_string(&file).unwrap());
         if name == "up" {
             // Complete public images intentionally replace Go's download/release flags.
-            for obsolete in ["conns", "release", "source", "ssh"] {
+            for obsolete in ["conns", "release", "source", "ssh", "q6"] {
                 expected.flags.remove(obsolete);
             }
             for (flag, help) in [
@@ -141,7 +141,7 @@ fn help_facts_match_go() {
                 ),
                 (
                     "image",
-                    "development override: complete GPU image (default: resolve latest public image for the selected model)",
+                    "development override: GPU image (default: resolve latest public image for the selected model)",
                 ),
                 (
                     "max-life",
@@ -151,7 +151,10 @@ fn help_facts_match_go() {
                     "min-mbps",
                     "minimum advertised Vast host download speed in MB/s (0 = LOBO_MIN_MBPS or 100)",
                 ),
-                ("q6", "serve Q6_K instead of the default Q8_0 model"),
+                (
+                    "provider",
+                    "runpod or vast (default: LOBO_PROVIDER, else the one with a key, runpod first)",
+                ),
             ] {
                 expected.flags.get_mut(flag).unwrap().help = help.into();
             }
@@ -172,12 +175,9 @@ fn help_snapshots() {
         "config_set",
         "config_get",
         "config_path",
-        "models",
         "gen-api-key",
         "version",
         "release",
-        "local",
-        "local_run",
         "completion",
     ] {
         let output = assert_cmd::cargo::cargo_bin_cmd!("lobo")

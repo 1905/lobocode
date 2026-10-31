@@ -48,7 +48,7 @@
     "download": {
       "bytes": 12400000000,
       "mbps": 0.0,
-      "source": "Docker image",
+      "source": "https://models.stealthcopilot.io",
       "total": 22082528352,
       "verifying": true
     },

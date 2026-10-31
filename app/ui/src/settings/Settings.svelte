@@ -398,8 +398,6 @@
               'LOBO_MODEL',
               readiness?.default_model ?? '',
             )}
-            disabled={saving}
-            onpick={(id) => (fields.plain.LOBO_MODEL = id)}
           />
         </div>
         {#each numeric.slice(0, 3) as [key, label, placeholder]}<label

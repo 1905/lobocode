@@ -7,7 +7,7 @@ use std::{collections::BTreeSet, ffi::OsString, path::PathBuf, time::Duration};
     bin_name = "lobo",
     disable_version_flag = true,
     args_override_self = true,
-    about = "Rent an RTX 5090 and serve Qwen3.5-27B"
+    about = "Rent an RTX 5090 and serve Qwen3.8-27B"
 )]
 pub struct Cli {
     #[arg(
@@ -56,13 +56,6 @@ pub enum Cmd {
     Logs(LogsArgs),
     #[command(about = "Smoke test the live API: streamed chat + tool call")]
     Test(IgnoredArgs),
-    #[command(about = "Catalog models and their state in the local weights folder")]
-    Models(ModelsArgs),
-    #[command(
-        hide = true,
-        about = "Local-mode internals (spawned by `lobo up --provider local`)"
-    )]
-    Local(LocalArgs),
     #[command(
         hide = true,
         about = "Generate the autocompletion script for the specified shell",
@@ -179,7 +172,7 @@ pub struct UpArgs {
         long,
         value_name = "string",
         default_value = "",
-        help = "development override: complete GPU image (default: resolve latest public image for the selected model)"
+        help = "development override: GPU image (default: resolve latest public image for the selected model)"
     )]
     pub image: String,
     #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool_flag, help = "one JSON object per event on stdout (for scripts and tests)")]
@@ -200,11 +193,9 @@ pub struct UpArgs {
         long,
         value_name = "string",
         default_value = "",
-        help = "runpod, vast or local (this Mac) (default: LOBO_PROVIDER, else the one with a key, runpod first)"
+        help = "runpod or vast (default: LOBO_PROVIDER, else the one with a key, runpod first)"
     )]
     pub provider: String,
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool_flag, help = "serve Q6_K instead of the default Q8_0 model")]
-    pub q6: bool,
     #[arg(
         long,
         value_name = "string",
@@ -218,7 +209,7 @@ pub struct UpArgs {
         value_name = "string",
         default_value = "",
         hide = true,
-        help = "obsolete: model weights are included in the public image"
+        help = "obsolete: the agent downloads verified model chunks"
     )]
     pub source: String,
     #[arg(
@@ -261,72 +252,6 @@ pub struct LogsArgs {
     pub n: i64,
     #[command(flatten)]
     pub ignored: IgnoredArgs,
-}
-#[derive(Debug, Args)]
-pub struct ModelsArgs {
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool_flag, help = "print the listing as JSON (weights, free_bytes, models, runtime)")]
-    pub json: bool,
-}
-#[derive(Debug, Args)]
-pub struct LocalArgs {
-    #[command(subcommand)]
-    pub cmd: Option<LocalCmd>,
-}
-#[derive(Debug, Subcommand)]
-pub enum LocalCmd {
-    #[command(
-        about = "Supervise llama-server on this Mac and serve the agent API on 127.0.0.1:--api-port"
-    )]
-    Run(LocalRunArgs),
-}
-#[derive(Debug, Args)]
-pub struct LocalRunArgs {
-    #[arg(
-        long,
-        value_name = "int",
-        default_value_t = 8932,
-        allow_hyphen_values = true,
-        help = "agent API port"
-    )]
-    pub api_port: i64,
-    #[arg(
-        long,
-        value_name = "string",
-        default_value = "",
-        help = "echoed in /api/status"
-    )]
-    pub boot_id: String,
-    #[arg(
-        long,
-        value_name = "int",
-        default_value_t = 0,
-        allow_hyphen_values = true,
-        help = "context size"
-    )]
-    pub ctx: i64,
-    #[arg(
-        long,
-        value_name = "int",
-        default_value_t = 0,
-        allow_hyphen_values = true,
-        help = "minutes without requests before it stops"
-    )]
-    pub idle_min: i64,
-    #[arg(
-        long,
-        value_name = "string",
-        default_value = "q6",
-        help = "catalog model id"
-    )]
-    pub model: String,
-    #[arg(
-        long,
-        value_name = "int",
-        default_value_t = 8931,
-        allow_hyphen_values = true,
-        help = "llama-server port"
-    )]
-    pub port: i64,
 }
 #[derive(Debug, Args)]
 pub struct CompletionArgs {
@@ -420,16 +345,24 @@ mod tests {
     #[test]
     fn tree_and_booleans() {
         command().debug_assert();
-        for flag in ["--q6", "--q6=true", "--q6=false", "--q6=1", "--q6=F"] {
+        for flag in [
+            "--plain",
+            "--plain=true",
+            "--plain=false",
+            "--plain=1",
+            "--plain=F",
+        ] {
             let matches = command()
                 .try_get_matches_from(["lobo", "up", flag])
                 .unwrap();
-            assert!(changed(&matches).contains("q6"));
+            assert!(changed(&matches).contains("plain"));
             let cli = Cli::from_arg_matches(&matches).unwrap();
             let Some(Cmd::Up(a)) = cli.cmd else { panic!() };
-            assert_eq!(a.q6, !matches!(flag, "--q6=false" | "--q6=F"));
+            assert_eq!(a.plain, !matches!(flag, "--plain=false" | "--plain=F"));
         }
-        assert!(!changed(&command().try_get_matches_from(["lobo", "up"]).unwrap()).contains("q6"));
+        assert!(
+            !changed(&command().try_get_matches_from(["lobo", "up"]).unwrap()).contains("plain")
+        );
         for s in ["yes", "no", "", "Truee"] {
             assert!(parse_bool_flag(s).is_err());
         }
@@ -456,7 +389,7 @@ mod tests {
     fn positional_parity() {
         for args in [
             vec!["up", "extra"],
-            vec!["up", "extra", "--q6=false"],
+            vec!["up", "extra", "--plain=false"],
             vec!["up", "--", "extra"],
             vec!["version", "extra"],
             vec!["config", "path", "extra"],

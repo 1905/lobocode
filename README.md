@@ -7,7 +7,7 @@ Run **Qwen3.8-27B abliterated** (huihui-ai, Q6_K) on a rented RunPod or Vast GPU
 The only supported model is `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). It runs only on a rented RunPod or Vast GPU. The app, the Rust CLI and its configuration form accept no other model and no local run. Each new start resolves the latest public `latest-qwen38-q6` image. The thin image downloads verified weights at boot. Broader telemetry acceptance remains pending.
 
 <p align="center">
-  <img src="assets/panel_boot.png" width="340" alt="booting: rent, image pull, private connection, GPU check and bundled-model verification">
+  <img src="assets/panel_boot.png" width="340" alt="booting: rent, image pull, private connection, GPU check and verified model download">
   <img src="assets/panel_ready.png" width="340" alt="ready: endpoint, api key, 45 tok/s, VRAM, idle-kill timer, stop">
 </p>
 
@@ -66,11 +66,11 @@ New Rust configurations use a private SSH connection. Lobocode creates its own k
 
 The connection survives closing the app or finishing `lobo up`. It reconnects after a network interruption. The endpoint works only on that computer. Stop deletes the instance and closes the connection.
 
-Existing complete domain/token configurations keep their public connection. Select **use private connection** in Cloud Settings, or set `LOBO_CONNECTION=ssh`, before the next start. The SSH mode needs the matching cloud agent. The public Q6 image includes it and passed direct TUI and native Mac cloud lifecycle checks. The Rust CLI release remains on hold.
+Existing complete domain/token configurations keep their public connection. Select **use private connection** in Cloud Settings, or set `LOBO_CONNECTION=ssh`, before the next start. The SSH mode needs the matching cloud agent, which the public image includes. The Rust CLI remains unreleased.
 
-The GPU pulls a complete public Docker image. It includes the agent, inference runtime, SSH server and selected model weights. There is no separate agent install, private bucket or developer credential to configure.
+The GPU pulls a public Docker image with the agent, inference runtime and SSH server. The agent downloads verified model chunks at startup. No private bucket or developer credential is required.
 
-Every new cloud start looks up the current `latest-q8` or `latest-q6` tag and sends its exact digest to the provider. The app version does not select the image version. If the registry lookup fails, startup fails before renting; it does not reuse an older image.
+Every new cloud start looks up the current `latest-qwen38-q6` tag and sends its exact digest to the provider. The app version does not select the image version. If the registry lookup fails, startup fails before renting; it does not reuse an older image.
 
 ## Use
 
@@ -82,7 +82,7 @@ Every new cloud start looks up the current `latest-q8` or `latest-q6` tag and se
 | `lobo logs` | Last agent, llama-server and tunnel log lines. |
 | `lobo down` | Delete every `lobo` pod on every configured provider. Nothing else. |
 
-Useful flags for `lobo up`: `--provider vast`, `--q6`, `--ctx 16384`, `--idle-min 10`, `--max-life 4h`.
+Useful flags for `lobo up`: `--provider vast`, `--ctx 16384`, `--idle-min 10`, `--max-life 4h`.
 
 Vast retired its v0 instance list (`GET /api/v0/instances/` returns HTTP 410). The Mac app and the Rust CLI (`bin/lobo-rs`) list through `/api/v1/instances/`. The published Homebrew CLI still uses the v0 list, so its Vast `up`, `status` and `down` commands fail until a new CLI release. RunPod is not affected.
 
@@ -90,7 +90,7 @@ The terminal dashboard updates in place. Press `q` to leave status; press `q` or
 
 ## Local inference
 
-Local inference is not supported. The Mac app has no local mode, and the Rust CLI rejects `--provider local` and `LOBO_PROVIDER=local` before any work starts. Existing model files, CLI settings and local processes are preserved. The released Homebrew CLI is the older Go build; its local mode and its `q6`/`q8` models are no longer supported by this project.
+Local inference code and commands are removed from the Rust app and CLI. Explicit local starts are rejected. Saved local preferences migrate to a configured cloud provider. Existing model files and local processes are left untouched. The released Homebrew CLI is the older Go build; its local mode and `q6`/`q8` models are unsupported.
 
 ## Menu bar app (macOS)
 
@@ -100,7 +100,7 @@ Start, watch the boot, copy the endpoint and key, see tok/s and spend, stop. The
 
 Windows use native macOS title bars and rounded corners. Each view fits without scrolling. Settings groups controls into Cloud, Defaults and Clients tabs. The actual hosted app passed cloud Start, Ready, a direct reply, Stop and Off without scrolling; rounded corners were visible. Drag, Dock and Command-Tab behavior remain unverified.
 
-The Mac cloud request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds. Ready displayed 22.8 / 31.8 GB of GPU memory. The idle gauges showed `0 / 0` after the reply; live rate updates were not verified. Owned pod/tunnel cleanup, native Quit and preference restoration passed. Loading-memory progression remains unfinished. Local Metal inference and live OpenCode integration remain unverified.
+The Mac cloud request used 25 uncached input tokens and returned the expected `4` in two output tokens. First content took 1.107 seconds. Ready displayed 22.8 / 31.8 GB of GPU memory. The idle gauges showed `0 / 0` after the reply; live rate updates were not verified. Owned pod/tunnel cleanup, native Quit and preference restoration passed. Loading-memory progression remains unfinished. Live OpenCode integration remains unverified. These measurements used the historical Qwen3.5 model, not the current model.
 
 The [standalone DMG](https://github.com/1905/lobocode/releases/download/app-v0.2.3/lobocode.dmg) contains only the app. For development, `make install-mac` builds the app and `make dmg` creates `bin/lobocode.dmg`.
 
@@ -134,21 +134,17 @@ The optional CLI retains its separate export command: `lobo gen-api-key` writes 
 
 ## Pod image
 
-The Rust candidate uses a separate complete image per catalog model, except `qwen38-q6`, which uses a thin image (see below). Each complete image includes the agent, inference runtime, SSH server and model weights. The legacy Q6 tag passed anonymous manifest verification on October 1, 2026, but returned 404 on October 31. Q8 publication remains pending. Neither legacy model is offered by the current app. Direct RunPod TUI inference and the native Mac cloud lifecycle passed. Broader telemetry acceptance and the Rust CLI release remain pending.
+The GPU image contains the agent, inference runtime and SSH server. The only build target is `thin`, which is also the default. Model weights download at startup. Retired Q6/Q8 image packaging and shard loaders are removed.
 
-The model list comes from `crates/lobo-proto/catalog.json`. Each catalog id gets a `latest-<id>` tag in the configured registry, set by `LOBO_IMAGE_REPO`. The app defaults to `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The default registry is `ghcr.io/1905/lobocode`; the supported model uses `latest-qwen38-q6`. A different registry must carry a `latest-<id>` tag for each model that is selected; otherwise the start fails with `cannot resolve latest <id> GPU image` before any rental.
+The model list comes from `crates/lobo-proto/catalog.json`. The catalog contains only `qwen38-q6` (huihui-ai Qwen3.8-27B abliterated, Q6_K). The registry is `ghcr.io/1905/lobocode`; the supported model uses `latest-qwen38-q6`. A different registry must carry `latest-qwen38-q6`; otherwise the start fails with `cannot resolve latest <id> GPU image` before any rental.
 
 The app resolves the selected tag again before each new start. The provider receives `ghcr.io/<LOBO_IMAGE_REPO>@sha256:<digest>`, by default `ghcr.io/1905/lobocode@sha256:<digest>`. It may reuse identical layers, but cannot substitute an older image digest.
 
-A controlled Q6 check used a 65,536-token context and exactly 47,000 uncached synthetic input tokens. It returned the expected `4` in two output tokens. First content arrived after 24.040 seconds; the server reported 2,186.677 prompt tok/s. Its reported 45.271 output tok/s covers only two tokens and is not a sustained benchmark. Exact test-pod and tunnel cleanup passed. This does not validate local Metal inference or OpenCode.
-
-Model weights use native GGUF shards in separate image layers. Startup verifies each shard before loading. Missing or corrupt files fail startup and trigger instance cleanup. Boot of a complete image never downloads replacement weights, an agent archive or OS packages.
-
-`qwen38-q6` is the exception. It runs from a thin image (Dockerfile target `thin`) without weights and downloads its 22,430,999,840-byte GGUF as 84 content-addressed 256 MiB chunks from `{LOBO_MODEL_BASE_URL}/models/{sha256}/{nnn}`, by default `https://models.stealthcopilot.io`. A project contributor operates that CDN. If the CDN fails or is too slow, the agent downloads the same byte ranges from the original file on Hugging Face (`https://huggingface.co/<repo>/resolve/main/<file>`). The agent verifies the SHA-256 of every chunk from either source against the table pinned in the catalog. That table was checked against the complete Hugging Face file on October 26, 2026. It starts 4 parallel streams, adds 4 per 5 s window while aggregate throughput rises by at least 10 %, and stops at the cap from the control plane (default 32). A stream that is far slower than the rest restarts once per chunk. The hidden `--conns` option overrides the cap; values below 2 are rejected. The slow-host check (`LOBO_MIN_MBPS`) uses the rate over the last 5 s before the 20 s check. No user needs a token to download. `q6` and `q8` keep their complete images (Dockerfile target `full`, the default build).
+`qwen38-q6` runs from a thin image (Dockerfile target `thin`) without weights and downloads its 22,430,999,840-byte GGUF as 84 content-addressed 256 MiB chunks from `{LOBO_MODEL_BASE_URL}/models/{sha256}/{nnn}`, by default `https://models.stealthcopilot.io`. A project contributor operates that CDN. If the CDN fails or is too slow, the agent downloads the same byte ranges from the original file on Hugging Face (`https://huggingface.co/<repo>/resolve/main/<file>`). The agent verifies the SHA-256 of every chunk from either source against the table pinned in the catalog. That table was checked against the complete Hugging Face file on October 26, 2026. It starts 4 parallel streams, adds 4 per 5 s window while aggregate throughput rises by at least 10 %, and stops at the cap from the control plane (default 32). A stream that is far slower than the rest restarts once per chunk. The hidden `--conns` option overrides the cap; values below 2 are rejected. The slow-host check (`LOBO_MIN_MBPS`) uses the rate over the last 5 s before the 20 s check. No user needs a token to download.
 
 Chunk publication uses the hidden command `lobo publish-model <ID> --file <PATH>` on the authorized Linux build host with the owner's R2 credentials. Pin the resulting hashes in `crates/lobo-proto/catalog.json`. Before publishing a thin image, check that all chunks are available and verify the first and last chunk hashes. Build Dockerfile target `thin`, smoke-test its agent and SSH runtime, then promote its verified digest to `latest-<id>`. Never promote a thin image to the legacy `latest-q6` or `latest-q8` tags. The `qwen38-q6` chunks were published by the contributor; this repository holds no R2 secrets for them.
 
-For CLI development only, an explicit complete-image override is available:
+For CLI development only, an explicit image override is available:
 
 ```sh
 lobo up --image ghcr.io/1905/lobocode@sha256:<digest>
@@ -156,13 +152,13 @@ lobo up --image ghcr.io/1905/lobocode@sha256:<digest>
 
 Normal starts ignore old `LOBO_POD_IMAGE`, bucket and model-source settings. The obsolete `--release`, `--source` and debug `--ssh` options return an error before rental.
 
-A complete-image pull transfers roughly 22–29 GB of weights plus the runtime. The thin image pulls only the runtime, and the agent then downloads the chunks. The default startup limit is 40 minutes. A host that cannot start the container within 30 minutes is removed; this covers the image pull. The chunk download runs after the container starts and falls under the 40-minute limit. Cancellation also removes the owned instance.
+The image pull transfers the runtime, then the agent downloads 22.4 GB of model chunks. The default startup limit is 40 minutes. A host that cannot start the container within 30 minutes is removed; this covers the image pull. The chunk download runs after the container starts and falls under the 40-minute limit. Cancellation also removes the owned instance.
 
-A new host may need to download the full image. A complete image (`q6`, `q8`) removes separate boot-time software and model downloads; `qwen38-q6` downloads its weights at boot, as described above. It does not guarantee that a RunPod host already has the image cached.
+A new GPU host may need to download every image layer and model chunk. Cached layers or chunks are not guaranteed.
 
 ## Config reference
 
-The table describes shared CLI configuration. App settings exclude local weights and local ports. Starts use only RunPod or Vast and only `qwen38-q6`. The Homebrew CLI is the older Go build and accepts only `q6` and `q8` for `LOBO_MODEL`; a config saved with `qwen38-q6` does not work with that CLI.
+The table describes the Rust app and CLI configuration. Starts use only RunPod or Vast and only `qwen38-q6`. The Homebrew CLI is the older Go build and accepts only `q6` and `q8` for `LOBO_MODEL`; a config saved with `qwen38-q6` does not work with that CLI.
 
 `~/.config/lobo/config.env`, plain `KEY=value`, mode 600. Only this file is read. The shell environment is never used. A flag beats the file, and the file beats the built-in default.
 
@@ -171,19 +167,17 @@ The table describes shared CLI configuration. App settings exclude local weights
 | `LOBO_PROVIDER` (runpod, vast) | `--provider` | runpod |
 | `LOBO_CONNECTION` (ssh, cloudflare) | | ssh for new configurations |
 | `LOBO_CLOUD_PORT` (control API on port + 1) | | 8933 |
-| `LOBO_MODEL` (only qwen38-q6 starts; other catalog ids are rejected before rental) | | qwen38-q6 |
+| `LOBO_MODEL` (qwen38-q6 only; saved q6/q8 values migrate on load and save) | | qwen38-q6 |
 | `LOBO_MODEL_BASE_URL` (base URL of the model chunks; https only, trailing slash ignored; shown unmasked by `lobo config show`) | | `https://models.stealthcopilot.io` |
-| `LOBO_IMAGE_REPO` (GHCR repository of the pod images, complete and thin, tagged `latest-<id>`) | | 1905/lobocode |
+| `LOBO_IMAGE_REPO` (GHCR repository with the `latest-qwen38-q6` image) | | 1905/lobocode |
 | `LOBO_CTX` | `--ctx` | 65536 |
 | `LOBO_IDLE_MIN` | `--idle-min` | 30 |
 | `LOBO_MAX_HOURS` | `--max-life` | 12 |
 | `LOBO_CLOUD` (community, secure) | `--cloud` | community |
 | `LOBO_MIN_MBPS` (minimum advertised Vast host speed, MB/s; also the agent's measured-rate gate during the chunk download: rate over the last ~5 s before the 20 s check, a slower host is replaced) | `--min-mbps` | 100 |
 | `LOBO_VAST_MAX_DPH` | | 1.20 |
-| `LOBO_WEIGHTS_DIR` | | `~/Library/Application Support/lobo/weights` |
-| `LOBO_LOCAL_PORT` (API on port + 1) | | 8931 |
 
-Cloud and local port pairs must not overlap. SSH mode selects RunPod hosts with public TCP mappings and Vast hosts with direct ports. This can reduce host availability. `LOBO_DOMAIN` and `CF_TUNNEL_TOKEN` are only needed for the legacy `cloudflare` connection.
+SSH mode selects RunPod hosts with public TCP mappings and Vast hosts with direct ports. This can reduce host availability. `LOBO_DOMAIN` and `CF_TUNNEL_TOKEN` are only needed for the legacy `cloudflare` connection.
 
 ## Safety
 
@@ -205,7 +199,7 @@ The app calls the shared Rust core directly and does not bundle the CLI. Go sour
 
 Use the development Mac for source edits and orchestration. Run Linux builds and backend/lifecycle checks on Feesh. Build and test the macOS app on Air. GitHub Actions is disabled; this repository has no build or release workflows. Live GPU checks require authorization. `make release` publishes an agent; it is not a local build command.
 
-Complete-image builds need substantial disk space. Reserve 200 GiB of free Docker storage per concurrent build on the Linux AMD64 build host. This is a maintainer build requirement, not a user installation requirement.
+Image builds no longer download or package retired model weights. Build the image on the Linux AMD64 build host and verify its runtime before publication.
 
 App releases use an `app-vX.Y.Z` tag at the exact tested `master` commit. Run workspace tests on Feesh and app tests plus native fresh/legacy setup smoke on Air. Check anonymous access to `latest-qwen38-q6` before publishing the DMG, checksums and source receipt. Build the standalone DMG on Air with `make dmg`; do not bundle or replace the optional CLI.
 

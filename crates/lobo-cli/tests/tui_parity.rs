@@ -22,11 +22,12 @@ fn golden(name: &str, text: String) {
             " ✓ boot container  7s     \n",
             " ✓ boot container  7s     agent unreachable (other); ready unconfirmed\n",
         );
+    let expected = expected.replace("q8 · ctx", "qwen38-q6 · ctx");
     assert_eq!(text, expected, "{name}");
     insta::assert_snapshot!(name, text);
 }
 #[test]
-fn bundled_model_verification_has_no_network_download_or_eta() {
+fn downloaded_model_verification_has_no_transfer_rate_or_eta() {
     let mut state = UpState::default();
     state.apply_at(
         &UpEvent {
@@ -35,7 +36,7 @@ fn bundled_model_verification_has_no_network_download_or_eta() {
                 bytes: 500,
                 total: 1000,
                 verifying: true,
-                source: "Docker image".into(),
+                source: "https://models.example".into(),
                 ..Default::default()
             }),
             ..Default::default()
@@ -45,7 +46,7 @@ fn bundled_model_verification_has_no_network_download_or_eta() {
     let text = to_plain(&render_up(&state, "*"));
     assert!(text.contains("50.0%") && text.contains("SHA-256"), "{text}");
     assert!(
-        !text.contains("download model") && !text.contains("MB/s") && !text.contains("ETA"),
+        text.contains("download model") && !text.contains("MB/s") && !text.contains("ETA"),
         "{text}"
     );
     let mut snapshot = snap();
@@ -188,7 +189,7 @@ fn snap() -> Snap {
         }),
         status: Some(Status {
             stage: Stage::Ready,
-            model: "q8".into(),
+            model: "qwen38-q6".into(),
             ctx: 8192,
             idle_s: 312,
             kill_in_s: 1488,
@@ -226,7 +227,7 @@ fn status_goldens() {
     let mut dl = snap();
     dl.status = Some(Status {
         stage: Stage::Download,
-        model: "q8".into(),
+        model: "qwen38-q6".into(),
         ctx: 8192,
         kill_in_s: 43000,
         kill_reason: "expired".into(),
@@ -261,21 +262,6 @@ fn status_goldens() {
             &Utc,
         )),
     );
-    let mut local = snap();
-    let p = local.pod.as_mut().unwrap();
-    p.provider = "local".into();
-    p.id = "74585".into();
-    p.cost_per_hr = 0.0;
-    local.version.as_mut().unwrap().llama_image.clear();
-    let st = local.status.as_mut().unwrap();
-    st.gpu = Some(Gpu {
-        name: "Apple M1 Max".into(),
-        vram_used_mb: 41230,
-        vram_total_mb: 65536,
-        ..Default::default()
-    });
-    st.host = None;
-    golden("status_local", to_plain(&render_status(&local, &Utc)));
 }
 #[test]
 fn up_state_timers_and_terminal_events() {

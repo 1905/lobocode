@@ -32,14 +32,14 @@ struct Endpoint(String);
 #[async_trait::async_trait]
 impl Provider for Endpoint {
     fn name(&self) -> &'static str {
-        "local"
+        "runpod"
     }
     fn replaceable(&self) -> bool {
         false
     }
     async fn list(&self) -> Result<Vec<Instance>> {
         Ok(vec![Instance {
-            provider: "local".into(),
+            provider: "runpod".into(),
             id: "test".into(),
             api_url: format!("{}/v1", self.0),
             agent_url: self.0.clone(),
@@ -81,7 +81,7 @@ impl Fixture {
             let mut d = testkit::deps(Default::default(), Default::default(), clock.clone());
             d.providers.clear();
             d.providers
-                .insert("local".into(), Arc::new(Endpoint(base.clone())));
+                .insert("runpod".into(), Arc::new(Endpoint(base.clone())));
             let key = cfg.lobo_api_key.clone();
             d.cfg = cfg;
             d.new_agent = Arc::new(move |url| Arc::new(HttpAgent::new(url, &key)));
@@ -156,9 +156,9 @@ async fn logs_preserve_bytes_and_forward_count_and_auth() {
 #[tokio::test]
 async fn chat_tool_output_truncation_and_models() {
     for (model, text) in [
-        ("q6", "hello".to_owned()),
+        ("qwen38-q6", "hello".to_owned()),
         ("", "x".repeat(250)),
-        ("q8", format!("{}é-tail", "a".repeat(199))),
+        ("qwen38-q6", format!("{}é-tail", "a".repeat(199))),
     ] {
         let f = Fixture::new().await;
         f.agent(200, model).await;
@@ -198,7 +198,7 @@ async fn chat_tool_output_truncation_and_models() {
 #[tokio::test]
 async fn agent_and_tool_failures_remain_errors() {
     let f = Fixture::new().await;
-    f.agent(503, "q8").await;
+    f.agent(503, "qwen38-q6").await;
     let (code, out, err) = f.invoke(&["test"]).await;
     assert_eq!(code, 1);
     assert!(out.is_empty());
@@ -210,7 +210,7 @@ async fn agent_and_tool_failures_remain_errors() {
         )
     );
     let f = Fixture::new().await;
-    f.agent(200, "q8").await;
+    f.agent(200, "qwen38-q6").await;
     Mock::given(method("POST")).respond_with(|r: &Request| {
         let body: serde_json::Value = serde_json::from_slice(&r.body).unwrap();
         if body["stream"] == true {ResponseTemplate::new(200).set_body_string("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n")}

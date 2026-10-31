@@ -239,9 +239,9 @@ async fn up_command_modes_defaults_and_report() {
             ))
         });
         let args = if flag.is_empty() {
-            vec!["up", "--q6=false"]
+            vec!["up"]
         } else {
-            vec!["up", flag, "--q6=false"]
+            vec!["up", flag]
         };
         let (code, out, err) = f.invoke(&args).await;
         assert_eq!(code, 0, "{err}");
@@ -289,7 +289,8 @@ async fn up_command_modes_defaults_and_report() {
     let f = Fixture::new(testkit::boot_script(), false);
     let (code, out, err) = f.invoke(&["up", "--q6", "--json"]).await;
     assert_eq!(code, 1);
-    assert!(out.contains("not supported on GPU"), "{out}{err}");
+    assert!(out.is_empty());
+    assert!(err.contains("unexpected argument '--q6'"), "{err}");
     assert!(f.rp.state.lock().unwrap().created.is_empty());
     let f = Fixture::new(testkit::boot_script(), false);
     let (code, _, err) = f.invoke(&["up", "--ssh", "/does/not/exist"]).await;

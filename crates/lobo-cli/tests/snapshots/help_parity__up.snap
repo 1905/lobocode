@@ -11,13 +11,12 @@ Flags:
       --cloud <string>       community ($0.69/h, default, community hosts only) or secure (datacenter $0.99/h first, community fallback) [default: community]
       --ctx <int>            context size (0 = built-in default)
       --idle-min <int>       minutes without requests before the pod deletes itself (0 = built-in default)
-      --image <string>       development override: complete GPU image (default: resolve latest public image for the selected model)
+      --image <string>       development override: GPU image (default: resolve latest public image for the selected model)
       --json[=<JSON>]        one JSON object per event on stdout (for scripts and tests)
       --max-life <duration>  hard pod lifetime, e.g. 12h (0 = built-in default)
       --min-mbps <int>       minimum advertised Vast host download speed in MB/s (0 = LOBO_MIN_MBPS or 100)
       --plain[=<PLAIN>]      log lines instead of the TUI
-      --provider <string>    runpod, vast or local (this Mac) (default: LOBO_PROVIDER, else the one with a key, runpod first)
-      --q6[=<Q6>]            serve Q6_K instead of the default Q8_0 model
+      --provider <string>    runpod or vast (default: LOBO_PROVIDER, else the one with a key, runpod first)
   -h, --help                 help for up
 
 Global Flags:

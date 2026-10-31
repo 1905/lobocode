@@ -52,13 +52,9 @@ pub trait Provider: Send + Sync {
     async fn list(&self) -> Result<Vec<Instance>>;
     async fn get(&self, id: &str) -> Result<Instance>;
     async fn delete(&self, id: &str) -> Result<()>;
-    /// Local supervisor identity. Cloud providers use the provider's exact ID.
-    async fn runtime_identity(&self, _id: &str) -> Result<Option<(String, i32, u64)>> {
-        Ok(None)
-    }
-    /// Destructive app boundary. Local implementations must verify boot/start.
-    async fn delete_owned(&self, id: &str, boot_id: &str, _start_id: Option<u64>) -> Result<()> {
-        if boot_id.is_empty() || self.name() == "local" {
+    /// Delete only the provider instance selected by an owned operation.
+    async fn delete_owned(&self, id: &str, boot_id: &str) -> Result<()> {
+        if boot_id.is_empty() || !matches!(self.name(), "runpod" | "vast") {
             return Err(crate::Error::Other(
                 "runtime identity cannot be verified".into(),
             ));
@@ -85,7 +81,7 @@ pub(crate) fn fixture_opts() -> CreateOpts {
         model_url: "https://b/m.gguf".into(),
         lobo_api_key: "sk".into(),
         cf_tunnel_token: "tok".into(),
-        model: "q8".into(),
+        model: "qwen38-q6".into(),
         ctx: 8192,
         idle_min: 30,
         expires_at: "2026-09-23T22:00:00Z".parse().unwrap(),
@@ -102,8 +98,4 @@ mod tests {
         assert_eq!(i.api_url, "https://lobo.example.com/v1");
         assert_eq!(i.agent_url, "https://lobo.example.com");
     }
-}
-
-pub mod local {
-    pub use crate::local::provider::*;
 }

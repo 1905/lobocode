@@ -56,7 +56,7 @@ pub const POD_CHECK_EVERY: Duration = Duration::from_secs(30);
 pub(crate) async fn list_all(d: &Deps) -> (Vec<Instance>, Option<Error>) {
     let mut instances = vec![];
     let mut errors = vec![];
-    for name in ["runpod", "vast", "local"] {
+    for name in ["runpod", "vast"] {
         if let Some(p) = d.providers.get(name) {
             match p.list().await {
                 Ok(mut list) => instances.append(&mut list),
@@ -78,7 +78,7 @@ mod tests;
 
 pub mod precheck;
 pub mod wiring;
-pub use wiring::{Wiring, deps_from_config, local_provider_from_config, providers_from_config};
+pub use wiring::{Wiring, deps_from_config, providers_from_config};
 
 mod cleanup;
 

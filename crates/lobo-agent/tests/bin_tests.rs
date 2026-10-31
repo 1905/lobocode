@@ -1,47 +1,24 @@
 use std::process::Command;
 
 #[test]
-fn check_image_uses_fixture_without_credentials_or_network() {
-    use sha2::{Digest, Sha256};
-    let dir = tempfile::tempdir().unwrap();
-    let models = dir.path().join("models");
-    std::fs::create_dir(&models).unwrap();
-    let bytes = b"GGUF\x03\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0fixture";
-    let file = "model-00001-of-00001.gguf";
-    std::fs::write(models.join(file), bytes).unwrap();
-    let manifest = lobo_agent::image_model::Manifest {
-        model: "q6".into(),
-        source_sha256: lobo_proto::catalog::get("q6").unwrap().sha256.clone(),
-        shards: vec![lobo_agent::image_model::Shard {
-            file: file.into(),
-            size: bytes.len() as u64,
-            sha256: hex::encode(Sha256::digest(bytes)),
-        }],
-    };
-    std::fs::write(
-        dir.path().join("model.json"),
-        serde_json::to_vec(&manifest).unwrap(),
-    )
-    .unwrap();
-    let check = |model: &str| {
-        Command::new(env!("CARGO_BIN_EXE_lobo-agent"))
+fn retired_image_command_and_models_are_rejected_before_network() {
+    for args in [
+        vec!["check-image", "--model", "q6"],
+        vec!["bench", "--model", "q6"],
+        vec!["bench", "--model", "q8"],
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_lobo-agent"))
             .env_clear()
-            .args(["check-image", "--model", model, "--root"])
-            .arg(dir.path())
+            .args(args)
             .output()
-            .unwrap()
-    };
-    let success = check("q6");
-    assert!(
-        success.status.success(),
-        "{}",
-        String::from_utf8_lossy(&success.stderr)
-    );
-    assert!(String::from_utf8_lossy(&success.stdout).contains("bundled model verified"));
-    assert!(!check("q8").status.success());
-    assert!(!check("invalid").status.success());
-    std::fs::remove_file(models.join(file)).unwrap();
-    assert!(!check("q6").status.success());
+            .unwrap();
+        assert!(!out.status.success());
+        let error = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            error.contains("unrecognized subcommand") || error.contains("unknown model"),
+            "{error}"
+        );
+    }
 }
 
 /// Execute the entrypoint in a private fixture tree. Never modify /lobo or /app.
@@ -58,15 +35,7 @@ fn image_entrypoint_terminates_both_providers_when_required_content_is_missing()
         ("runpod", true),
         ("vast", true),
     ] {
-        // "manifest" is a thin image: no bundled weights, so they come from the base URL.
-        for missing in [
-            "agent",
-            "runtime",
-            "manifest and base URL",
-            "tunnel",
-            "none",
-            "manifest",
-        ] {
+        for missing in ["agent", "runtime", "base URL", "tunnel", "none"] {
             if rejected && missing != "agent" {
                 continue;
             }
@@ -81,15 +50,14 @@ fn image_entrypoint_terminates_both_providers_when_required_content_is_missing()
             if missing != "agent" {
                 executable(
                     &lobo.join("lobo-agent"),
-                    "#!/bin/sh\nprintf 'started %s' \"${LOBO_IMAGE_MODEL:-unset}\" > \"$FIXTURE_AGENT_START\"\nexit 0\n",
+                    "#!/bin/sh\nprintf started > \"$FIXTURE_AGENT_START\"\nexit 0\n",
                 );
             }
             if missing != "runtime" {
                 executable(&app.join("llama-server"), "#!/bin/sh\nexit 0\n");
             }
-            if !missing.starts_with("manifest") {
-                std::fs::write(lobo.join("model.json"), "{}").unwrap();
-            }
+            // An obsolete manifest cannot bypass the thin image's download settings.
+            std::fs::write(lobo.join("model.json"), "{}").unwrap();
             if missing != "tunnel" {
                 executable(&lobo.join("bin/cloudflared"), "#!/bin/sh\nexit 0\n");
             }
@@ -123,7 +91,7 @@ fi
                 .env("LOBO_CONNECTION", "cloudflare")
                 .env(
                     "LOBO_MODEL_BASE_URL",
-                    if missing == "manifest and base URL" {
+                    if missing == "base URL" {
                         ""
                     } else {
                         "https://models.example"
@@ -138,17 +106,13 @@ fi
                 .env("FIXTURE_AGENT_START", &agent_start)
                 .output()
                 .unwrap();
-            if missing == "none" || missing == "manifest" {
+            if missing == "none" {
                 assert!(
                     out.status.success(),
                     "{provider}/{missing}: {}",
                     String::from_utf8_lossy(&out.stderr)
                 );
-                let image_model = if missing == "none" { "1" } else { "unset" };
-                assert_eq!(
-                    std::fs::read_to_string(&agent_start).unwrap(),
-                    format!("started {image_model}")
-                );
+                assert_eq!(std::fs::read_to_string(&agent_start).unwrap(), "started");
                 assert!(
                     !request.exists(),
                     "healthy entrypoint must not request provider cleanup"

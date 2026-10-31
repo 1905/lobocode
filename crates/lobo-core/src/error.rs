@@ -31,10 +31,6 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
-    #[error(transparent)]
-    Agent(#[from] lobo_agent::Error),
-    #[error("{0}")]
-    Local(String),
     #[error("{0}")]
     Release(String),
     #[error("cancelled")]
@@ -72,8 +68,6 @@ impl Error {
             Self::Http(_) => "network",
             Self::Io(_) => "io",
             Self::Json(_) => "json",
-            Self::Agent(_) => "agent",
-            Self::Local(_) => "local",
             Self::Release(_) => "release",
             Self::Cancelled => "cancelled",
             Self::Multi(_) => "multi",
@@ -115,8 +109,6 @@ mod tests {
                 Error::Json(serde_json::from_str::<String>("{").unwrap_err()),
                 "json",
             ),
-            (Error::Agent(lobo_agent::Error::Cancelled), "agent"),
-            (Error::Local("x".into()), "local"),
             (Error::Release("x".into()), "release"),
             (Error::Cancelled, "cancelled"),
             (Error::Multi(vec![]), "multi"),

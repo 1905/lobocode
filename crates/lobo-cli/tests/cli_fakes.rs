@@ -51,7 +51,7 @@ fn logs(data: &str) -> String {
 fn executable_json_outputs_match_go() {
     for name in ["boot", "failed"] {
         let tmp = tempfile::tempdir().unwrap();
-        let output = command(name, tmp.path(), &["up", "--json", "--q6=false"]);
+        let output = command(name, tmp.path(), &["up", "--json"]);
         let err = String::from_utf8(output.stderr).unwrap();
         assert_eq!(output.status.success(), name == "boot", "{err}");
         let mut expected = events(&fixture(&format!("json_up_{name}.jsonl")));
@@ -105,7 +105,7 @@ fn executable_json_outputs_match_go() {
 #[test]
 fn executable_plain_output_and_unknown_scenario() {
     let tmp = tempfile::tempdir().unwrap();
-    let output = command("boot", tmp.path(), &["up", "--plain", "--q6=false"]);
+    let output = command("boot", tmp.path(), &["up", "--plain"]);
     assert!(output.status.success());
     assert!(output.stdout.is_empty());
     let err = String::from_utf8(output.stderr).unwrap();

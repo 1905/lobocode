@@ -28,7 +28,6 @@ pub struct UpState {
     pub err: Option<String>,
     pub done: bool,
     pub at: DateTime<Utc>,
-    bundled_model: bool,
     started: BTreeMap<String, DateTime<Utc>>,
     took: BTreeMap<String, TimeDelta>,
 }
@@ -41,7 +40,6 @@ impl Default for UpState {
             err: None,
             done: false,
             at: DateTime::<Utc>::MIN_UTC,
-            bundled_model: false,
             started: BTreeMap::new(),
             took: BTreeMap::new(),
         }
@@ -49,12 +47,6 @@ impl Default for UpState {
 }
 impl UpState {
     pub fn apply_at(&mut self, e: &UpEvent, at: DateTime<Utc>) {
-        if e.download
-            .as_ref()
-            .is_some_and(|d| d.source == "Docker image")
-        {
-            self.bundled_model = true;
-        }
         self.at = self.at.max(at);
         let terminal = ["failed", "terminated", "cancelled"].contains(&e.phase.as_str());
         if !terminal && e.phase != self.phase {
@@ -90,15 +82,12 @@ pub fn render_up(s: &UpState, spin: &str) -> Text<'static> {
     let mut lines = vec![
         Line::from(vec![
             span("lobo up", TITLE),
-            dim("  ·  Qwen3.5-27B on a rented RTX 5090"),
+            dim("  ·  Qwen3.8-27B on a rented RTX 5090"),
         ]),
         Line::default(),
     ];
     let cur = index(&s.phase);
     for (i, (id, name)) in PHASES.iter().enumerate() {
-        if *id == "download" && s.bundled_model {
-            continue;
-        }
         let current = cur == Some(i);
         let completed = cur.is_some_and(|n| i < n) || current && s.phase == "ready";
         let (mark, style) = if completed {

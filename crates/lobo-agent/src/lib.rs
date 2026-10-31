@@ -1,4 +1,4 @@
-//! Pod agent and local supervisor building blocks.
+//! Cloud pod agent building blocks.
 pub mod api;
 pub mod config;
 pub mod download;
@@ -6,7 +6,6 @@ pub mod error;
 pub mod fetch;
 pub mod health;
 pub mod http;
-pub mod image_model;
 pub mod logring;
 pub mod metrics;
 pub mod pod;
@@ -32,14 +31,14 @@ mod testutil;
 
 #[cfg(test)]
 mod docker_tests {
-    /// Bootstrap execs /lobo/lobo-agent for both zip and baked-image boots.
+    /// The thin image retains the bootstrap's executable paths.
     #[test]
     fn dockerfile_keeps_lobo_layout() {
         let docker = include_str!("../../../docker/pod/Dockerfile");
         for text in [
             "COPY --from=build /out/lobo-agent /lobo/lobo-agent",
             "COPY --from=build /out/release.json /lobo/release.json",
-            "FROM ${LLAMA_IMAGE}",
+            "FROM ${LLAMA_IMAGE} AS thin",
             "--target x86_64-unknown-linux-musl",
         ] {
             assert!(docker.contains(text), "missing {text}");

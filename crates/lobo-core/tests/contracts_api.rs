@@ -1,7 +1,7 @@
 //! Compile the P3 interfaces consumed by CLI, app and E2E tests.
 #![allow(clippy::type_complexity)]
-use lobo_core::{Result, config as c, control as ctl, local as l, provider as p, release as r};
-use lobo_proto::{Instance, Listing, LocalState, Manifest, Resolved};
+use lobo_core::{Result, config as c, control as ctl, provider as p, release as r};
+use lobo_proto::{Instance, Manifest, Resolved};
 use std::{
     collections::BTreeMap,
     future::Future,
@@ -17,7 +17,7 @@ fn contracts_p3_signatures() {
     let _: fn() -> PathBuf = c::default_path;
     let _: fn(Option<&str>, Option<&Path>) -> PathBuf = c::default_path_from;
     let _: fn(&Path) -> bool = c::loose_mode;
-    let _: fn(&str) -> Result<u16> = c::parse_local_port;
+    let _: fn(&str) -> Result<u16> = c::parse_cloud_port;
     let _: fn(&Path) -> Result<BTreeMap<String, String>> = c::values;
     let _: fn(&Path, &BTreeMap<String, String>) -> Result<()> = c::save;
     let _: fn(&Path, &str, &str) -> Result<()> = c::set_env_value;
@@ -25,7 +25,7 @@ fn contracts_p3_signatures() {
     let _: fn(&str, &str) -> String = c::masked;
     let _: fn(&Path) -> Result<lobo_proto::ConfigShow> = c::show;
     let _: (&[c::LayoutGroup], &str, &[&str], u16) =
-        (c::LAYOUT, c::HEADER, c::PLAIN_KEYS, c::DEFAULT_LOCAL_PORT);
+        (c::LAYOUT, c::HEADER, c::PLAIN_KEYS, c::DEFAULT_CLOUD_PORT);
     let _: fn(&BTreeMap<String, String>) -> c::Laptop = c::Laptop::from_values;
     let _: fn(&c::Laptop) -> Result<()> = c::Laptop::require_cloud;
     let _: fn(&c::Laptop) -> Result<()> = c::Laptop::require_provider_key;
@@ -34,9 +34,6 @@ fn contracts_p3_signatures() {
     let _: fn(&c::Laptop) -> BTreeMap<String, String> = c::Laptop::secret_values;
     let _: fn(&c::Laptop) -> Result<c::Defaults> = c::Laptop::defaults;
     let _: fn(&c::Laptop) -> (c::Defaults, BTreeMap<String, String>) = c::defaults_partial;
-    let _: fn(&c::Laptop) -> PathBuf = c::Laptop::weights;
-    let _: fn(&c::Laptop, &Path) -> PathBuf = c::Laptop::weights_with_home;
-    let _: fn(&c::Laptop) -> u16 = c::Laptop::port;
     let _: fn(&c::Laptop) -> Vec<String> = c::Laptop::providers;
     let _: fn(&c::Laptop) -> String = c::Laptop::default_provider;
     let _: fn(Instance, &str) -> Instance = p::on_domain;
@@ -56,16 +53,14 @@ fn contracts_p3_signatures() {
     let _: fn(&ctl::UpOperation) = ctl::UpOperation::cancel;
     let _: fn(&str, &str) -> ctl::HttpAgent = ctl::HttpAgent::new;
     let _: fn(&str, &str) -> ctl::HttpAgent = ctl::HttpAgent::on_domain;
-    let _: fn(&c::Laptop, &str, fn() -> Result<()>) -> Result<()> = ctl::check_target;
-    let _: fn(&c::Laptop, fn() -> Result<()>) -> Result<()> = ctl::check_providers;
+    let _: fn(&c::Laptop, &str) -> Result<()> = ctl::check_target;
+    let _: fn(&c::Laptop) -> Result<()> = ctl::check_providers;
     let _: fn(&c::Laptop) -> Result<()> = ctl::check_release;
     let _: fn(&mut ctl::UpOpts, &c::Laptop, &dyn Fn(&str) -> bool, &Path) -> Result<()> =
         ctl::apply_defaults;
-    let _: fn(PathBuf, l::Spawner) -> ctl::Wiring = ctl::Wiring::new;
+    let _: fn(PathBuf, PathBuf) -> ctl::Wiring = ctl::Wiring::new;
     let _: fn(&c::Laptop, &ctl::Wiring) -> BTreeMap<String, Arc<dyn p::Provider>> =
         ctl::providers_from_config;
-    let _: fn(&c::Laptop, &ctl::Wiring) -> Option<l::LocalProvider> =
-        ctl::local_provider_from_config;
     let _: fn(c::Laptop, &ctl::Wiring) -> Result<ctl::Deps> = ctl::deps_from_config;
     let _: fn(&[u8]) -> Result<()> = lobo_core::checks::validate_tool_call;
     let _: fn(&[String], chrono::DateTime<chrono::Utc>) -> String = r::next_version;
@@ -79,41 +74,14 @@ fn contracts_p3_signatures() {
     let _: fn(&r::Store, &str, Duration) -> String = r::Store::presign_get;
     let _: fn() -> String = lobo_core::genkey::new_api_key;
     let _: fn(&Path, bool) -> Result<(String, bool)> = lobo_core::genkey::ensure_api_key;
-    let _: fn(&str, &str, u16) -> Result<String> = lobo_core::genkey::opencode_config;
-    let _: fn(&Path, &str, &str, u16) -> Result<()> = lobo_core::genkey::write_opencode;
-    let _: fn() -> Result<()> = l::supported;
-    let _: fn() -> Result<i64> = l::usable_mib;
-    let _: fn(&Path, &str) -> PathBuf = l::marker_path;
-    let _: fn(&Path) -> Result<Listing> = l::list;
-    let _: fn(&Path) -> PathBuf = l::runtime_dir;
-    let _: fn() -> PathBuf = l::state_path;
-    let _: fn() -> Result<Option<LocalState>> = l::read_state;
-    let _: fn(&LocalState) -> Result<()> = l::claim_state;
-    let _: fn(i32, &str) -> Result<()> = l::remove_state_if;
-    let _: fn(i32) -> bool = l::alive;
-    let _: fn() -> PathBuf = l::StateFile::default_path;
-    let _: fn(Option<&str>, Option<&Path>) -> PathBuf = l::StateFile::path_from;
-    let _: fn(PathBuf) -> l::StateFile = l::StateFile::at;
-    let _: fn(&l::StateFile) -> Result<Option<LocalState>> = l::StateFile::read;
-    let _: fn(&l::StateFile, &LocalState, &dyn Fn(i32, &str) -> bool) -> Result<()> =
-        l::StateFile::claim;
-    let _: fn(&l::StateFile, i32, &str) -> Result<()> = l::StateFile::remove_if;
-    let _: fn(&[String], Manifest) -> Result<l::RunConfig> = l::RunConfig::from_args;
-    let _: fn(&l::RunConfig) -> Vec<String> = l::RunConfig::to_args;
-    let _: fn(&l::RunConfig) -> Result<()> = l::RunConfig::validate;
-    let _: fn(PathBuf) -> l::Spawner = l::Spawner::cli;
-    let _: fn(PathBuf) -> l::Spawner = l::Spawner::app;
-    let _: fn(i32, &str, &dyn Fn(i32) -> Result<String>) -> bool = l::is_supervisor;
-    let _: fn(i32) -> Result<String> = l::command_of;
-    let _: fn(&LocalState) -> Instance = l::instance;
-    let _: fn(&l::StateFile) -> PathBuf = l::log_path;
-    let _: Option<Arc<dyn l::EnsureRuntime>> = None;
-    let _: Option<p::local::LocalProvider> = None;
+    let _: fn(&c::Laptop, &str) -> Result<String> = lobo_core::genkey::opencode_for_laptop;
+    let _: fn(&Path, &c::Laptop, &str) -> Result<()> = lobo_core::genkey::write_opencode_for_laptop;
+    let _: fn() -> PathBuf = lobo_core::state::state_dir;
     let _: fn(Duration) -> reqwest::Client = lobo_core::http::client;
     let _: fn(chrono::DateTime<chrono::Utc>, Duration) -> lobo_core::clock::StepClock =
         lobo_core::clock::StepClock::new;
     let cfg = c::Laptop::default();
-    let wiring = ctl::Wiring::new("/unused".into(), l::Spawner::cli("/unused".into()));
+    let wiring = ctl::Wiring::new("/unused".into(), "/unused".into());
     let deps = ctl::deps_from_config(cfg, &wiring).unwrap();
     output::<lobo_proto::Snap, _>(ctl::snapshot(&deps));
     output::<f64, _>(ctl::down(&deps));
@@ -121,27 +89,16 @@ fn contracts_p3_signatures() {
     let http = lobo_core::http::client(Duration::from_secs(1));
     output::<Resolved, _>(r::resolve(&http, "https://unused", ""));
     output::<String, _>(lobo_core::checks::read_stream(&b""[..]));
-    output::<String, _>(lobo_core::checks::chat(&http, "https://unused", "k", "q6"));
+    output::<String, _>(lobo_core::checks::chat(
+        &http,
+        "https://unused",
+        "k",
+        "qwen38-q6",
+    ));
     output::<Vec<u8>, _>(lobo_core::checks::tool_call(
         &http,
         "https://unused",
         "k",
-        "q6",
+        "qwen38-q6",
     ));
-    output::<PathBuf, _>(l::ensure_runtime(
-        Path::new("/unused"),
-        CancellationToken::new(),
-        &|_| {},
-    ));
-    let run = l::RunConfig::from_args(
-        &[
-            "--ctx".into(),
-            "512".into(),
-            "--idle-min".into(),
-            "1".into(),
-        ],
-        Manifest::default(),
-    )
-    .unwrap();
-    output::<(), _>(l::supervise(run, CancellationToken::new()));
 }

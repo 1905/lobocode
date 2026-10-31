@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Split a verified Q6 OCI export into bounded parts and restore its exact bytes."""
+"""Split a verified OCI image export into bounded parts and restore its exact bytes."""
 
 import argparse
 from contextlib import contextmanager
@@ -24,9 +24,9 @@ HEX = re.compile(r"[0-9a-f]{64}\Z")
 SOURCE_SHA = re.compile(r"[0-9a-f]{40}\Z")
 IMAGE_DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 FILE_PATH = re.compile(
-    r"(?:q6-metadata\.json|q6-oci/(?:index\.json|oci-layout|blobs/sha256/[0-9a-f]{64}))\Z"
+    r"(?:image-metadata\.json|image-oci/(?:index\.json|oci-layout|blobs/sha256/[0-9a-f]{64}))\Z"
 )
-REQUIRED_FILES = {"q6-metadata.json", "q6-oci/index.json", "q6-oci/oci-layout"}
+REQUIRED_FILES = {"image-metadata.json", "image-oci/index.json", "image-oci/oci-layout"}
 
 
 class InvalidTransfer(ValueError):
@@ -119,9 +119,9 @@ def source_files(layout, metadata):
     directory(layout / "blobs" / "sha256")
     names = entries(layout / "blobs" / "sha256")
     require(names and all(HEX.fullmatch(name) for name in names), "Invalid OCI blob names.")
-    files = {"q6-metadata.json": metadata, "q6-oci/index.json": layout / "index.json",
-             "q6-oci/oci-layout": layout / "oci-layout"}
-    files.update({"q6-oci/blobs/sha256/" + name: layout / "blobs" / "sha256" / name
+    files = {"image-metadata.json": metadata, "image-oci/index.json": layout / "index.json",
+             "image-oci/oci-layout": layout / "oci-layout"}
+    files.update({"image-oci/blobs/sha256/" + name: layout / "blobs" / "sha256" / name
                   for name in names})
     return [(name, path, regular(path)) for name, path in sorted(files.items())]
 
@@ -326,7 +326,7 @@ def restore(parts_dir, manifest_sha256, source_sha, image_digest, output, consum
     output.mkdir(mode=0o700)
     sink = None
     try:
-        (output / "q6-oci" / "blobs" / "sha256").mkdir(parents=True, mode=0o700)
+        (output / "image-oci" / "blobs" / "sha256").mkdir(parents=True, mode=0o700)
         sink = FileSink(output, manifest["files"])
         for part, before in zip(manifest["parts"], infos):
             path, part_hash = parts_dir / part["name"], hashlib.sha256()

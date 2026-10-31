@@ -123,7 +123,7 @@ fn boot() -> Store {
                 bytes: 12_400_000_000,
                 total: 22_082_528_352,
                 verifying: true,
-                source: "Docker image".into(),
+                source: "https://models.stealthcopilot.io".into(),
                 ..Default::default()
             }),
             ..Default::default()
@@ -155,7 +155,7 @@ fn fixtures() -> Vec<(&'static str, Store)> {
     let mut fail = base();
     fail.begin_up(now());
     for detail in [
-        "Docker image model shard failed SHA-256 verification; instance deleted",
+        "Model chunk failed SHA-256 verification; instance deleted",
         "create: bad host, renting another pod (4/4)",
         "vast 26461301, offer 51399812, 9129 Mbps down, Quebec, CA",
     ] {

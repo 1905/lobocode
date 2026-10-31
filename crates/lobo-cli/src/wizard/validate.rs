@@ -41,42 +41,15 @@ pub fn hostname(v: &str) -> Result<(), String> {
         Ok(())
     }
 }
-pub fn local_port(v: &str) -> Result<(), String> {
-    lobo_core::config::parse_local_port(v.trim())
-        .map(|_| ())
-        .map_err(|_| "a port 1024-65534, or empty for 8931".into())
-}
-pub fn provider_options(local: bool) -> Vec<(&'static str, &'static str)> {
-    let mut out = vec![];
-    if local {
-        out.push(("local (this Mac)", "local"));
-    }
-    out.extend([
+pub fn provider_options() -> Vec<(&'static str, &'static str)> {
+    vec![
         ("RunPod", "runpod"),
         ("Vast.ai (cheapest verified host)", "vast"),
-    ]);
-    out
-}
-/// GPU-supported catalog models; the only ones `lobo up` starts.
-pub fn model_options() -> Vec<(String, &'static str)> {
-    lobo_proto::catalog::all()
-        .iter()
-        .filter(|m| m.gpu)
-        .map(|m| {
-            let label = format!(
-                "{} {} ({})",
-                m.name,
-                m.quant,
-                crate::tui::styles::gb(m.size)
-            );
-            (label, m.id.as_str())
-        })
-        .collect()
+    ]
 }
 impl WizardState {
     pub fn provider_keys(&self, typed: &str) -> Result<(), String> {
-        if !self.is_local()
-            && self.runpod_key().is_empty()
+        if self.runpod_key().is_empty()
             && resolve_secret(self.current("VASTAI_API_KEY"), typed).is_empty()
         {
             Err("set at least one provider key".into())
@@ -85,37 +58,16 @@ impl WizardState {
         }
     }
     pub fn tunnel_token(&self, typed: &str) -> Result<(), String> {
-        if !self.is_local() && resolve_secret(self.current("CF_TUNNEL_TOKEN"), typed).is_empty() {
+        if resolve_secret(self.current("CF_TUNNEL_TOKEN"), typed).is_empty() {
             Err("required: the pod serves the API through this tunnel".into())
         } else {
             Ok(())
-        }
-    }
-    pub fn cloud_only<'a>(
-        &'a self,
-        check: &'a dyn Fn(&str) -> Result<(), String>,
-    ) -> impl Fn(&str) -> Result<(), String> + 'a {
-        move |v| {
-            if self.is_local() && v.trim().is_empty() {
-                Ok(())
-            } else {
-                check(v)
-            }
         }
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn model_options_list_gpu_models_only() {
-        let ids: Vec<_> = model_options().into_iter().map(|(_, v)| v).collect();
-        assert_eq!(ids, ["qwen38-q6"]);
-        assert_eq!(
-            model_options()[0].0,
-            "qwen3.8-27b abliterated Q6_K (22.4 GB)"
-        );
-    }
     #[test]
     fn validators() {
         assert!(whole_number(512)("100").is_err());
@@ -130,34 +82,20 @@ mod tests {
         assert!(hostname("lobo.x.cc").is_ok());
         assert!(https_url("pub.r2.dev").is_err());
         assert!(https_url("https://pub.r2.dev").is_ok());
-        for s in ["", "0", "9000"] {
-            assert!(local_port(s).is_ok());
-        }
-        for s in ["80", "65535", "x"] {
-            assert!(local_port(s).is_err());
-        }
     }
     #[test]
-    fn local_validation_and_options() {
-        for (provider, local, bad) in [
-            ("local", true, false),
-            ("runpod", true, true),
-            ("local", false, true),
-        ] {
-            let mut s = WizardState::new(Default::default(), local);
-            s.provider = provider.into();
-            for result in [
-                s.provider_keys(""),
-                s.tunnel_token(""),
-                s.cloud_only(&hostname)(""),
-                s.cloud_only(&https_url)(""),
-            ] {
-                assert_eq!(result.is_err(), bad);
-            }
-            assert!(s.cloud_only(&hostname)("https://x.cc").is_err());
-            assert!(s.cloud_only(&https_url)("pub.r2.dev").is_err());
-        }
-        assert_eq!(provider_options(true).len(), 3);
-        assert!(provider_options(false).iter().all(|(_, v)| *v != "local"));
+    fn cloud_keys_and_provider_options() {
+        let s = WizardState::new(Default::default());
+        assert!(s.provider_keys("").is_err());
+        assert!(s.provider_keys("key").is_ok());
+        assert!(s.tunnel_token("").is_err());
+        assert!(s.tunnel_token("token").is_ok());
+        assert_eq!(
+            provider_options()
+                .iter()
+                .map(|(_, id)| *id)
+                .collect::<Vec<_>>(),
+            ["runpod", "vast"]
+        );
     }
 }

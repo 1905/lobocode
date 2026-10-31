@@ -3,7 +3,6 @@ use chrono::{DateTime, Utc};
 use std::time::Duration;
 
 pub struct AgentConfig {
-    pub image_model: bool,
     pub connection: String,
     pub lobo_api_key: String,
     pub cf_tunnel_token: String,
@@ -56,20 +55,13 @@ impl AgentConfig {
             required("CF_TUNNEL_TOKEN")?
         };
         let model = required("LOBO_MODEL")?;
-        let image_model = value("LOBO_IMAGE_MODEL") == "1";
-        let model_base_url = if image_model {
-            String::new()
-        } else {
-            required("LOBO_MODEL_BASE_URL")?
-        };
-        if !image_model {
-            url::Url::parse(&model_base_url)
-                .map_err(|_| Error::msg("config: LOBO_MODEL_BASE_URL: invalid URL"))?;
-        }
+        let model_base_url = required("LOBO_MODEL_BASE_URL")?;
+        url::Url::parse(&model_base_url)
+            .map_err(|_| Error::msg("config: LOBO_MODEL_BASE_URL: invalid URL"))?;
         let dl_conns = usize::try_from(positive("LOBO_DL_CONNS", 1)?)
             .map_err(|_| Error::msg("config: LOBO_DL_CONNS: too large"))?;
         // Chunk objects need the multi-stream path; one stream reads a single URL to EOF.
-        if !image_model && dl_conns < 2 {
+        if dl_conns < 2 {
             return Err(Error::msg(format!(
                 "config: LOBO_DL_CONNS: want at least 2, got {dl_conns}"
             )));
@@ -119,7 +111,6 @@ impl AgentConfig {
             })?
         };
         Ok(Self {
-            image_model,
             connection,
             lobo_api_key,
             cf_tunnel_token,
@@ -184,7 +175,7 @@ mod tests {
         [
             ("LOBO_API_KEY", "api"),
             ("CF_TUNNEL_TOKEN", "tunnel"),
-            ("LOBO_MODEL", "q8"),
+            ("LOBO_MODEL", "qwen38-q6"),
             ("LOBO_MODEL_BASE_URL", "https://models.example"),
             ("LOBO_DL_CONNS", "32"),
             ("RUNPOD_POD_ID", "pod"),
@@ -221,22 +212,29 @@ mod tests {
         assert!(load(&v).is_err());
     }
     #[test]
-    fn image_mode_needs_no_source_and_ignores_obsolete_settings() {
-        for connection in ["ssh", "cloudflare"] {
-            let mut v = vars();
-            v.insert("LOBO_IMAGE_MODEL".into(), "1".into());
-            v.insert("LOBO_CONNECTION".into(), connection.into());
-            v.insert("LOBO_DL_CONNS".into(), "1".into());
-            v.remove("LOBO_MODEL_BASE_URL");
-            if connection == "ssh" {
-                v.remove("CF_TUNNEL_TOKEN");
-            }
-            let cfg = load(&v).unwrap();
-            assert!(cfg.image_model);
-            assert!(cfg.model_base_url.is_empty());
-            v.insert("LOBO_MODEL_BASE_URL".into(), "invalid obsolete URL".into());
-            assert!(load(&v).unwrap().model_base_url.is_empty());
-        }
+    fn obsolete_image_flag_cannot_bypass_download_requirements() {
+        let mut v = vars();
+        v.insert("LOBO_IMAGE_MODEL".into(), "1".into());
+        v.remove("LOBO_MODEL_BASE_URL");
+        assert!(
+            load(&v)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("LOBO_MODEL_BASE_URL: required")
+        );
+        v.insert(
+            "LOBO_MODEL_BASE_URL".into(),
+            "https://models.example".into(),
+        );
+        v.insert("LOBO_DL_CONNS".into(), "1".into());
+        assert!(
+            load(&v)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("LOBO_DL_CONNS: want at least 2")
+        );
     }
     #[test]
     fn download_mode_needs_base_url_and_two_streams() {

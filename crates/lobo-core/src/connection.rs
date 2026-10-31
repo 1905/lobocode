@@ -32,11 +32,7 @@ struct ConfigSource(PathBuf);
 impl AddressSource for ConfigSource {
     async fn get(&self, provider: &str, id: &str) -> Result<Instance> {
         let cfg = config::load_laptop(&self.0)?;
-        let mut wiring = crate::control::Wiring::new(
-            self.0.clone(),
-            crate::local::Spawner::cli(std::env::current_exe()?),
-        );
-        wiring.supported = || Err(Error::Other("cloud helper".into()));
+        let wiring = crate::control::Wiring::new(self.0.clone(), std::env::current_exe()?);
         let providers = crate::control::providers_from_config(&cfg, &wiring);
         let p = providers
             .get(provider)
@@ -236,9 +232,6 @@ impl Manager {
         self.attach_scoped(i, None).await
     }
     async fn attach_scoped(&self, i: &mut Instance, boot_id: Option<&str>) -> Result<()> {
-        if i.provider == "local" {
-            return Ok(());
-        }
         let _change = mutation_lock(&self.root).await?;
         let Some(s) = load::<Desired>(&self.root.join("desired.json"))? else {
             // An already running legacy instance can still use its saved domain.

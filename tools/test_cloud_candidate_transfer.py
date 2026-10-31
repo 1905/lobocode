@@ -25,10 +25,10 @@ class TransferTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory(prefix="candidate-transfer-fixture-")
         self.addCleanup(self.folder.cleanup)
         self.root = Path(self.folder.name)
-        self.layout = self.root / "source" / "q6-oci"
+        self.layout = self.root / "source" / "image-oci"
         blobs = self.layout / "blobs" / "sha256"
         blobs.mkdir(parents=True)
-        self.metadata = self.root / "source" / "q6-metadata.json"
+        self.metadata = self.root / "source" / "image-metadata.json"
         self.metadata.write_bytes(b'{"fixture":"metadata"}')
         (self.layout / "index.json").write_bytes(b'{"fixture":"index"}')
         (self.layout / "oci-layout").write_bytes(b'{"imageLayoutVersion":"1.0.0"}')
@@ -108,7 +108,7 @@ class TransferTests(unittest.TestCase):
         self.assertEqual(self.inventory(self.root / "source"), self.original)
         self.assertEqual(transfer.snapshot(ingest.lstat()), before)
         self.assertEqual(list(ingest.iterdir()), [])
-        self.assertFalse((self.output / "q6-oci" / "ingest").exists())
+        self.assertFalse((self.output / "image-oci" / "ingest").exists())
 
     def test_nonempty_and_non_directory_ingest_are_rejected_before_output(self):
         ingest = self.layout / "ingest"
@@ -269,9 +269,9 @@ class TransferTests(unittest.TestCase):
     def test_rejects_all_nonallowlisted_manifest_paths(self):
         self.pack()
         baseline = copy.deepcopy(self.manifest)
-        paths = ["../escape", "/tmp/escape", "q6-oci/../escape", "q6-oci//index.json",
-                 "q6-oci/./index.json", "q6-oci\\index.json", "", "q6-oci/blobs/sha256/" + "A" * 64,
-                 "q6-oci/blobs/sha256/" + "a" * 63, "q6-oci/extra", "q6-metadata.json\x00x"]
+        paths = ["../escape", "/tmp/escape", "image-oci/../escape", "image-oci//index.json",
+                 "image-oci/./index.json", "image-oci\\index.json", "", "image-oci/blobs/sha256/" + "A" * 64,
+                 "image-oci/blobs/sha256/" + "a" * 63, "image-oci/extra", "image-metadata.json\x00x"]
         for path in paths:
             with self.subTest(path=path):
                 manifest = copy.deepcopy(baseline)

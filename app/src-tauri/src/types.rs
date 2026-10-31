@@ -267,7 +267,7 @@ mod tests {
     }
     #[test]
     fn error_keeps_kind() {
-        let e = lobo_core::Error::Local("x".into());
+        let e = lobo_core::Error::Other("x".into());
         let kind = e.kind().to_string();
         let a = AppError::from(e);
         assert_eq!(a.kind, kind);
