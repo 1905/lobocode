@@ -472,12 +472,11 @@ async fn run(
         };
         check_cancel(cancel)?;
         if attempt == MAX_GPU_RETRIES {
-            let error = format!("gave up after {attempt} attempts; last: {reason}");
-            return Err(events.fail(
-                "failed",
-                reason,
-                Error::Other(format!("{error}\n{}", logs.trim()).trim_end().to_owned()),
-            ));
+            let mut error = format!("gave up after {attempt} attempts; last: {reason}");
+            if !logs.trim().is_empty() {
+                error = format!("{error}\n{}", logs.trim());
+            }
+            return Err(events.fail("failed", reason, Error::Other(error)));
         }
         events.phase(
             "create",
@@ -499,7 +498,7 @@ pub(super) fn instance_gone(e: &Error) -> bool {
     matches!(e, Error::Other(m) if m == crate::connection::INSTANCE_GONE)
 }
 /// One startup attempt. `Retry` means the pod (if any) is already deleted;
-/// `logs` holds the agent's last lines when it could still answer.
+/// `logs` holds the agent's last lines, fetched only for the last attempt.
 enum Boot {
     Ready,
     Retry {
@@ -507,6 +506,20 @@ enum Boot {
         wait: bool,
         logs: String,
     },
+}
+impl Boot {
+    fn retry(reason: String) -> Self {
+        Self::Retry {
+            reason,
+            wait: false,
+            logs: String::new(),
+        }
+    }
+    fn gone(pod_id: &str, phase: &str) -> Self {
+        Self::retry(format!(
+            "pod {pod_id} disappeared in phase {phase} before it reported a reason"
+        ))
+    }
 }
 async fn cloud_opts(
     d: &Deps,
@@ -714,14 +727,7 @@ async fn boot(
             // Other connection errors (host key, local port) stay fatal.
             if instance_gone(&e) && p.replaceable() {
                 let phase = if seen { last_phase.as_str() } else { "image" };
-                return Ok(Boot::Retry {
-                    reason: format!(
-                        "pod {} disappeared in phase {phase} before it reported a reason",
-                        pod.id
-                    ),
-                    wait: false,
-                    logs: String::new(),
-                });
+                return Ok(Boot::gone(&pod.id, phase));
             }
             return Err(e);
         }
@@ -769,14 +775,7 @@ async fn boot(
                     // and keys cleaned up. Keep ownership if cleanup fails.
                     scope.cleanup(d, ownership).await?;
                     if p.replaceable() {
-                        return Ok(Boot::Retry {
-                            reason: format!(
-                                "pod {} disappeared in phase {phase} before it reported a reason",
-                                pod.id
-                            ),
-                            wait: false,
-                            logs: String::new(),
-                        });
+                        return Ok(Boot::gone(&pod.id, phase));
                     }
                     return Err(events.fail(
                         "failed",
@@ -876,23 +875,24 @@ async fn boot(
                     } else {
                         s.stage_detail.clone()
                     };
-                    let logs = probe(cancel, agent.logs(20)).await.unwrap_or_default();
+                    // Logs matter only in the final error; skip the round trip
+                    // while a bad pod is still billing on earlier attempts.
+                    let last = attempt == MAX_GPU_RETRIES || !p.replaceable();
+                    let logs = if last {
+                        probe(cancel, agent.logs(20)).await.unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
                     check_cancel(cancel)?;
+                    scope.cleanup(d, ownership).await?;
                     if p.replaceable() {
-                        scope.cleanup(d, ownership).await?;
                         return Ok(Boot::Retry {
                             reason: why,
                             wait: false,
                             logs,
                         });
                     }
-                    let error = if !p.replaceable() {
-                        scope.cleanup(d, ownership).await?;
-                        format!("pod stopped: {why} (err=none)\n{logs}")
-                    } else {
-                        ownership.clear()?;
-                        format!("pod stopped: {why} (it deletes itself)\n{logs}")
-                    };
+                    let error = format!("pod stopped: {why} (err=none)\n{logs}");
                     return Err(events.fail("failed", why, Error::Other(error)));
                 }
                 _ => events.emit(UpEvent {
@@ -912,11 +912,7 @@ async fn boot(
             let reason = "host: container not started after 30m0s".to_owned();
             events.phase("image", reason.clone());
             scope.cleanup(d, ownership).await?;
-            return Ok(Boot::Retry {
-                reason,
-                wait: false,
-                logs: String::new(),
-            });
+            return Ok(Boot::retry(reason));
         }
         if (d.clock.now() - progress).to_std().unwrap_or_default() > o.timeout
             || (d.clock.now() - start).to_std().unwrap_or_default() > o.timeout

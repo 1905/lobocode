@@ -120,13 +120,7 @@ impl WizardState {
         .into_iter()
         .map(|(k, v)| (k.into(), v))
         .collect();
-        out.insert(
-            "LOBO_CONNECTION".into(),
-            lobo_core::config::Laptop::from_values(&self.cur)
-                .connection_mode()
-                .unwrap_or("ssh")
-                .into(),
-        );
+        out.insert("LOBO_CONNECTION".into(), "ssh".into());
         if self.both_keys() {
             out.insert("LOBO_PROVIDER".into(), self.provider.clone());
         }

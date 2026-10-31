@@ -122,10 +122,5 @@ pub async fn target(d: &Deps) -> Result<(Arc<dyn AgentApi>, String)> {
         }
         return Ok(((d.new_agent)(&instance.agent_url), instance.api_url.clone()));
     }
-    if let Some(e) = error {
-        return Err(e);
-    }
-    Err(Error::Other(
-        "nothing running: start one with `lobo up`".into(),
-    ))
+    Err(error.unwrap_or_else(|| Error::Other("nothing running: start one with `lobo up`".into())))
 }

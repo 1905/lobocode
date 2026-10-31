@@ -515,12 +515,14 @@ pub async fn run(get: &(dyn Fn(&str) -> Option<String> + Sync), logs: LogSource)
     }
 }
 /// Status served after a startup error that happened before the agent API was up,
-/// so the laptop can show the reason before the instance deletes itself.
+/// so the laptop can show the reason before the instance deletes itself. Serving
+/// stops a few seconds after the first read, or after `grace` with no reader.
 pub struct FailReport {
     pub addr: String,
     pub boot_id: String,
     pub grace: Duration,
 }
+const FAIL_REPORT_DRAIN: Duration = Duration::from_secs(5);
 impl FailReport {
     async fn serve(self, error: &str) {
         let status = lobo_proto::Status {
@@ -530,15 +532,20 @@ impl FailReport {
             kill_reason: "failed".into(),
             ..Default::default()
         };
-        let Ok(body) = serde_json::to_vec(&status) else {
+        let Ok(mut body) = serde_json::to_vec(&status) else {
             return;
         };
+        body.push(b'\n');
+        let body = bytes::Bytes::from(body);
         let Ok(listener) = tokio::net::TcpListener::bind(&self.addr).await else {
             return;
         };
+        let read = Arc::new(tokio::sync::Notify::new());
+        let notify = read.clone();
         let router = axum::Router::new().route(
             "/api/status",
             axum::routing::get(move || {
+                notify.notify_one();
                 let body = body.clone();
                 async move {
                     (
@@ -548,7 +555,12 @@ impl FailReport {
                 }
             }),
         );
-        let _ = tokio::time::timeout(self.grace, axum::serve(listener, router)).await;
+        let drained = async move {
+            read.notified().await;
+            tokio::time::sleep(FAIL_REPORT_DRAIN).await;
+        };
+        let serve = axum::serve(listener, router).with_graceful_shutdown(drained);
+        let _ = tokio::time::timeout(self.grace, serve).await;
     }
 }
 pub async fn main_flow<F>(
