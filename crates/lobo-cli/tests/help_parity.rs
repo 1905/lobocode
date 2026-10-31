@@ -158,6 +158,10 @@ fn help_facts_match_go() {
             ] {
                 expected.flags.get_mut(flag).unwrap().help = help.into();
             }
+            // SECURE is the default RunPod cloud (user decision, 2026-10-31).
+            let cloud = expected.flags.get_mut("cloud").unwrap();
+            cloud.default = Some("secure".into());
+            cloud.help = "secure (datacenter first, community fallback; default) or community (community hosts only, cheapest)".into();
         }
         assert_eq!(clap(cmd), expected, "{name}");
     }

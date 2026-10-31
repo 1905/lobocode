@@ -31,16 +31,6 @@ pub fn https_url(v: &str) -> Result<(), String> {
         Err("a URL like https://pub-….r2.dev".into())
     }
 }
-pub fn hostname(v: &str) -> Result<(), String> {
-    let v = v.trim();
-    if v.is_empty() {
-        Err("required".into())
-    } else if v.contains('/') || v.contains(' ') || !v.contains('.') {
-        Err("a bare hostname like lobo.example.com (no https://)".into())
-    } else {
-        Ok(())
-    }
-}
 pub fn provider_options() -> Vec<(&'static str, &'static str)> {
     vec![
         ("RunPod", "runpod"),
@@ -53,13 +43,6 @@ impl WizardState {
             && resolve_secret(self.current("VASTAI_API_KEY"), typed).is_empty()
         {
             Err("set at least one provider key".into())
-        } else {
-            Ok(())
-        }
-    }
-    pub fn tunnel_token(&self, typed: &str) -> Result<(), String> {
-        if resolve_secret(self.current("CF_TUNNEL_TOKEN"), typed).is_empty() {
-            Err("required: the pod serves the API through this tunnel".into())
         } else {
             Ok(())
         }
@@ -78,8 +61,6 @@ mod tests {
         assert!(positive_float("0").is_err());
         assert!(positive_float("1.2").is_ok());
         assert!(positive_float("NaN").is_err());
-        assert!(hostname("https://x.cc").is_err());
-        assert!(hostname("lobo.x.cc").is_ok());
         assert!(https_url("pub.r2.dev").is_err());
         assert!(https_url("https://pub.r2.dev").is_ok());
     }
@@ -88,8 +69,6 @@ mod tests {
         let s = WizardState::new(Default::default());
         assert!(s.provider_keys("").is_err());
         assert!(s.provider_keys("key").is_ok());
-        assert!(s.tunnel_token("").is_err());
-        assert!(s.tunnel_token("token").is_ok());
         assert_eq!(
             provider_options()
                 .iter()

@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased (next image)
+## Unreleased (next image, app and CLI)
 
+- Remove the Cloudflare tunnel connection. The app and CLI connect only through private SSH. A saved `LOBO_CONNECTION=cloudflare`, `LOBO_DOMAIN` and `CF_TUNNEL_TOKEN` are ignored, and the token is no longer sent to a pod. Settings no longer sets `cloudflare` when old domain and token keys exist. In that mode the pod tunnel did not connect (Cloudflare error 1033), and starts failed with "pod is gone (deleted) during startup in phase image".
+- Default RunPod cloud is `secure` (datacenter first, community fallback) in the app, the CLI flag and the configuration wizard.
+- A failed start rents another GPU automatically, up to 10 attempts (was 4, bad hosts only). Each attempt is retried on any agent failure, a pod that disappeared, a container that did not start or no free GPU (after 30 seconds). Each attempt shows `attempt N/10 failed: <reason>`; the last error is `gave up after 10 attempts; last: <reason>`.
+- An agent that fails before its API starts serves its error on `/api/status` for 60 seconds before the pod deletes itself. A pod that disappears without a reason reports `disappeared in phase … before it reported a reason`.
 - Raise the agent's free-VRAM boot check by 1,536 MiB in `mtp` and `mtp-ngram` modes: 25,487 MiB instead of 23,951 MiB. Image 0.2.5 passed hosts with 23,951–24,900 MiB free, which then failed during model load with a CUDA allocation error. The agent `start` log line now includes the `spec` mode.
 - Docs: cold W4 time to first token is 8.95 s → 9.73 s (+8.7%); the earlier 4.76 s → 5.17 s mixed a cold request and a prefix-cache hit. Output under `mtp-ngram` is not reproducible at temperature 0 or with a fixed seed on free prose and Go code; code edits and long-document answers matched.
 

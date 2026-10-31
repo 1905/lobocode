@@ -122,16 +122,5 @@ pub async fn target(d: &Deps) -> Result<(Arc<dyn AgentApi>, String)> {
         }
         return Ok(((d.new_agent)(&instance.agent_url), instance.api_url.clone()));
     }
-    if let Some(e) = error {
-        return Err(e);
-    }
-    if d.cfg.uses_ssh() || d.cfg.domain.is_empty() {
-        return Err(Error::Other(
-            "nothing running: start one with `lobo up`".into(),
-        ));
-    }
-    Ok((
-        (d.new_agent)(&format!("https://{}", d.cfg.domain)),
-        format!("https://{}/v1", d.cfg.domain),
-    ))
+    Err(error.unwrap_or_else(|| Error::Other("nothing running: start one with `lobo up`".into())))
 }

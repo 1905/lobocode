@@ -7,7 +7,8 @@ fn generated_client_has_only_supported_cloud_model_and_endpoint() {
     let path = tmp.path().join("config.json");
     for (connection, expected) in [
         ("ssh", "http://127.0.0.1:9000/v1"),
-        ("cloudflare", "https://lobo.example.com/v1"),
+        // A legacy Cloudflare setting still exports the local SSH endpoint.
+        ("cloudflare", "http://127.0.0.1:9000/v1"),
     ] {
         let laptop = config::Laptop {
             connection: connection.into(),

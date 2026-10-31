@@ -91,22 +91,52 @@ async fn up_goldens() {
             )),
         );
     }
-    let failed = vec![
-        None,
-        Some(Status {
-            stage: Stage::Tunnel,
+    // Go stopped at the first failed pod; Rust retries, so this screen has no Go
+    // capture. Fixed events keep it deterministic: the core event channel may
+    // drop progress events when instant fake attempts outrun the consumer.
+    let t0: DateTime<Utc> = "2026-09-25T10:00:00Z".parse().unwrap();
+    let pod = "runpod pod1, SECURE, host ≥10000 Mbps, $0.69/h, qwen38-q6 ctx 65536";
+    let mut events = vec![
+        UpEvent {
+            phase: "create".into(),
+            detail: pod.into(),
             ..Default::default()
-        }),
-        Some(Status {
-            stage: Stage::Failed,
-            stage_detail: "download: sha256 mismatch".into(),
+        },
+        UpEvent {
+            phase: "tunnel".into(),
             ..Default::default()
-        }),
+        },
     ];
-    golden(
-        "up_failed",
-        to_plain(&render_up(&up_until(failed, "failed").await, "*")),
-    );
+    for n in 1..10 {
+        events.push(UpEvent {
+            phase: "create".into(),
+            detail: format!(
+                "attempt {n}/10 failed: download: sha256 mismatch; renting another pod"
+            ),
+            ..Default::default()
+        });
+        events.push(UpEvent {
+            phase: "create".into(),
+            detail: pod.into(),
+            ..Default::default()
+        });
+    }
+    events.push(UpEvent {
+        phase: "failed".into(),
+        detail: "download: sha256 mismatch".into(),
+        done: true,
+        err: Some(
+            "gave up after 10 attempts; last: download: sha256 mismatch\nlast log line".into(),
+        ),
+        ..Default::default()
+    });
+    let mut state = UpState::default();
+    for (i, e) in events.iter().enumerate() {
+        let at = t0 + TimeDelta::seconds(i as i64 * 7);
+        state.apply_at(e, at);
+        state.at = at + TimeDelta::seconds(5);
+    }
+    insta::assert_snapshot!("up_failed", to_plain(&render_up(&state, "*")));
 }
 #[tokio::test]
 async fn terminal_buffers() {

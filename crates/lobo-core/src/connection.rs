@@ -503,6 +503,8 @@ pub async fn run_with_source(root: PathBuf, source: &dyn AddressSource) -> Resul
     let _ = monitor.await;
     result
 }
+/// Fatal helper error when the provider no longer has the instance.
+pub const INSTANCE_GONE: &str = "cloud instance is gone";
 async fn reconnect(
     root: &Path,
     s: &Desired,
@@ -516,7 +518,7 @@ async fn reconnect(
         let result = connection_attempt(root, s, cancel, source).await;
         match result {
             Err(Error::NotFound) => {
-                health(root, s, "cloud instance is gone", true)?;
+                health(root, s, INSTANCE_GONE, true)?;
                 return Ok(());
             }
             Err(e) => {

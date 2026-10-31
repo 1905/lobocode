@@ -1,5 +1,5 @@
-# Release the Rust `lobo` CLI (not the pod agent: that ships to the bucket via `make release`).
-# CI (.github/workflows/release.yml) runs this on a v* tag push.
+# Release the Rust `lobo` CLI (not the pod agent). GitHub Actions is disabled: releases are built
+# by hand (macOS on Air, Linux musl on Feesh with cargo-zigbuild); see README "CLI releases".
 project_name: lobo
 version: 2
 
@@ -34,7 +34,7 @@ archives:
 brews:
   - name: lobo
     homepage: https://github.com/1905/lobocode
-    description: "Rent an RTX 5090 on RunPod or Vast.ai and serve Qwen3.5-27B behind an OpenAI-compatible API"
+    description: "Rent an RTX 5090 on RunPod or Vast.ai and serve Qwen3.8-27B behind an OpenAI-compatible API"
     repository:
       owner: "1905"
       name: homebrew-tap

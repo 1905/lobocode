@@ -452,7 +452,7 @@ async fn run(
     let co = read(cancel, cloud_opts(d, &mut o, model, &rel, start)).await?;
     for attempt in 1..=MAX_GPU_RETRIES {
         check_cancel(cancel)?;
-        let retry = boot(
+        let outcome = boot(
             d,
             &**provider,
             &o,
@@ -466,24 +466,60 @@ async fn run(
             scope,
         )
         .await?;
-        if !retry {
-            return Ok(());
-        }
+        let (reason, wait, logs) = match outcome {
+            Boot::Ready => return Ok(()),
+            Boot::Retry { reason, wait, logs } => (reason, wait, logs),
+        };
         check_cancel(cancel)?;
         if attempt == MAX_GPU_RETRIES {
-            return Err(Error::Other(format!(
-                "gave up: {attempt} pods in a row landed on bad hosts (all deleted)"
-            )));
+            let mut error = format!("gave up after {attempt} attempts; last: {reason}");
+            if !logs.trim().is_empty() {
+                error = format!("{error}\n{}", logs.trim());
+            }
+            return Err(events.fail("failed", reason, Error::Other(error)));
         }
         events.phase(
             "create",
-            format!(
-                "bad host, renting another pod ({}/{MAX_GPU_RETRIES})",
-                attempt + 1
-            ),
+            format!("attempt {attempt}/{MAX_GPU_RETRIES} failed: {reason}; renting another pod"),
         );
+        if wait {
+            // Tests set `poll`; zero means production timing.
+            let pause = if d.poll.is_zero() {
+                NO_CAPACITY_WAIT
+            } else {
+                d.poll
+            };
+            tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),_=tokio::time::sleep(pause)=>{}}
+        }
     }
     unreachable!()
+}
+pub(super) fn instance_gone(e: &Error) -> bool {
+    matches!(e, Error::Other(m) if m == crate::connection::INSTANCE_GONE)
+}
+/// One startup attempt. `Retry` means the pod (if any) is already deleted;
+/// `logs` holds the agent's last lines, fetched only for the last attempt.
+enum Boot {
+    Ready,
+    Retry {
+        reason: String,
+        wait: bool,
+        logs: String,
+    },
+}
+impl Boot {
+    fn retry(reason: String) -> Self {
+        Self::Retry {
+            reason,
+            wait: false,
+            logs: String::new(),
+        }
+    }
+    fn gone(pod_id: &str, phase: &str) -> Self {
+        Self::retry(format!(
+            "pod {pod_id} disappeared in phase {phase} before it reported a reason"
+        ))
+    }
 }
 async fn cloud_opts(
     d: &Deps,
@@ -498,7 +534,6 @@ async fn cloud_opts(
         model_base_url: d.cfg.model_base_url(),
         dl_conns: if o.conns > 0 { o.conns } else { 32 },
         lobo_api_key: d.cfg.lobo_api_key.clone(),
-        cf_tunnel_token: d.cfg.cf_tunnel_token.clone(),
         model: m.id.clone(),
         ctx: o.ctx,
         idle_min: o.idle_min,
@@ -531,7 +566,7 @@ async fn boot(
     events: &Events,
     ownership: &mut OperationGuard<'_>,
     scope: &mut OperationScope,
-) -> Result<bool> {
+) -> Result<Boot> {
     use rand::RngExt;
     co.boot_id = hex::encode(rand::rng().random::<[u8; 8]>());
     scope.record_owner(RuntimeTarget {
@@ -592,6 +627,13 @@ async fn boot(
             }
             if matches!(e, Error::Cancelled) {
                 return Err(e);
+            }
+            if matches!(e, Error::NoCapacity(_)) && p.replaceable() {
+                return Ok(Boot::Retry {
+                    reason: format!("rent on {}: {e}", p.name()),
+                    wait: true,
+                    logs: String::new(),
+                });
             }
             return Err(Error::Other(format!("rent on {}: {e}", p.name())));
         }
@@ -681,6 +723,12 @@ async fn boot(
             }
         {
             scope.cleanup(d, ownership).await?;
+            // The SSH helper can see a deleted pod before the provider check does.
+            // Other connection errors (host key, local port) stay fatal.
+            if instance_gone(&e) && p.replaceable() {
+                let phase = if seen { last_phase.as_str() } else { "image" };
+                return Ok(Boot::gone(&pod.id, phase));
+            }
             return Err(e);
         }
         let (mut status, mut agent_check) = match probe(cancel, agent.status()).await {
@@ -726,6 +774,9 @@ async fn boot(
                     // Confirmed absence still needs the exact saved connection
                     // and keys cleaned up. Keep ownership if cleanup fails.
                     scope.cleanup(d, ownership).await?;
+                    if p.replaceable() {
+                        return Ok(Boot::gone(&pod.id, phase));
+                    }
                     return Err(events.fail(
                         "failed",
                         "provider confirms the pod is gone".into(),
@@ -815,29 +866,33 @@ async fn boot(
                         done: true,
                         ..Default::default()
                     });
-                    return Ok(false);
+                    return Ok(Boot::Ready);
                 }
                 "failed" | "terminating" => {
                     let s = status.as_ref().unwrap();
-                    if retriable(&s.stage_detail) && p.replaceable() {
-                        events.phase("image", s.stage_detail.clone());
-                        scope.cleanup(d, ownership).await?;
-                        return Ok(true);
-                    }
-                    let logs = probe(cancel, agent.logs(20)).await.unwrap_or_default();
-                    check_cancel(cancel)?;
                     let why = if s.stage == Stage::Terminating && s.kill_reason != "failed" {
                         format!("watchdog: {}", s.kill_reason)
                     } else {
                         s.stage_detail.clone()
                     };
-                    let error = if !p.replaceable() {
-                        scope.cleanup(d, ownership).await?;
-                        format!("pod stopped: {why} (err=none)\n{logs}")
+                    // Logs matter only in the final error; skip the round trip
+                    // while a bad pod is still billing on earlier attempts.
+                    let last = attempt == MAX_GPU_RETRIES || !p.replaceable();
+                    let logs = if last {
+                        probe(cancel, agent.logs(20)).await.unwrap_or_default()
                     } else {
-                        ownership.clear()?;
-                        format!("pod stopped: {why} (it deletes itself)\n{logs}")
+                        String::new()
                     };
+                    check_cancel(cancel)?;
+                    scope.cleanup(d, ownership).await?;
+                    if p.replaceable() {
+                        return Ok(Boot::Retry {
+                            reason: why,
+                            wait: false,
+                            logs,
+                        });
+                    }
+                    let error = format!("pod stopped: {why} (err=none)\n{logs}");
                     return Err(events.fail("failed", why, Error::Other(error)));
                 }
                 _ => events.emit(UpEvent {
@@ -854,9 +909,10 @@ async fn boot(
             && (d.clock.now() - created).to_std().unwrap_or_default() > CONTAINER_TIMEOUT
             && p.replaceable()
         {
-            events.phase("image", "host: container not started after 30m0s".into());
+            let reason = "host: container not started after 30m0s".to_owned();
+            events.phase("image", reason.clone());
             scope.cleanup(d, ownership).await?;
-            return Ok(true);
+            return Ok(Boot::retry(reason));
         }
         if (d.clock.now() - progress).to_std().unwrap_or_default() > o.timeout
             || (d.clock.now() - start).to_std().unwrap_or_default() > o.timeout
@@ -877,7 +933,4 @@ async fn boot(
         }
         tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),_=tokio::time::sleep(poll)=>{}}
     }
-}
-fn retriable(detail: &str) -> bool {
-    detail.starts_with("gpu: ") || detail.contains("host: ")
 }

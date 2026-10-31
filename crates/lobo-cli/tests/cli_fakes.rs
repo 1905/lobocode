@@ -56,10 +56,14 @@ fn executable_json_outputs_match_go() {
         assert_eq!(output.status.success(), name == "boot", "{err}");
         let mut expected = events(&fixture(&format!("json_up_{name}.jsonl")));
         for event in &mut expected {
-            event.detail = event.detail.replace(
-                ", release 2026.09.23-1, q8 ctx 8192",
-                ", qwen38-q6 ctx 65536",
-            );
+            // SECURE is now the default RunPod cloud.
+            event.detail = event
+                .detail
+                .replace(
+                    ", release 2026.09.23-1, q8 ctx 8192",
+                    ", qwen38-q6 ctx 65536",
+                )
+                .replace("COMMUNITY", "SECURE");
             if event.phase == "image" {
                 // Keep Go captures intact; Rust adds a safe reachability detail.
                 assert!(event.detail.is_empty());
@@ -67,12 +71,29 @@ fn executable_json_outputs_match_go() {
             }
             if let Some(ready) = &mut event.ready {
                 ready.elapsed_ns = 0; // Fixture clock does not advance.
+                ready.detail = ready.detail.replace("COMMUNITY", "SECURE");
             }
         }
-        assert_eq!(
-            events(std::str::from_utf8(&output.stdout).unwrap()),
-            expected
-        );
+        let got = events(std::str::from_utf8(&output.stdout).unwrap());
+        if name == "failed" {
+            // Go stopped at the first failure. Rust deletes the pod and retries:
+            // the first attempt matches Go up to the failure, then each retry is
+            // announced, and the final error keeps the last reason and log line.
+            assert_eq!(got[..3], expected[..3]);
+            assert_eq!(
+                got[3].detail,
+                "attempt 1/10 failed: download: sha256 mismatch; renting another pod"
+            );
+            let last = got.last().unwrap();
+            assert_eq!((last.phase.as_str(), last.done), ("failed", true));
+            assert_eq!(last.detail, "download: sha256 mismatch");
+            assert_eq!(
+                last.err.as_deref(),
+                Some("gave up after 10 attempts; last: download: sha256 mismatch\nlast log line")
+            );
+        } else {
+            assert_eq!(got, expected);
+        }
         if name == "failed" {
             assert_eq!(err, "error: up failed\n");
         } else {
@@ -116,6 +137,7 @@ fn executable_plain_output_and_unknown_scenario() {
             ", qwen38-q6 ctx 65536",
         )
         .replace("boot=15000", "boot=0")
+        .replace("COMMUNITY", "SECURE")
         .replace(
             "INF up phase=image",
             "INF up detail=\"agent unreachable (other); ready unconfirmed\" phase=image",

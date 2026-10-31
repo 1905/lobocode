@@ -21,14 +21,10 @@ export function loadFields(c?: ConfigShow): Fields {
   return {
     secrets: Object.fromEntries(SECRET_KEYS.map((k) => [k, ''])),
     plain: Object.fromEntries(
+      // SSH is the only connection. Saving rewrites a legacy `cloudflare` value.
       PLAIN_KEYS.map((k) => [
         k,
-        c?.values[k] ||
-          (k === 'LOBO_CONNECTION'
-            ? c?.set.LOBO_DOMAIN && c?.set.CF_TUNNEL_TOKEN
-              ? 'cloudflare'
-              : 'ssh'
-            : ''),
+        k === 'LOBO_CONNECTION' ? 'ssh' : c?.values[k] || '',
       ]),
     ),
   };

@@ -258,11 +258,13 @@ async fn up_command_modes_defaults_and_report() {
         // Rust also reports initial agent reachability. Keep the frozen consumer
         // fixtures unchanged, and assert this intentional producer difference.
         // A fixed clock keeps this command test independent of clock-read counts.
+        // SECURE is now the default RunPod cloud.
         let adapt = |text: String| {
             text.replace(
                 ", release 2026.09.23-1, q8 ctx 8192",
                 ", qwen38-q6 ctx 65536",
             )
+            .replace("COMMUNITY", "SECURE")
         };
         if flag == "--json" {
             let mut expected = json_lines(&adapt(fixture("json_up_boot.jsonl")));
@@ -363,8 +365,13 @@ async fn failed_up_keeps_json_error_and_reports_nonzero() {
             .unwrap()
             .contains("sha256 mismatch")
     );
-    // Failed cloud agents own self-deletion; preserve that Go behavior.
-    assert!(f.rp.state.lock().unwrap().deleted.is_empty());
+    // Each failed pod is deleted and replaced, up to the attempt limit.
+    let last = events.last().unwrap()["err"].as_str().unwrap().to_owned();
+    assert!(last.contains("gave up after 10 attempts"), "{last}");
+    assert_eq!(
+        f.rp.state.lock().unwrap().deleted.len(),
+        lobo_core::control::MAX_GPU_RETRIES as usize
+    );
 }
 
 struct SlowApi {

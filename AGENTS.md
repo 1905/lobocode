@@ -4,6 +4,10 @@
 
 User decision: support only `qwen38-q6`, only on RunPod or Vast GPUs. No model choice (no `q6`/`q8`) and no local runs. The authorized cleanup is complete: one catalog entry, no local inference/provider/commands, no full-image model packaging. Legacy saved configs migrate; explicit retired choices fail validation. Cloud ownership safety remains. Keep user model files, the installed app and optional CLI unchanged. Historical Go source is outside this cleanup.
 
+## SSH only, SECURE default, startup retry — 2026-10-31
+
+User decisions (2026-10-31): remove the Cloudflare connection (SSH only), default RunPod cloud `secure`, retry a failed start up to 10 attempts with a reason per attempt, show the agent's failure reason, and release image, app and CLI together. Plan: `plans/2026-10-31-startup-retry/plan-v1.0.html`. Cause: the user's legacy config ran in Cloudflare mode; the pod tunnel never connected (error 1033) and the app showed only "pod is gone". The 2026-10-31 leak audit found no user Cloudflare token, domain or account key in git history, GitHub text, release assets, the Homebrew tap or the public image layers.
+
 ## Image 0.2.5 speculative decoding — 2026-10-31
 
 The pod agent starts `llama-server` with `--spec-type draft-mtp,ngram-mod --spec-draft-n-max 5` (`LOBO_SPEC`, default `mtp-ngram`). Public `latest-qwen38-q6` digest: `sha256:7b53f3158c91042cf8ce6375c9a4f24918f894db7b353d32025e574aa8a51604`, built from `548ac7aee405c9996c22b9f8ce82effd158b5406`. Through `lobo up` on an RTX 5090: prose 55.6 → 102.2 tok/s, code 54.5 → 147.9, 25k-token document 50.4 → 212.4, code edit 54.4 → 504.4. VRAM +1.5 GB. The app and optional CLI are unchanged. Rollback: re-tag `sha256:3d64617400c59420f0aea21a0bb6c0ac83376a8ee377dd2710ef63d5fc41fc0a` as `latest-qwen38-q6`. See [speculative decoding](docs/speculative-decoding.md) and [results](plans/done/2026-10-31-spec-decoding/results.html). PR #5 (merged, not yet in an image): the free-VRAM boot check adds 1,536 MiB for MTP modes (25,487 MiB). Rebuild the image to ship it. Under `mtp-ngram`, output is not reproducible at temperature 0; do not use byte-equal output as a regression test for W1/W2.

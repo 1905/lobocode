@@ -109,7 +109,8 @@ async fn list_all_keeps_going_on_error() {
 }
 #[test]
 fn lifecycle_limits() {
-    assert_eq!(MAX_GPU_RETRIES, 4);
+    assert_eq!(MAX_GPU_RETRIES, 10);
+    assert_eq!(NO_CAPACITY_WAIT, Duration::from_secs(30));
     // Host image pulls still have a bounded startup deadline.
     assert_eq!(CONTAINER_TIMEOUT, Duration::from_secs(30 * 60));
     assert_eq!(STALE_SLACK, Duration::from_secs(15));
@@ -192,7 +193,8 @@ async fn target_table() {
         ("vast", false, "cloud", "http://vast/v1"),
         ("", true, "cloud", "list broke"),
         ("", false, "", "nothing running"),
-        ("", false, "cloud", "https://cloud/v1"),
+        // A configured domain no longer creates a public endpoint.
+        ("", false, "cloud", "nothing running"),
     ] {
         let mut d = setup();
         d.providers.clear();

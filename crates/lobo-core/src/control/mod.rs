@@ -49,7 +49,10 @@ pub struct Deps {
     pub clock: Arc<dyn Clock>,
     pub poll: Duration,
 }
-pub const MAX_GPU_RETRIES: u32 = 4;
+/// Startup attempts: each failed pod is deleted and another is rented.
+pub const MAX_GPU_RETRIES: u32 = 10;
+/// Wait before renting again after the provider reports no free GPU.
+pub const NO_CAPACITY_WAIT: Duration = Duration::from_secs(30);
 pub const CONTAINER_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 pub const STALE_SLACK: Duration = Duration::from_secs(15);
 pub const POD_CHECK_EVERY: Duration = Duration::from_secs(30);

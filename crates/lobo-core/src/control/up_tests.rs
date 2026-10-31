@@ -256,9 +256,15 @@ async fn up_agent_failed_and_expiry() {
         })]);
         let (events, result) = collect(d, UpOpts::default()).await;
         let error = result.unwrap_err().to_string();
+        assert!(error.contains("gave up after 10 attempts"), "{error}");
         assert!(error.contains(want));
         assert!(error.contains("last log line"));
         assert_eq!(events.last().unwrap().phase, "failed");
+        assert!(
+            events
+                .iter()
+                .any(|e| e.detail.starts_with("attempt 1/10 failed: ") && e.detail.contains(want))
+        );
     }
 }
 #[tokio::test]
@@ -287,7 +293,8 @@ async fn up_capacity_and_network_tiers() {
     for (cloud, secure_missing, max_mbps, no_capacity, want_calls) in [
         ("", false, 5000.0, false, 2),
         ("secure", true, 5000.0, false, 7),
-        ("", true, 0.0, true, 5),
+        // No capacity anywhere: every attempt tries all tiers, then retries.
+        ("", true, 0.0, true, 50),
     ] {
         let (d, rp) = test_deps(ready());
         {
@@ -352,7 +359,7 @@ async fn up_replaces_bad_gpu_and_ignores_stale_status() {
     assert_ne!(s.created[0].opts.boot_id, s.created[1].opts.boot_id);
 }
 #[tokio::test]
-async fn up_gives_up_after_four_bad_hosts() {
+async fn up_gives_up_after_ten_bad_hosts() {
     let (d, rp) = test_deps(vec![Some(Status {
         stage: Stage::Failed,
         stage_detail: "download: host: too slow".into(),
@@ -364,11 +371,11 @@ async fn up_gives_up_after_four_bad_hosts() {
             .1
             .unwrap_err()
             .to_string()
-            .contains("gave up: 4 pods")
+            .contains("gave up after 10 attempts; last: download: host: too slow")
     );
     let s = rp.state.lock().unwrap();
-    assert_eq!(s.created.len(), 4);
-    assert_eq!(s.deleted.len(), 4);
+    assert_eq!(s.created.len(), 10);
+    assert_eq!(s.deleted.len(), 10);
 }
 struct SlowProvider {
     running: Mutex<Vec<Instance>>,
@@ -967,7 +974,11 @@ async fn up_detects_pod_gone_while_agent_silent() {
     });
     d.new_agent = Arc::new(move |_| agent.clone());
     let (events, result) = collect(d, UpOpts::default()).await;
-    assert!(result.unwrap_err().to_string().contains("pod slow is gone"));
+    let error = result.unwrap_err().to_string();
+    assert!(
+        error.contains("gave up after 10 attempts; last: pod slow disappeared"),
+        "{error}"
+    );
     assert_eq!(events.last().unwrap().phase, "failed");
 }
 
@@ -999,12 +1010,15 @@ async fn up_detects_pod_gone_before_the_agent_ever_answers() {
     }
     let result = operation.wait().await;
     let error = result.unwrap_err().to_string();
-    assert!(error.contains("pod slow is gone"), "{error}");
-    assert!(error.contains("phase image"));
+    assert!(
+        error.contains("pod slow disappeared in phase image before it reported a reason"),
+        "{error}"
+    );
     assert_eq!(events.last().unwrap().phase, "failed");
-    assert_eq!(p.rents.load(Ordering::SeqCst), 1);
+    assert_eq!(p.rents.load(Ordering::SeqCst), 10);
     assert!(p.get_ids.lock().unwrap().iter().all(|id| id == "slow"));
-    assert_eq!(p.deletes.load(Ordering::SeqCst), 1);
+    // Each vanished pod still gets its exact cleanup before the next rent.
+    assert_eq!(p.deletes.load(Ordering::SeqCst), 10);
     assert!(
         operations
             .acquire(&CancellationToken::new())
@@ -1170,4 +1184,15 @@ async fn up_rejects_retired_models_before_renting() {
         assert!(error.contains("unknown model"), "{model}: {error}");
         assert!(rp.state.lock().unwrap().created.is_empty());
     }
+}
+
+#[test]
+fn ssh_helper_gone_error_is_retried_but_other_connection_errors_are_not() {
+    assert!(super::up::instance_gone(&Error::Other(
+        crate::connection::INSTANCE_GONE.into()
+    )));
+    assert!(!super::up::instance_gone(&Error::Other(
+        "Host key verification failed".into()
+    )));
+    assert!(!super::up::instance_gone(&Error::NotFound));
 }
